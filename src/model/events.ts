@@ -136,5 +136,6 @@ export interface AgentState {
   readonly mode: 'live' | 'dry' | null
   readonly tick: number | null
   readonly team: string | null
-  readonly openOffers: readonly OpenOffer[]
+  /** null when /state has no `open_offers` (the taker, or a maker before its first view). */
+  readonly openOffers: readonly OpenOffer[] | null
 }

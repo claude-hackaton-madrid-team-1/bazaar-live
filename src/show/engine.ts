@@ -19,6 +19,8 @@ export interface BoardCard {
   readonly price: number | null
   /** Bumps on every reprice, so the tag can flash. */
   readonly version: number
+  /** When an event put it there (ms), so a slightly older /state snapshot does not remove it. */
+  readonly at: number
 }
 
 export interface TranscriptEntry {
@@ -57,6 +59,7 @@ const MAX_TRANSCRIPT = 240
 const MAX_BOARD = 8
 const IDLE_AFTER_MS = 50_000
 const NOTIFY_MS = 16
+const STALE_TICKS = 2
 
 export const INITIAL_STATE: ShowState = {
   beat: null,
@@ -97,16 +100,34 @@ function cardKey(ref: string, side: Side): string {
 }
 
 /** The board after one cue: post adds, reprice updates, cancel removes. */
-export function applyToBoard(board: readonly BoardCard[], cue: Cue): readonly BoardCard[] {
+export function applyToBoard(board: readonly BoardCard[], cue: Cue, now = Date.now()): readonly BoardCard[] {
   if (cue.kind !== 'post' && cue.kind !== 'reprice' && cue.kind !== 'cancel') return board
   const key = cardKey(cue.ref, cue.side)
   const existing = board.find((c) => c.key === key)
   if (cue.kind === 'cancel') return board.filter((c) => c.key !== key)
   if (existing) {
-    return board.map((c) => (c.key === key ? { ...c, price: cue.price ?? c.price, version: c.version + 1 } : c))
+    return board.map((c) => (c.key === key ? { ...c, price: cue.price ?? c.price, version: c.version + 1, at: now } : c))
   }
-  const added: BoardCard = { key, ref: cue.ref, side: cue.side, price: cue.price, version: 0 }
+  const added: BoardCard = { key, ref: cue.ref, side: cue.side, price: cue.price, version: 0, at: now }
   return [...board, added].slice(-MAX_BOARD)
+}
+
+/** A card an event placed in the last SYNC_GRACE_MS survives a snapshot that predates it. */
+const SYNC_GRACE_MS = 20_000
+
+/** The board as /state lists it, keeping each card's flash version and very recent event cards. */
+export function syncBoard(board: readonly BoardCard[], offers: readonly OpenOffer[], now: number): readonly BoardCard[] {
+  const listed = offers
+    .filter((o) => o.side === 'ask' || o.side === 'bid')
+    .map((o): BoardCard => {
+      const key = cardKey(o.ref, o.side as Side)
+      const old = board.find((c) => c.key === key)
+      const repriced = old && o.price !== null && old.price !== o.price
+      return { key, ref: o.ref, side: o.side as Side, price: o.price ?? old?.price ?? null, version: (old?.version ?? 0) + (repriced ? 1 : 0), at: old?.at ?? 0 }
+    })
+  const recent = board.filter((c) => now - c.at < SYNC_GRACE_MS && !listed.some((l) => l.key === c.key))
+  const unique = [...listed, ...recent].filter((c, i, all) => all.findIndex((x) => x.key === c.key) === i)
+  return unique.slice(-MAX_BOARD)
 }
 
 export class ShowEngine {
@@ -161,13 +182,9 @@ export class ShowEngine {
     this.set({ feeds: { ...this.state.feeds, [agent]: status } })
   }
 
-  /** Seed the board from the maker's GET /state (only when the board is still empty). */
-  seedBoard(offers: readonly OpenOffer[]): void {
-    if (this.state.board.length > 0) return
-    const board = offers
-      .filter((o) => o.side === 'ask' || o.side === 'bid')
-      .reduce<readonly BoardCard[]>((b, o) => applyToBoard(b, { kind: 'post', side: o.side as Side, ref: o.ref, price: o.price }), [])
-    this.set({ board })
+  /** Align the board with the maker's GET /state: sold, expired or failed offers leave it. */
+  syncBoard(offers: readonly OpenOffer[], now = Date.now()): void {
+    this.set({ board: syncBoard(this.state.board, offers, now) })
   }
 
   ingest(event: ShowEvent, replay: boolean): void {
@@ -178,7 +195,11 @@ export class ShowEngine {
     }
     const beat = toBeat(event)
     if (!beat) return
-    if (replay) {
+    // A late replay on slow Wi-Fi can arrive after the feed's replay window: an event several ticks
+    // behind what the agent's /health reports is history, not a scene.
+    const agentTick = this.state.health[event.agent]?.tick ?? null
+    const stale = event.tick !== null && agentTick !== null && event.tick < agentTick - STALE_TICKS
+    if (replay || stale) {
       this.set({ board: applyToBoard(this.state.board, beat.cue), transcript: this.appendLines(beat, 'history') })
       return
     }

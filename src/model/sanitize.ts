@@ -228,12 +228,12 @@ function parseOffer(raw: unknown): OpenOffer | null {
 /** GET /state: the header facts and the maker's open offers (public on the board). */
 export function parseState(raw: unknown): AgentState | null {
   if (!isRecord(raw)) return null
-  const offers = Array.isArray(raw.open_offers) ? raw.open_offers : []
+  const offers = Array.isArray(raw.open_offers) ? raw.open_offers : null
   return {
     agent: text(raw.agent) ?? '?',
     mode: mode(raw.mode),
     tick: orNull(int(raw.tick)),
     team: orNull(text(raw.team)),
-    openOffers: offers.map(parseOffer).filter((o): o is OpenOffer => o !== null).slice(0, 30),
+    openOffers: offers ? offers.map(parseOffer).filter((o): o is OpenOffer => o !== null).slice(0, 30) : null,
   }
 }

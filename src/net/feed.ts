@@ -44,8 +44,14 @@ export interface FeedOptions {
   readonly timers?: Timers
   readonly backoff?: BackoffOptions
   readonly random?: () => number
-  /** Events within this window after `open` are the agent's replay buffer. */
+  /** Events within this window after `open` are the agent's replay buffer... */
   readonly replayWindowMs?: number
+  /** ...and so is the rest of that first burst, while messages keep coming closer than this... */
+  readonly burstGapMs?: number
+  /** ...up to this long after `open`. */
+  readonly maxReplayMs?: number
+  /** A socket that receives nothing for this long is presumed half-open and replaced. */
+  readonly idleMs?: number
   /** A connection that stays open this long resets the backoff. */
   readonly stableAfterMs?: number
   /** How many keys to remember for dedupe. */
@@ -58,7 +64,10 @@ export class EventFeed {
   private socket: SocketLike | null = null
   private retryTimer: unknown = null
   private stableTimer: unknown = null
+  private idleTimer: unknown = null
   private openedAt = 0
+  private lastMessageAt = 0
+  private replaying = false
   private attempt = 0
   private status: FeedStatus = 'idle'
   private stopped = true
@@ -72,6 +81,9 @@ export class EventFeed {
       backoff: DEFAULT_BACKOFF,
       random: Math.random,
       replayWindowMs: 1500,
+      burstGapMs: 400,
+      maxReplayMs: 10_000,
+      idleMs: 150_000,
       stableAfterMs: 10_000,
       maxSeen: 4000,
       ...options,
@@ -116,6 +128,9 @@ export class EventFeed {
     socket.onopen = () => {
       if (this.socket !== socket) return
       this.openedAt = this.opts.timers.now()
+      this.lastMessageAt = this.openedAt
+      this.replaying = true
+      this.armIdle(socket)
       this.setStatus('open', null)
       this.stableTimer = this.opts.timers.setTimeout(() => {
         this.attempt = 0
@@ -123,6 +138,7 @@ export class EventFeed {
     }
     socket.onmessage = (ev) => {
       if (this.socket !== socket) return
+      this.armIdle(socket)
       this.handleMessage(ev.data)
     }
     socket.onerror = () => {
@@ -148,10 +164,33 @@ export class EventFeed {
       this.rejected += 1
       return
     }
+    const replay = this.isReplay()
     if (this.seen.has(event.key)) return
     this.remember(event.key)
-    const replay = this.opts.timers.now() - this.openedAt < this.opts.replayWindowMs
     this.opts.onEvent(event, replay)
+  }
+
+  /** The join burst: the first window, then as long as messages keep arriving close together. */
+  private isReplay(): boolean {
+    const now = this.opts.timers.now()
+    const sinceOpen = now - this.openedAt
+    const gap = now - this.lastMessageAt
+    this.lastMessageAt = now
+    if (!this.replaying) return false
+    this.replaying = sinceOpen < this.opts.maxReplayMs && (sinceOpen < this.opts.replayWindowMs || gap < this.opts.burstGapMs)
+    return this.replaying
+  }
+
+  /** (Re)start the watchdog for a socket that may go silent without closing. */
+  private armIdle(socket: SocketLike): void {
+    if (this.idleTimer !== null) this.opts.timers.clearTimeout(this.idleTimer)
+    this.idleTimer = this.opts.timers.setTimeout(() => {
+      this.idleTimer = null
+      if (this.socket !== socket || this.stopped) return
+      this.dropSocket()
+      this.attempt = 0
+      this.scheduleRetry()
+    }, this.opts.idleMs)
   }
 
   private remember(key: string): void {
@@ -186,9 +225,10 @@ export class EventFeed {
   }
 
   private clearTimers(): void {
-    if (this.retryTimer !== null) this.opts.timers.clearTimeout(this.retryTimer)
-    if (this.stableTimer !== null) this.opts.timers.clearTimeout(this.stableTimer)
-    this.retryTimer = this.stableTimer = null
+    for (const timer of [this.retryTimer, this.stableTimer, this.idleTimer]) {
+      if (timer !== null) this.opts.timers.clearTimeout(timer)
+    }
+    this.retryTimer = this.stableTimer = this.idleTimer = null
   }
 
   private setStatus(status: FeedStatus, nextRetryMs: number | null): void {

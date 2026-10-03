@@ -43,7 +43,7 @@ describe('http', () => {
       url.endsWith('/health') ? Response.json({ ok: true, agent: 'maker', mode: 'dry' }) : url.endsWith('/state') ? Response.json({ agent: 'maker', open_offers: [{ id: 1, ref: 'LAT-09', price: 5 }] }) : new Response('no', { status: 503 }),
     )
     expect((await fetchHealth('https://maker'))?.mode).toBe('dry')
-    expect((await fetchState('https://maker'))?.openOffers[0]?.ref).toBe('LAT-09')
+    expect((await fetchState('https://maker'))?.openOffers?.[0]?.ref).toBe('LAT-09')
     await expect(getJson('https://maker/other')).rejects.toThrow('503')
   })
 })
@@ -110,7 +110,7 @@ describe('MockPlayer', () => {
     expect(new Set(events.map((e) => e.key)).size).toBe(events.length)
     expect(ticks[0]).toBe(301)
     expect(player.health('taker')?.mode).toBe('live')
-    expect(player.state('maker')?.openOffers.length).toBe(2)
+    expect(player.state('maker')?.openOffers?.length).toBe(2)
     player.stop()
   })
 })

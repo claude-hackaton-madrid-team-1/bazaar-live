@@ -69,7 +69,7 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
       const player = new MockPlayer({ speed, mode: mockMode, onEvent: (e, replay) => engine.ingest(e, replay), onTick: refresh })
       AGENTS.forEach((a) => engine.setFeed(a, 'open'))
       refresh()
-      engine.seedBoard(player.state('maker')?.openOffers ?? [])
+      engine.syncBoard(player.state('maker')?.openOffers ?? [])
       player.start()
       return () => player.stop()
     }
@@ -93,7 +93,9 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
       })
     const pollBoard = () => {
       fetchState(ENDPOINTS.maker.http).then(
-        (s) => engine.seedBoard(s?.openOffers ?? []),
+        (s) => {
+          if (s?.openOffers) engine.syncBoard(s.openOffers)
+        },
         () => undefined,
       )
     }

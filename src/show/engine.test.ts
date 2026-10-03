@@ -4,7 +4,7 @@ import { parseEnvelope } from '../model/sanitize'
 import { SpeechQueue } from '../tts/queue'
 import { resolveChoice } from '../tts/select'
 import type { SpeechProvider, Utterance } from '../tts/types'
-import { applyToBoard, readingMs, ShowEngine } from './engine'
+import { applyToBoard, readingMs, ShowEngine, syncBoard } from './engine'
 
 function event(id: number, payload: Record<string, unknown>, agent: 'taker' | 'maker' = 'maker', type = 'agent.decision'): ShowEvent {
   const e = parseEnvelope({ id, tick: 300, t: 6, type, agent, payload: { status: 'approved', dry_run: false, ...payload } })
@@ -63,9 +63,9 @@ describe('ShowEngine', () => {
 
 describe('board and pacing helpers', () => {
   it('posts, reprices and cancels cards', () => {
-    let board = applyToBoard([], { kind: 'post', side: 'ask', ref: 'LAT-09', price: 68 })
-    board = applyToBoard(board, { kind: 'reprice', side: 'ask', ref: 'LAT-09', price: 62 })
-    expect(board).toEqual([{ key: 'ask:LAT-09', ref: 'LAT-09', side: 'ask', price: 62, version: 1 }])
+    let board = applyToBoard([], { kind: 'post', side: 'ask', ref: 'LAT-09', price: 68 }, 1)
+    board = applyToBoard(board, { kind: 'reprice', side: 'ask', ref: 'LAT-09', price: 62 }, 2)
+    expect(board).toEqual([{ key: 'ask:LAT-09', ref: 'LAT-09', side: 'ask', price: 62, version: 1, at: 2 }])
     expect(applyToBoard(board, { kind: 'cancel', side: 'ask', ref: 'LAT-09' })).toEqual([])
   })
 
@@ -92,6 +92,32 @@ describe('after a beat', () => {
     const s = show.getSnapshot()
     expect([s.line, s.beat, s.reach, s.deal, s.dealer]).toEqual([null, null, null, null, null])
     expect(s.transcript.length).toBeGreaterThan(0)
+    show.stop()
+  })
+})
+
+describe('board sync and stale events', () => {
+  it('follows /state: a sold card leaves, a repriced one flashes, a just-posted one stays', () => {
+    const now = 100_000
+    const old = { key: 'ask:LAT-09', ref: 'LAT-09', side: 'ask' as const, price: 68, version: 0, at: 0 }
+    const sold = { key: 'ask:MAL-03', ref: 'MAL-03', side: 'ask' as const, price: 24, version: 0, at: 0 }
+    const fresh = { key: 'ask:SAL-02', ref: 'SAL-02', side: 'ask' as const, price: 31, version: 0, at: now - 5000 }
+    const next = syncBoard([old, sold, fresh], [{ id: 1, side: 'ask', ref: 'LAT-09', price: 62, venue: 'rastro' }], now)
+    expect(next.map((c) => [c.ref, c.price, c.version])).toEqual([
+      ['LAT-09', 62, 1],
+      ['SAL-02', 31, 0],
+    ])
+    expect(syncBoard(next, [], now + 60_000)).toEqual([])
+  })
+
+  it('treats a live event far behind the agent tick as history', async () => {
+    const { show, spoken } = engine()
+    show.start()
+    show.setHealth('maker', { ok: true, agent: 'maker', mode: 'live', tick: 310, doors: 'open', paused: false, nextOpens: null, tickSeconds: 15, serverTick: 310 })
+    show.ingest(event(-30, { kind: 'post_ask', inputs: { ref: 'LAT-09', price: 68 } }), false)
+    await settle()
+    expect(spoken).toEqual([])
+    expect(show.getSnapshot().transcript.every((t) => t.kind === 'history')).toBe(true)
     show.stop()
   })
 })

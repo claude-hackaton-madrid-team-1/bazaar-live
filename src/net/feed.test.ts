@@ -184,3 +184,48 @@ describe('backoffDelay', () => {
     expect(backoffDelay(20, undefined, () => 1)).toBe(15_000)
   })
 })
+
+describe('EventFeed on a slow network', () => {
+  it('keeps a slow replay burst as history, then goes live after the first real gap', () => {
+    const { feed, last, timers, events } = setup()
+    feed.start()
+    last().open()
+    for (let i = 1; i <= 10; i += 1) {
+      last().send(decision(-i, i))
+      timers.advance(300) // 3 s of replay, longer than the 1 s window, but never a 400 ms gap
+    }
+    timers.advance(2000)
+    last().send(decision(-11, 11))
+    expect(events.filter((x) => x.replay).length).toBe(10)
+    expect(events.at(-1)).toMatchObject({ replay: false })
+  })
+
+  it('replaces a socket that went silent (half-open) without waiting for a close', () => {
+    const timers = new FakeTimers()
+    const sockets: FakeSocket[] = []
+    const feed = new EventFeed({
+      url: 'wss://maker/events',
+      agent: 'maker',
+      timers,
+      idleMs: 60_000,
+      random: () => 0.5,
+      createSocket: (url) => {
+        const s = new FakeSocket(url)
+        sockets.push(s)
+        return s
+      },
+      onEvent: () => undefined,
+    })
+    feed.start()
+    sockets[0]!.open()
+    timers.advance(59_000)
+    sockets[0]!.send(decision(-1))
+    timers.advance(59_000)
+    expect(sockets.length).toBe(1)
+    timers.advance(2000)
+    expect(sockets[0]!.closed).toBe(true)
+    timers.advance(1000)
+    expect(sockets.length).toBe(2)
+    feed.stop()
+  })
+})

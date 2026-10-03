@@ -148,5 +148,6 @@ describe('parseHealth and parseState', () => {
   it('keeps only the public fields of the maker open offers', () => {
     const s = parseState({ agent: 'maker', mode: 'live', tick: 3, team: 't01', open_offers: [{ id: 1, side: 'ask', ref: 'LAT-09', price: 68, venue: 'rastro', value_to_us: 90 }, { nope: true }] })
     expect(s?.openOffers).toEqual([{ id: 1, side: 'ask', ref: 'LAT-09', price: 68, venue: 'rastro' }])
+    expect(parseState({ agent: 'taker', threads: [] })?.openOffers).toBeNull()
   })
 })
