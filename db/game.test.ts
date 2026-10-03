@@ -79,6 +79,7 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
   let reader: pg.Client
   let adminDb: pg.Client
   let affinityBefore: string | null = 'unset'
+  let affinityOddShape: { v: string | null; feed: boolean } | null = null
 
   beforeAll(async () => {
     const url = new URL(ADMIN_URL ?? '')
@@ -122,6 +123,12 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
     await adminDb.query(SHOW_SQL)
     await adminDb.query(GAME_SQL)
     affinityBefore = (await adminDb.query(`select to_regclass('show.game_team_affinity') as v`)).rows[0]?.v ?? null
+    // A team_affinity of another shape (no quote column) skips the view too, and the rest of the file still commits.
+    await adminDb.query('create table team_affinity (team text, set_code text, multiplier numeric, source text, confidence numeric, tick int, said_quote text)')
+    await adminDb.query(SHOW_SQL)
+    await adminDb.query(GAME_SQL)
+    affinityOddShape = (await adminDb.query(`select to_regclass('show.game_team_affinity') as v, has_table_privilege('bazaar_live_reader', 'show.game_feed', 'select') as feed`)).rows[0] ?? null
+    await adminDb.query('drop table team_affinity')
     await adminDb.query(AFFINITY_TABLE)
     await adminDb.query(`insert into team_affinity (team, set_code, multiplier, source, confidence, tick, thread_id, quote) values
       ('t05', 'LAV', 1.6, 'said', 0.9, 212, ${AFFINITY_THREAD}, 'Lavapiés is our page, x1.6'), ('t05', 'LAV', 1.3, 'inferred', 0.72, 230, null, null),
@@ -212,6 +219,10 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
 
   it('skips show.game_team_affinity, and still applies, while public.team_affinity does not exist', () => {
     expect(affinityBefore).toBeNull()
+  })
+
+  it('skips the view with a warning, and keeps every other grant, when team_affinity has another shape', () => {
+    expect(affinityOddShape).toEqual({ v: null, feed: true })
   })
 
   it('reads other teams\' set multipliers, said and inferred side by side, never the thread id, our team or a non-id', async () => {

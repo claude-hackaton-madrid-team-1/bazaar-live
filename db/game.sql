@@ -144,6 +144,9 @@ begin
     raise notice 'public.team_affinity does not exist yet: show.game_team_affinity skipped (re-run db/game.sql after bazaar schema.sql)';
     return;
   end if;
+  -- A table of another shape (a renamed column, a missing grant) skips this view with a warning: an error here would roll
+  -- back the whole file, after show.sql already revoked every grant, and take every game screen off the database.
+  begin
   execute $view$
     create or replace view show.game_team_affinity with (security_barrier = true) as
     select coalesce(s.team, i.team) as team,
@@ -163,6 +166,10 @@ begin
        and coalesce(s.set_code, i.set_code) ~ '^[A-Z]{3}$'
   $view$;
   execute 'grant select on show.game_team_affinity to bazaar_live_reader';
+  exception when undefined_column or undefined_table or undefined_function or datatype_mismatch or insufficient_privilege
+                 or invalid_table_definition or wrong_object_type then
+    raise warning 'show.game_team_affinity skipped: public.team_affinity does not have the shape this file reads (%: %)', sqlstate, sqlerrm;
+  end;
 end $$;
 
 commit;
