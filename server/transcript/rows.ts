@@ -3,12 +3,22 @@
  * every value is re-checked and cleaned, because a row is untrusted data (a dealer's or a rival's text).
  */
 import { cleanInt, cleanItem, cleanName, cleanQuote } from '../../shared/clean.ts'
+import { looksLikeInjection } from '../../shared/injections.ts'
 import { EMPTY_ITEM, type Draft, type DuelLine, type OfferView, type Who } from '../../shared/transcript.ts'
 
 type Row = Readonly<Record<string, unknown>>
 
 /** A duel replay keeps its last words: the haggle's end is the story. */
 export const MAX_DUEL_LINES = 12
+
+/**
+ * show.thread_lines hands over at most this many characters of a message (`show.as_text`, db/show.sql): a text that
+ * long may have been cut, and what was cut cannot be checked, so it is never voiced.
+ */
+export const VIEW_TEXT_MAX = 1000
+
+/** Never voiced: a quote whose raw words (before cleanQuote) have an injection's shape, or that the view may have cut. */
+const mutedOf = (raw: unknown): boolean => typeof raw === 'string' && (raw.length >= VIEW_TEXT_MAX || looksLikeInjection(raw))
 
 const isRow = (value: unknown): value is Row => typeof value === 'object' && value !== null
 
@@ -52,6 +62,8 @@ export function threadItem(row: unknown): Draft | null {
     item,
     // Our own words are not in the feed; whatever a row claims, only the other side has a quote.
     text: who === 'them' ? cleanQuote(row.text) : null,
+    // Decided on the RAW words: cleaning strips the hidden characters, tags and links an injection hides behind.
+    muted: who === 'them' && mutedOf(row.text),
     offer: kind === 'thread_line' ? offerOf(row, item) : null,
     price: kind === 'settlement' ? cleanInt(row.price) : null,
   }

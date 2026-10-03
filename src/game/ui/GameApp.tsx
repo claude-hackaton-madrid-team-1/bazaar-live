@@ -12,6 +12,7 @@ import { AgentScreen } from './AgentScreen.tsx'
 import { AlbumScreen } from './AlbumScreen.tsx'
 import { DebugScreen } from './DebugScreen.tsx'
 import { DuelsScreen } from './DuelsScreen.tsx'
+import { InjectionsPanel } from '../../ui/InjectionsPanel'
 import { CashDock, GameHeader, GameNotice } from './GameHeader.tsx'
 import { HistoryScreen } from './HistoryScreen.tsx'
 import { Inspector } from './Inspector.tsx'
@@ -34,6 +35,8 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   ourmarket: () => <OurMarketScreen />,
   history: () => <HistoryScreen />,
   learn: () => <LearnScreen />,
+  // the judges' view: every injection attempt with its proof, full page
+  injections: () => <InjectionsPanel mock={readConfig(window.location.search).mock} />,
   debug: () => <DebugScreen />,
 }
 

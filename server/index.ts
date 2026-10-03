@@ -8,6 +8,7 @@
  * the Movements screen reads db/history.sql's views the same way, the Strategy screen db/strategy.sql's and the Rivals
  * screen db/rival_albums.sql's. All four are told on the game stream when their rows change (`pages.changed`) and read again as soon as our agents' sockets
  * ring (PAGES_WAKE=off: their timers only).
+ * /api/injections reads db/injections.sql's view on the same pool, public (the show has no token), never voiced.
  * With the game stream on, the taker's and the maker's /health join it every 10 s (AGENT_HEALTH=off turns it off;
  * RAILWAY_SERVICE_BAZAAR_TAKER_URL / _MAKER_URL override where they are).
  * With SHOW_DATABASE_URL (or a game key and the database), our agents' decisions join that stream (GUARDRAIL_* override the caps shown).
@@ -27,6 +28,7 @@ import { startHealth } from './game/health.ts'
 import { startPages } from './game/pages.ts'
 import { startGame } from './game/start.ts'
 import { startHistory } from './history/start.ts'
+import { startInjections } from './injections/start.ts'
 import { startLearn } from './learn/start.ts'
 import { startRivals } from './rivals/start.ts'
 import { startStrategy } from './strategy/start.ts'
@@ -62,6 +64,8 @@ const history = startHistory(process.env, log, show)
 const strategy = startStrategy(process.env, log, show)
 // What each rival holds by the public feed, its rank and what it chases (db/rival_albums.sql), on the same pool.
 const rivals = startRivals(process.env, log, show)
+// The prompt-injection attempts our agents recorded (db/injections.sql), on the same pool: public, never voiced.
+const injections = startInjections(log, show)
 // /history, /learn, /strategy and /rivals told on the game stream when their rows change, and read as soon as our agents' sockets ring.
 const pages = startPages(process.env, {
   hub: game.hub, agents: agentsWs, log,
@@ -81,6 +85,7 @@ const server = createServer(
     history,
     strategy,
     rivals,
+    injections,
     dealerNames: createDealerNames({ url: dealersUrl(process.env) }),
   }),
 )
@@ -99,6 +104,7 @@ const shutdown = (): void => {
   history.stop()
   strategy.stop()
   rivals.stop()
+  injections.stop()
   void learn.stop()
   void show?.pool.end().catch(() => undefined)
   server.close(() => process.exit(0))

@@ -36,7 +36,12 @@ export function readShowDatabase(env: Readonly<Record<string, string | undefined
   }
 }
 
-/** A tiny pool: two connections (the role may hold eight in all), and no statement may run longer than 2 s. */
+/**
+ * A tiny pool: two connections (the role may hold eight in all), and no statement may run longer than 2 s. JIT is off for
+ * the session: every query here is a small read, and with a production-sized feed_events the planner's estimates cross
+ * jit_above_cost, so JIT compiling cost ~240 ms per read of show.injection_attempts (5 ms without it; measured on
+ * postgres:17 with 300,000 feed events).
+ */
 export function poolOptions(url: string, max = 2): pg.PoolConfig {
   return {
     connectionString: url,
@@ -46,6 +51,7 @@ export function poolOptions(url: string, max = 2): pg.PoolConfig {
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30_000,
     application_name: 'bazaar-live',
+    options: '-c jit=off',
   }
 }
 

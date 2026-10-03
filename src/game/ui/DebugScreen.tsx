@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { readConfig } from '../../config'
+import { InjectionsPanel } from '../../ui/InjectionsPanel'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { debugRows, FAMILIES, streamStats, type DebugRow, type Family, type Source, type StreamStats as Stats } from '../views/debug.ts'
@@ -155,10 +157,13 @@ export function DebugScreen() {
   const stats = useMemo(() => streamStats(state), [state, version])
   const shown = result.rows.length < result.matched ? t.debug.of(result.rows.length, result.matched) : `${result.matched}`
   return (
-    <Panel title={t.debug.stream} sub={t.debug.sub(shown, result.scanned, filters.source === 'ours')}>
-      <StreamStats stats={stats} />
-      <Filters value={filters} counts={result.families} onChange={setFilters} />
-      <EventTable rows={result.rows} selected={store.selected} onSelect={(id) => store.select(id)} />
-    </Panel>
+    <>
+      <Panel title={t.debug.stream} sub={t.debug.sub(shown, result.scanned, filters.source === 'ours')}>
+        <StreamStats stats={stats} />
+        <Filters value={filters} counts={result.families} onChange={setFilters} />
+        <EventTable rows={result.rows} selected={store.selected} onSelect={(id) => store.select(id)} />
+      </Panel>
+      <InjectionsPanel mock={readConfig(window.location.search).mock} />
+    </>
   )
 }

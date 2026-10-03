@@ -95,7 +95,8 @@ export class TranscriptStore {
   private indexQuotes(item: TranscriptItem): void {
     const speaker = item.kind === 'thread_line' && item.who === 'them' ? dealerSpeaker(item.counterpart) : null
     const text = item.text
-    if (!speaker || !text || this.quotes.has(text)) return
+    // a quote whose raw words had an injection's shape is never vouched for a voice (rows.ts sets `muted`)
+    if (!speaker || !text || item.muted || this.quotes.has(text)) return
     const lang = detectLang(text)
     if (lang === 'unknown') return
     this.quotes.set(text, { lang, speaker })
