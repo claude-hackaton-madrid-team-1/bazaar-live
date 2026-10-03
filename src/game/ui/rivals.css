@@ -100,7 +100,7 @@
 
 .rv-grid {
   display: grid;
-  grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
   align-items: start;
   gap: var(--s-4);
 }
@@ -123,7 +123,7 @@
 
 .rv-row {
   display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr) 3rem 3.25rem 3.75rem minmax(0, 7.5rem);
+  grid-template-columns: 1.5rem minmax(5.5rem, 1fr) 2.75rem 2.5rem 4.5rem minmax(0, 7.5rem);
   align-items: center;
   gap: var(--s-2);
   width: 100%;
@@ -155,6 +155,10 @@ button.rv-row:hover {
   background: color-mix(in srgb, var(--gm-us) 10%, transparent);
 }
 
+.rv-row[data-us] .rv-team {
+  color: var(--gm-us);
+}
+
 .rv-row-head {
   min-height: 0;
   padding-bottom: var(--s-1);
@@ -171,6 +175,7 @@ button.rv-row:hover {
   gap: 6px;
   min-width: 0;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .rv-ours {
@@ -255,20 +260,20 @@ button.rv-row:hover {
 }
 
 @media (max-width: 520px) {
+  /* the chased set as its swatch only (its name on hover), the badge in the row's tint */
   .rv-row {
-    grid-template-columns: 1.5rem minmax(0, 1fr) 2.75rem 2.25rem 2.75rem;
+    grid-template-columns: 1.25rem minmax(0, 1fr) 2.5rem 2.25rem 4.25rem 1.5rem;
+    gap: 6px;
   }
 
-  .rv-col-chase {
-    grid-column: 2 / -1;
+  .rv-set-name,
+  .rv-col-chase .gm-badge {
+    display: none;
   }
 
   .rv-row-head .rv-col-chase {
-    display: none;
-  }
-
-  .rv-row .rv-col-chase:empty {
-    display: none;
+    visibility: hidden;
+    overflow: hidden;
   }
 }
 

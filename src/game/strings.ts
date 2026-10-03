@@ -18,7 +18,12 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 type Silence = Readonly<Record<AgentName, { readonly quiet: number; readonly silent: number }>>
 
 /** A wait in seconds as a person says it: 45 s, 2 min, 1 h 5 min. */
-const span = (s: number): string => (s < 90 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`)
+const span = (s: number): string => {
+  if (s < 90) return `${Math.round(s)} s`
+  // whole minutes first, so 5 h 59.6 min reads 6 h 0 min, never 5 h 60 min
+  const min = Math.round(s / 60)
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`
+}
 
 /** An ISO time in the viewer's clock, hours and minutes. */
 export const hhmm = (iso: string | null): string | null => {

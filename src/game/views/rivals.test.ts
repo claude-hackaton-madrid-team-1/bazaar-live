@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EMPTY_RIVALS, type RivalCard, type RivalsSnapshot, type RivalTeam } from '../../../shared/rivals.ts'
 import { mockRivals, rivalsStateOf } from '../rivals.ts'
+import { GAME_STRINGS } from '../strings.ts'
 import { apply, createState, type GameEvent, type Payload } from '../state.ts'
 import { CHASE_TICKS, chasedSet, knownBySet, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows } from './rivals.ts'
 
@@ -154,6 +155,11 @@ describe('the source', () => {
     expect(live.snapshot.holdings).toHaveLength(1)
   })
 
+  it('says a time ago in whole minutes: never "5 h 60 min"', () => {
+    expect(GAME_STRINGS.es.hum.ago(1439, 1439 * 15)).toBe('hace 6 h 0 min')
+    expect(GAME_STRINGS.en.hum.ago(1400, 1400 * 15)).toBe('5 h 50 min ago')
+  })
+
   it('counts time from the feed\'s head or the game clock, the later', () => {
     expect(nowOf(snap({ tick: 510 }), { tick: 500 })).toBe(510)
     expect(nowOf(snap({ tick: null }), { tick: 500 })).toBe(500)
@@ -164,6 +170,9 @@ describe('the source', () => {
     expect(mockRivals(600)).toEqual(a)
     expect(a.teams.map((t) => t.team)).toContain('t01')
     expect(a.teams.map((t) => t.rank)).toEqual(a.teams.map((_, i) => i + 1))
-    expect(a.holdings.every((h) => h.copies >= 1 && h.seen >= h.since)).toBe(true)
+    expect(a.holdings.every((h) => h.copies >= 1 && h.seen >= h.since && h.seen <= 600)).toBe(true)
+    // never a tick ahead of the mock game's clock, even at its start
+    const early = mockRivals(20)
+    expect([...early.holdings.map((h) => h.seen), ...early.wants.map((w) => w.last)].every((t) => t >= 0 && t <= 20)).toBe(true)
   })
 })

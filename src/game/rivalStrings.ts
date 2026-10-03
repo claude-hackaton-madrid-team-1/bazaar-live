@@ -39,6 +39,7 @@ export interface RivalStrings {
   readonly sameSet: string
   readonly sameSetTitle: string
   readonly pagesTitle: string
+  readonly oursTitle: string
   readonly pick: string
   // one team's album
   readonly album: (team: string) => string
@@ -84,12 +85,13 @@ const EN: RivalStrings = {
   noNeeds: 'Our target pages lack nothing, or our album has not arrived yet.',
   standings: 'Standings',
   standingsSub: 'the leaderboard\'s last read; pick a team to see its album',
-  col: { rank: '#', team: 'Team', score: 'Score', pages: 'Pages', ours: 'Has ours', chases: 'Chases' },
+  col: { rank: '#', team: 'Team', score: 'Pts', pages: 'Pages', ours: 'Ours', chases: 'Chases' },
   us: 'us',
   holdsOurs: (n) => `holds ${plural(n, 'card', 'cards')} we need`,
   sameSet: 'like us',
   sameSetTitle: 'Its public moves chase a set we aim for: it competes with us for the same cards',
   pagesTitle: 'Complete album pages, by the leaderboard',
+  oursTitle: 'How many of the cards we need it holds',
   pick: 'See its album',
   album: (team) => `${team}'s album`,
   albumSub: (cards) => `${plural(cards, 'card', 'cards')} seen in public moves; the rest unknown`,
@@ -131,18 +133,19 @@ const ES: RivalStrings = {
   noNeeds: 'A nuestras páginas objetivo no les falta nada, o nuestro álbum aún no ha llegado.',
   standings: 'Clasificación',
   standingsSub: 'la última lectura de la clasificación; elige un equipo para ver su álbum',
-  col: { rank: '#', team: 'Equipo', score: 'Puntos', pages: 'Páginas', ours: 'Tiene nuestras', chases: 'Persigue' },
+  col: { rank: '#', team: 'Equipo', score: 'Ptos', pages: 'Págs', ours: 'Nuestras', chases: 'Persigue' },
   us: 'nosotros',
-  holdsOurs: (n) => `tiene ${plural(n, 'carta', 'cartas')} que nos faltan`,
+  holdsOurs: (n) => (n === 1 ? 'tiene 1 carta que nos falta' : `tiene ${n} cartas que nos faltan`),
   sameSet: 'como nosotros',
   sameSetTitle: 'Sus movimientos públicos persiguen un barrio que buscamos: compite con nosotros por las mismas cartas',
   pagesTitle: 'Páginas del álbum completas, según la clasificación',
+  oursTitle: 'Cuántas de las cartas que nos faltan tiene',
   pick: 'Ver su álbum',
   album: (team) => `Álbum de ${team}`,
   albumSub: (cards) => `${plural(cards, 'carta vista', 'cartas vistas')} en movimientos públicos; el resto, desconocido`,
   albumHead: (rank, score, pages) => `#${rank} · ${score.toFixed(1).replace('.', ',')} puntos${pages == null ? '' : ` · ${plural(pages, 'página completa', 'páginas completas')}`}`,
   known: (n, of) => `${n}/${of} conocidas`,
-  holdsNeed: (n) => `${plural(n, 'carta', 'cartas')} que nos faltan`,
+  holdsNeed: (n) => (n === 1 ? '1 carta que nos falta' : `${n} cartas que nos faltan`),
   unknown: 'sin ver: puede tenerla',
   needed: 'nos falta',
   legendKnown: 'vista en su poder',

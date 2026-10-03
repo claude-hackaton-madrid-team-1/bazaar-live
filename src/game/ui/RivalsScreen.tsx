@@ -9,7 +9,7 @@ import { pagePush } from '../fresh.ts'
 import { agoText, whoName } from '../humanize.ts'
 import { useRivals } from '../rivals.ts'
 import { useRivalStrings } from '../rivalStrings.ts'
-import { RARITY_COLOR, SETS, type Rarity } from '../game.ts'
+import { SETS } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { nowTick } from '../views/decisions.ts'
@@ -22,18 +22,12 @@ import './rivals.css'
 /** Holders shown per card before "+N more". */
 const HOLDERS_SHOWN = 6
 
-function Rar({ rarity }: { rarity: string | null }) {
-  const t = useRivalStrings()
-  const color = (rarity && RARITY_COLOR[rarity as Rarity]) || 'var(--text-3)'
-  return <i className="alb-rar" style={{ background: color }} title={t.rarity(rarity)} />
-}
-
 function SetName({ set }: { set: string }) {
   const s = SETS[set]
   return (
-    <span className="rv-set">
+    <span className="rv-set" title={s?.name ?? set}>
       <i className="gm-swatch" style={{ background: s?.color ?? 'var(--text-3)' }} />
-      {s?.name ?? set}
+      <span className="rv-set-name">{s?.name ?? set}</span>
     </span>
   )
 }
@@ -45,9 +39,10 @@ function NeedCard({ n, onPick }: { n: NeedRow; onPick: (team: string) => void })
   return (
     <li className="rv-need">
       <div className="rv-need-what">
-        <Rar rarity={n.rarity} />
         <CardRef code={n.ref} name={n.name ?? undefined} />
-        <span className="gm-muted">{t.page(n.page, n.have, n.of)}</span>
+        <span className="gm-muted">
+          {t.rarity(n.rarity)} · {t.page(n.page, n.have, n.of)}
+        </span>
       </div>
       {n.holders.length ? (
         <ul className="rv-holders" aria-label={n.name ?? n.ref}>
@@ -98,7 +93,7 @@ function Standings({ rows, selected, onPick }: { rows: TeamRow[]; selected: stri
         <span>{t.col.team}</span>
         <span>{t.col.score}</span>
         <span title={t.pagesTitle}>{t.col.pages}</span>
-        <span>{t.col.ours}</span>
+        <span title={t.oursTitle}>{t.col.ours}</span>
         <span className="rv-col-chase">{t.col.chases}</span>
       </div>
       <ol className="rv-rows">
@@ -106,9 +101,8 @@ function Standings({ rows, selected, onPick }: { rows: TeamRow[]; selected: stri
           const cells = (
             <>
               <span className="gm-mono">{r.rank}</span>
-              <span className="rv-team">
-                {whoName(g, r.team)}
-                {r.us && <Badge tone="us">{t.us}</Badge>}
+              <span className="rv-team" title={r.us ? whoName(g, r.team) : undefined}>
+                {r.us ? t.us : whoName(g, r.team)}
               </span>
               <span className="gm-mono">{r.score.toFixed(1)}</span>
               <span className="gm-mono" title={t.pagesTitle}>{r.pages ?? '—'}</span>

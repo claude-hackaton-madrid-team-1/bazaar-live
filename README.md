@@ -97,6 +97,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. A link to Duels while any is live. |
 | `/duels` | Is their price inside our limit? | One card per live duel: rival, buying or selling, the card at stake, their price → ours, the gap, our limit and how far inside or outside it their price is, the rounds and what their decay costs, the ticks left, the duels agent's last call (offer, blocked by a rule, accept planned by the deadline − 2) and a pill (inside limit / haggling / outside limit / expiring). Then the record per rival and per session with `score.duel_points`, every finished duel in one line (deal at X vs our limit Y, what it kept, rounds), and whether the duels agent is silent or blocked. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
+| `/rivals` | Who is ahead, and who has the cards we need? | The cards our target pages lack (incomplete pages our affinity boosts), each with the teams holding it (a spare first, then the freshest sighting; how we know: bought, from a pack, a gift, crafted, listed; since when) and the teams also after it lately (board bids with their best cash, dealer asks). Then the standings by the leaderboard's last read (score, complete pages, how many of our needs each holds, the set its public moves chase, flagged when it is one we aim for), and the album of the team picked there (`?team=`): a page grid like ours with the cards seen in public moves filled and every other one drawn as unknown, never missing. Read from Postgres (db/rival_albums.sql): only public game facts, never a value of ours. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
 | `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
@@ -311,6 +312,27 @@ denial shows. The window is the last 300 ticks of the current run. Apply after t
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`.
 The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
+
+### What the rivals hold (`/rivals`)
+
+`db/rival_albums.sql` adds four read-only views for the same role. They read only public game facts (the feed, the
+leaderboard, our monitor's profile of each rival), never our snapshots, decisions, ledger or duels, so no value of ours
+can reach them; the page works out what we lack from its own game stream. The game has no public album: its
+`/api/cards/{id}` hides other teams, so a holding is known by public moves only.
+
+- `show.rival_holdings`: per holder (a team or a dealer) and card, the copies we last saw it hold. A copy is followed by
+  its asset id in feed order: a settlement moves it, a pack's `best` (rare or better) shows it, a board listing shows it
+  with its maker. A gift or a craft names a card without a copy and counts until that team lists or sells the card.
+  `how` (bought, pack, gift, crafted, listed) and `since_tick` belong to the copy held longest; `seen_tick` is the last sighting.
+- `show.rival_teams`: each team's latest real leaderboard read (rank, score, level, complete pages, deals) and its set
+  interest (numbers only).
+- `show.rival_wants`: per team and card, its board bids (with the best cash) and its dealer asks.
+- `show.rival_head`: the newest feed tick.
+
+Apply after the other show files, each time:
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql`.
+The server reads them every 15 s on the shared pool, and 5 s after the taker's tick, and serves `GET /api/rivals` (the
+same token). `?mock=1` shows a made-up market. Proof: `sh scripts/test-sql.sh` runs `db/rival_albums.test.ts`.
 
 ## Real conversations (LIVE-T1)
 
