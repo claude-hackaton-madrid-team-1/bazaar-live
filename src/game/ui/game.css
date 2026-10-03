@@ -1018,6 +1018,81 @@
   color: var(--gm-bad);
 }
 
+/* our money against its limits (ui/Money.tsx): cash vs floor, the hour's spend; the one that stops us is marked */
+.gm-money {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.gm-money-row {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+}
+
+.gm-money-row[data-binds] {
+  border-color: color-mix(in srgb, var(--gm-warn) 50%, transparent);
+  background: color-mix(in srgb, var(--gm-warn) 9%, transparent);
+}
+
+.gm-money-row[data-binds][data-zero],
+.gm-money-row[data-binds][data-level='bad'] {
+  border-color: color-mix(in srgb, var(--gm-bad) 50%, transparent);
+  background: color-mix(in srgb, var(--gm-bad) 9%, transparent);
+}
+
+.gm-money-row dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.gm-money-row dd {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.gm-money-line {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.gm-money-note {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.gm-money + .st-levers {
+  margin-top: var(--s-3);
+}
+
+/* the header's chip beside our cash: what the next buy may cost; the two wrap together */
+.gm-money-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+}
+
+.gm-room[data-tone='bad'] {
+  border-color: color-mix(in srgb, var(--gm-bad) 45%, transparent);
+}
+
+.gm-room[data-tone='bad'] .gm-kpi-num {
+  color: var(--gm-bad);
+}
+
 .gm-meter-note {
   margin: var(--s-3) 0 0;
   font-size: 0.8125rem;
@@ -2795,10 +2870,20 @@
   position: relative;
   min-width: 0;
   overflow: hidden;
+  /* a sideways drag scrubs the crosshair; an up-and-down one still scrolls the page */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .gm-score-chart {
-  touch-action: pan-y;
+  display: block;
+  outline: none;
+}
+
+.gm-score-chart:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--gm-us);
+  border-radius: 6px;
 }
 
 .gm-score-after {
@@ -2865,13 +2950,22 @@
   pointer-events: none;
 }
 
+.gm-score-dot {
+  fill: var(--gm-us);
+  stroke: var(--material-solid);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
 .gm-score-tip {
   position: absolute;
-  top: 4px;
+  top: 0;
+  left: 0;
   z-index: 2;
   display: grid;
-  gap: 2px;
-  max-width: 220px;
+  gap: 4px;
+  width: max-content;
+  max-width: min(240px, 100%);
   padding: 6px 10px;
   border: 1px solid var(--hairline);
   border-radius: 8px;
@@ -2880,6 +2974,37 @@
   font-size: 0.75rem;
   line-height: 1.35;
   pointer-events: none;
+}
+
+.gm-score-tip-mark {
+  color: var(--gm-warn);
+}
+
+.gm-score-tip-mark[data-kind='game'] {
+  color: var(--text);
+}
+
+.gm-score-tip-rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 1px 10px;
+}
+
+.gm-score-tip-row {
+  display: contents;
+}
+
+.gm-score-tip-row > :not(:first-child) {
+  text-align: right;
+}
+
+.gm-score-tip-row[data-on] > :first-child {
+  font-weight: 600;
+}
+
+.gm-score-then,
+.gm-score-strip-row [data-then] {
+  color: var(--gm-us);
 }
 
 .gm-score-strips {
@@ -4147,9 +4272,56 @@
   }
 }
 
-/* Our orders: the card's name is enough in a narrow column (its code is on hover). */
-.gm-orders .gm-card-code {
-  display: none;
+/* Our orders: each one a sentence that wraps ("Compramos Palacio de Velázquez RET-08 en v02 · caduca en ~4 min"). */
+.gm-orders td.gm-order-cell {
+  white-space: normal;
+  min-width: 13rem;
+}
+
+.gm-order {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+}
+
+/* on a phone each order is two lines: when, who and the price, then the sentence across */
+@media (max-width: 600px) {
+  .gm-orders thead {
+    display: none;
+  }
+
+  .gm-orders tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px var(--s-2);
+    padding: 6px var(--s-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .gm-orders td {
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .gm-orders td.gm-when {
+    text-align: left;
+  }
+
+  .gm-orders td.gm-order-cell {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+  }
+}
+
+.gm-order-raw {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
 }
 
 /* ---------------------------------------------------------------- negotiations, live: our words, teams, markets (nl-) */

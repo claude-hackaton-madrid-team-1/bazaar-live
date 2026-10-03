@@ -127,6 +127,11 @@ export function mockHistory(tick: number): HistorySnapshot {
   const orders: Order[] = Array.from({ length: 12 }, (_, i) => ({
     id: 60 + i, day: DAY, tick: at(26 + i), kind: i % 4 === 3 ? 'accept' : 'listing', price: 10 + ((i * 7) % 20), item: ['LAV-04', 'SAL-03', 'MAL-08', 'LAT-02'][i % 4] ?? null, agent: i % 4 === 3 ? 'taker' : 'maker',
   }))
+  // a bid a person posted by hand (`bazaar sell bid --live`): its spend and its hands-off listing, still open
+  orders.push(
+    { id: 80, day: DAY, tick: at(37), kind: 'spend', price: 16, item: 'RET-08', agent: 'sell' },
+    { id: 81, day: DAY, tick: at(37), kind: 'listing', price: 16, item: 'hands-off:5501', agent: 'sell', offer: { id: 5501, side: 'bid', card: 'RET-08', venue: 'v02', expiresTick: at(37) + 20, status: 'open' } },
+  )
   const { scores, marks } = mockScores(t, points)
   return {
     at: new Date(0).toISOString(),

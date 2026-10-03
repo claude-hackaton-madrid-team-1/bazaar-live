@@ -31,6 +31,7 @@ const TABLES = `
     candidates jsonb, jev jsonb, jev_digest text, policy_checks jsonb, chosen jsonb, status text, reason text, agent text, kind text, dry_run boolean);
   create table tape (settlement_id bigint primary key, tick int, venue text, persona text, buyer text, seller text, items jsonb,
     card_id text, price int, fee int);
+  create table ledger (id bigserial primary key, kind text, tick int, t_hours numeric, price int, item text, source text, created_at timestamptz default now());
 `
 
 const SECRET = 'SECRET-xyzzy'

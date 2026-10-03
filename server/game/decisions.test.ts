@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Db } from '../transcript/poller.ts'
+import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import { DecisionsPoller, DEFAULT_LIMITS, FIRST_ID, SQL, brokerOf, decisionOf, ledgerOf, outcomeOf, ourVenueOf, readLimits, ruleText, startDecisions } from './decisions.ts'
 import { GameHub, STICKY, type GameEvent } from './relay.ts'
 
@@ -112,13 +113,16 @@ describe('outcomeOf and ledgerOf', () => {
   it('reads the ledger rows and carries the caps', () => {
     expect(ledgerOf([{ tick: 100, t_hours: '1.6667', spent: 24, accepts: 1, listings: 0 }, { tick: 'x' }], DEFAULT_LIMITS)).toEqual({
       ticks: [{ tick: 100, t: 1.6667, spent: 24, accepts: 1, listings: 0 }],
-      limits: { spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 },
+      limits: { spendPerHour: GUARDRAILS_DOC.maxSpendPerHour, cashFloor: GUARDRAILS_DOC.cashFloor, acceptsPerTick: 1, bondReserve: GUARDRAILS_DOC.venueBondReserve },
+      venue: null,
     })
+    expect(ledgerOf([], DEFAULT_LIMITS, true).venue).toBe(true)
   })
 
   it('takes the caps from GUARDRAILS.md, or from GUARDRAIL_* when an edit changed them', () => {
     expect(readLimits({})).toEqual(DEFAULT_LIMITS)
-    expect(readLimits({ GUARDRAIL_CASH_FLOOR: '100', GUARDRAIL_SPEND_PER_HOUR: 'lots', GUARDRAIL_ACCEPTS_PER_TICK: '-1' })).toEqual({ ...DEFAULT_LIMITS, cashFloor: 100 })
+    expect(DEFAULT_LIMITS).toMatchObject({ cashFloor: GUARDRAILS_DOC.cashFloor, spendPerHour: GUARDRAILS_DOC.maxSpendPerHour, acceptsPerTick: GUARDRAILS_DOC.acceptsPerTick })
+    expect(readLimits({ GUARDRAIL_CASH_FLOOR: '100', GUARDRAIL_SPEND_PER_HOUR: 'lots', GUARDRAIL_ACCEPTS_PER_TICK: '-1' })).toEqual({ ...DEFAULT_LIMITS, cashFloor: 100, fromEnv: ['cashFloor'] })
   })
 })
 

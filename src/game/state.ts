@@ -191,6 +191,8 @@ export type State = {
   ours: { trades: number; gain: number }
   /** The open offers of every venue's board, venue → offer id → offer. */
   book: Map<string, Map<number, BookOffer>>
+  /** Our offers posted by hand (`bazaar sell ... --live`), which no agent manages: from our database's `offers.ours`. */
+  byHand: Set<number>
   venues: Map<string, Venue>
   packsOpened: PackOpened[]
   gifts: Gift[]
@@ -216,7 +218,7 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
-  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'bench.started', 'agent.broker', 'agent.venues',
+  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'offers.ours', 'bench.started', 'agent.broker', 'agent.venues',
 ])
 
 export const LIMITS = {
@@ -229,7 +231,7 @@ export function createState(): State {
     team: '', name: '', tick: 0, day: '', tickSeconds: 60, phase: 'observe', goal: '',
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
     log: [], threads: {}, teamThreads: new Map(), market: createMarketExtras(), duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
-    book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
+    book: new Map(), byHand: new Set(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
     events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null,
   }
 }
@@ -436,10 +438,38 @@ function offerListed(s: State, e: GameEvent) {
   if (venue !== 'direct') touchVenue(s, venue, e.tick)
   let size = bookSize(s)
   if (size <= LIMITS.book) return
-  const oldest = [...s.book.values()].flatMap((o) => [...o.values()]).sort((a, b) => a.id - b.id)
+  // the other teams' oldest go first: ours stay however long ago they were listed
+  const ours = (o: BookOffer) => (o.maker === s.team ? 1 : 0)
+  const oldest = [...s.book.values()].flatMap((o) => [...o.values()]).sort((a, b) => ours(a) - ours(b) || a.id - b.id)
   for (const o of oldest) {
     if (size-- <= LIMITS.book) break
     dropOffer(s, o)
+  }
+}
+
+/**
+ * Every open offer of ours, rebuilt by our database from the whole feed (`offers.ours`, db/game.sql's
+ * show.game_our_offers): the ones the page never saw listed (before the replay it got) go on the board, and ours
+ * the database no longer counts open (cancelled, settled, expired) come off it, whatever the page made of them.
+ */
+function ourOffersSnapshot(s: State, p: Payload) {
+  const rows: unknown[] = Array.isArray(p.offers) ? p.offers : []
+  const open = new Set<number>()
+  s.byHand.clear()
+  for (const r of rows) {
+    if (typeof r !== 'object' || r === null) continue
+    const row = r as Payload
+    const offer = row.payload?.offer
+    if (typeof row.id !== 'number' || typeof offer?.id !== 'number') continue
+    open.add(offer.id)
+    if (row.hand === true) s.byHand.add(offer.id)
+    if (!findOffer(s, offer.id, row.payload.venue)) {
+      offerListed(s, { id: row.id, tick: typeof row.tick === 'number' ? row.tick : undefined, type: 'offer.listed', actor: typeof row.actor === 'string' ? row.actor : '', payload: row.payload })
+    }
+  }
+  if (!s.team) return
+  for (const offers of [...s.book.values()]) {
+    for (const o of [...offers.values()]) if (o.maker === s.team && !open.has(o.id)) dropOffer(s, o)
   }
 }
 
@@ -618,6 +648,11 @@ export function apply(s: State, e: GameEvent): State {
   // A status every 10 s: only the latest counts, so it never fills the event lists (nor the Debug screen's).
   if (e.type === 'agent.health') {
     health(s, p)
+    return s
+  }
+  // A status too: the latest list of our open offers is the whole truth about them.
+  if (e.type === 'offers.ours') {
+    ourOffersSnapshot(s, p)
     return s
   }
   // The same kind of status: only the latest says when each screen's rows last changed.
