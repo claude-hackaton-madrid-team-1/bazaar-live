@@ -87,13 +87,14 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
 ## Game screens (from bazaar's web view)
 
 The Next.js `web/` view that lived on bazaar's `feat/web-live` branch now lives here, on the glass
-design, and that branch is gone. A nav in the header moves between the show and five screens, one per
+design, and that branch is gone. A nav in the header moves between the show and the game screens, one per
 question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to the next):
 
 | Route | Answers | Shows |
 |---|---|---|
 | `/agent` | What is our agent doing, and why? | The current phase and goal, then a timeline of our events by tick, each tick read as Observe → Decide → Act → Result (thoughts, actions, our offers, their replies, our settlements with their gain). Nothing from other teams. |
-| `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. Duels below. |
+| `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. A link to Duels while any is live. |
+| `/duels` | Is their price inside our limit? | One card per live duel: rival, buying or selling, the card at stake, their price → ours, the gap, our limit and how far inside or outside it their price is, the rounds and what their decay costs, the ticks left, the duels agent's last call (offer, blocked by a rule, accept planned by the deadline − 2) and a pill (inside limit / haggling / outside limit / expiring). Then the record per rival and per session with `score.duel_points`, every finished duel in one line (deal at X vs our limit Y, what it kept, rounds), and whether the duels agent is silent or blocked. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
 | `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
@@ -110,7 +111,7 @@ and never hands the key to the page:
 |---|---|
 | `BAZAAR_KEY` | The real game (`https://bazaar.causaprima.ai`). Without it (and without `BAZAAR_SIM`) the relay is off and the screens say so. |
 | `BAZAAR_SIM=1`, `BAZAAR_SIM_KEY` | The simulator instead, with a `sim-…` key (default `sim-team1`). With `sim-team1` the screens show team 1 of the simulator. |
-| `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values, our album and our duel offers. |
+| `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values, our album, our duel offers and our duel limits. |
 | `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
 | `SHOW_DATABASE_URL`, `GAME_SOURCE` | With the show's read-only url, the screens read our own database instead (`db/game.sql`'s views, every 3 s, `server/game/dbsource.ts`), no key needed; the header says `DB` or `GAME API`. `GAME_SOURCE=api` forces the relay; views not applied yet → the relay. |
 
@@ -122,9 +123,11 @@ carries only what the screens read (`server/game/me.ts`: id, name, cash, the sco
 pages, each asset's id, kind, ref, serial and our value); never the affinity, a key or the rest. Duel
 messages and results are team-only, so the feed never has them: on each new tick (after `/me`, inside the same
 budget, a 429 waiting for the next tick and its Retry-After) the relay reads `/api/duels?done=true` and turns
-the newest 20 duels into `duel.message {duel, role, sender, price, days}` and `duel.result {duel, deal, price,
-points}`, each once, with stable negative ids, scope `team` (`server/game/duels.ts`). Never our limit, days
-weight, gain or the words. The page counts a duel event as ours only when it is `team` or names a duel of ours,
+the newest 20 duels into `duel.started {duel, session, role, rival, item, deadline_tick, limit, decay}`,
+`duel.message {duel, role, sender, price, days}` and `duel.result {duel, deal, price, points, gain, rounds, limit}`,
+each once, with stable negative ids, scope `team` (`server/game/duels.ts`). Our limit and gain go to this
+token-gated stream only, for the Duels screen; never the days weight, our share, our offer object or the words,
+and never to the public show. The page counts a duel event as ours only when it is `team` or names a duel of ours,
 so the feed's public `duel.closed` of other teams stays in the market:
 
 - `GET /api/game` → `{enabled, target, tokenRequired}` (never the key or the URL).

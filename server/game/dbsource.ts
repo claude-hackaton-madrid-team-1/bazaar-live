@@ -17,7 +17,7 @@ import { projectMe } from './me.ts'
 import type { GameEvent, GameHub, Payload } from './relay.ts'
 
 const FEED_COLUMNS = 'id, tick, type, actor, payload'
-const DUEL_COLUMNS = 'duel, session, tick, status, role, item, rival, deadline_tick, price, days, messages'
+const DUEL_COLUMNS = 'duel, session, tick, status, role, item, rival, deadline_tick, price, days, messages, your_limit, rounds, decay_per_round, result'
 /** Exact microsecond text: a JS Date would round it, and the keyset must not skip a row. */
 const stampOf = (column: string): string => `to_char(${column} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp`
 
@@ -82,11 +82,11 @@ export function meRow(row: unknown): MeRow | null {
   return { tick: intOf(row.tick), tickSeconds: numOf(row.tick_seconds), me: projectMe(row.me), stamp: stamp(row) }
 }
 
-/** `show.game_duels` rows as `./duels.ts` reads `/api/duels`: the view never carries the result (our gain), so no points. */
+/** `show.game_duels` rows as `./duels.ts` reads `/api/duels`: the result is our gain (a number, as the real game's), never points. */
 export function duelRowEvents(rows: readonly unknown[], team: string, limit: number): GameEvent[] {
   const duels = rows.filter(isRecord).map((r) => ({
     duel: intOf(r.duel), session: intOf(r.session), tick: intOf(r.tick), item: r.item, role: r.role, rival: r.rival, status: r.status, deadline_tick: intOf(r.deadline_tick), price: numOf(r.price), days: numOf(r.days),
-    messages: Array.isArray(r.messages) ? r.messages : [], result: null,
+    messages: Array.isArray(r.messages) ? r.messages : [], your_limit: numOf(r.your_limit), rounds: intOf(r.rounds), decay_per_round: numOf(r.decay_per_round), result: numOf(r.result),
   }))
   return duelEvents({ duels }, team, limit).map((e) => ({ id: e.id, ...(e.tick === null ? {} : { tick: e.tick }), type: e.type, scope: 'team', actor: '', payload: e.payload }))
 }

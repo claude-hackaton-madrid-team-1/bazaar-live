@@ -228,7 +228,7 @@ describe('GameRelay', () => {
     const fresh = batches.at(-1)!
     expect(fresh.map((e) => e.type)).toEqual(['clock', 'agent.me', 'duel.message', 'duel.result', 'duel.closed'])
     expect(fresh[2]?.payload).toEqual({ duel: 563, role: 'seller', rival: 'Rival Oro', sender: 't01', price: 120, days: 2 })
-    expect(fresh[3]?.payload).toEqual({ duel: 563, rival: 'Rival Oro', deal: true, price: 120, points: 3.1 })
+    expect(fresh[3]?.payload).toEqual({ duel: 563, rival: 'Rival Oro', deal: true, price: 120, points: 3.1, gain: 20, rounds: null, limit: 100 })
     expect(new Set(batches.flat().filter((e) => e.type.startsWith('duel.m')).map((e) => e.id)).size).toBe(2)
     expect(JSON.stringify(batches)).not.toMatch(/your_limit|your_gain/)
   })

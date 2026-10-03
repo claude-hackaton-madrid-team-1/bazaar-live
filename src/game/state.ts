@@ -70,12 +70,28 @@ export type Duel = {
   theirPrice: number | null
   ourDays: number | null
   theirDays: number | null
+  /** Messages heard, both sides (not the game's rounds: those are the fewer priced messages of the two sides). */
   rounds: number
   status: 'open' | 'deal' | 'no deal'
   dealPrice: number | null
   points: number | null
   lastEventId: number | null
+  /** Our limit (a value as buyer, a cost as seller): from our database or our /api/duels, behind GAME_VIEW_TOKEN. */
+  limit: number | null
+  /** The share of a deal's value lost per round of talk. */
+  decay: number | null
+  /** What the deal kept for us: the surplus against our limit after the decay (the game's `result`). */
+  gain: number | null
+  /** The game's rounds at the close, from the result; null while live (the screen counts them from `offers`). */
+  finalRounds: number | null
+  /** Every priced message, oldest first (bounded). */
+  offers: DuelMessage[]
+  /** When it started (its first event) and when it closed (its result). */
+  startTick: number | null
+  closedTick: number | null
 }
+
+export type DuelMessage = { tick: number | null; side: 'us' | 'them'; price: number | null; days: number | null }
 
 export type Trade = {
   eventId: number
@@ -189,7 +205,7 @@ export const KNOWN_TYPES = new Set([
 
 export const LIMITS = {
   log: 300, tape: 200, prices: 24, events: 500, mine: 1500, history: 400,
-  book: 400, venues: 40, packsOpened: 100, gifts: 100, failed: 100, opened: 200,
+  book: 400, venues: 40, packsOpened: 100, gifts: 100, failed: 100, opened: 200, duelOffers: 60,
 }
 
 export function createState(): State {
@@ -465,7 +481,10 @@ function settlementFailed(s: State, e: GameEvent, ours: boolean) {
 const duelOf = (s: State, p: Payload): Duel => (s.duels[p.duel] ??= {
   id: p.duel, role: p.role ?? '?', rival: null, item: null, deadlineTick: null, session: null, ourPrice: null, theirPrice: null, ourDays: null, theirDays: null,
   rounds: 0, status: 'open', dealPrice: null, points: null, lastEventId: null,
+  limit: null, decay: null, gain: null, finalRounds: null, offers: [], startTick: null, closedTick: null,
 })
+
+const numOr = (v: unknown, or: number | null): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : or)
 
 /** The payload's `rival`; for an event without one, a message's sender when it is neither us nor the bare "rival". */
 function noteRival(s: State, d: Duel, p: Payload) {
@@ -482,6 +501,9 @@ function duelStarted(s: State, e: GameEvent) {
   if (typeof p.item === 'string' && p.item) d.item = p.item
   if (typeof p.deadline_tick === 'number') d.deadlineTick = p.deadline_tick
   if (typeof p.session === 'number') d.session = p.session
+  d.limit = numOr(p.limit, d.limit)
+  d.decay = numOr(p.decay, d.decay)
+  d.startTick ??= typeof e.tick === 'number' ? e.tick : null
   d.lastEventId ??= e.id
 }
 
@@ -489,8 +511,11 @@ function duelMessage(s: State, e: GameEvent) {
   const p = e.payload
   const d = duelOf(s, p)
   noteRival(s, d, p)
-  if (p.sender === s.team) [d.ourPrice, d.ourDays] = [p.price ?? null, p.days ?? null]
+  const side = p.sender === s.team ? 'us' : 'them'
+  if (side === 'us') [d.ourPrice, d.ourDays] = [p.price ?? null, p.days ?? null]
   else [d.theirPrice, d.theirDays] = [p.price ?? null, p.days ?? null]
+  push(d.offers, { tick: typeof e.tick === 'number' ? e.tick : null, side, price: numOr(p.price, null), days: numOr(p.days, null) }, LIMITS.duelOffers)
+  d.startTick ??= typeof e.tick === 'number' ? e.tick : null
   d.rounds += 1
   d.lastEventId = e.id
 }
@@ -501,6 +526,10 @@ function duelResult(s: State, e: GameEvent) {
   d.status = e.payload.deal ? 'deal' : 'no deal'
   d.dealPrice = e.payload.price ?? null
   d.points = e.payload.points ?? null
+  d.gain = numOr(e.payload.gain, d.gain)
+  d.limit = numOr(e.payload.limit, d.limit)
+  d.finalRounds = numOr(e.payload.rounds, d.finalRounds)
+  d.closedTick = typeof e.tick === 'number' ? e.tick : d.closedTick
   d.lastEventId = e.id
 }
 

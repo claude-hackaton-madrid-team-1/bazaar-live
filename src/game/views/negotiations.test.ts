@@ -2,11 +2,11 @@ import { assert, test } from 'vitest'
 import { apply, createState, type GameEvent, type Payload, type State } from '../state.ts'
 import { MockGame } from '../mock.ts'
 import {
-  conversation, dealerTactics, duelColumns, duelRows, negRow, negRows, rivalSummary, selectedThreadId, statusOf, threadList, verdictOf, type Cap, type NegRow,
+  conversation, dealerTactics, negRow, negRows, selectedThreadId, statusOf, threadList, verdictOf, type Cap, type NegRow,
 } from './negotiations.ts'
 
 let nextId = 1
-// Duel messages and results only reach us from the relay's /api/duels read, which sends them as `team`.
+// Duel events only reach us from the relay's duel read, which sends them as `team`.
 const ev = (type: string, payload: Payload = {}, tick = 10, actor = ''): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: type.startsWith('duel.') ? 'team' : 'public', actor, payload })
 
 const offer = ({ id = 7, thread = 61, maker, to, giveCash = 0, wantCash = 0, giveTypes = [] as string[], wantTypes = [] as string[], giveAssets = [] as Payload[], final = false, expires = 12, created = 10 }: Payload) => ({
@@ -164,77 +164,6 @@ test('what worked: per dealer, each tactic of the ended threads with its deals; 
     { with: 'abuela', threads: 1, deals: 1, tactics: [{ tactic: 'empathy_label', threads: 1, deals: 1 }] },
   ])
   assert.deepEqual(dealerTactics(fresh()), [])
-})
-
-test('duel rows: open first then newest, both sides, result tone and points', () => {
-  const s = fresh()
-  apply(s, ev('duel.message', { duel: 3, role: 'seller', sender: 't01', price: 60, days: 4 }))
-  apply(s, ev('duel.message', { duel: 3, role: 'seller', sender: 'rival', price: 41, days: 7 }))
-  apply(s, ev('duel.result', { duel: 3, deal: true, price: 47, points: 1.2 }))
-  apply(s, ev('duel.message', { duel: 4, role: 'buyer', sender: 't01', price: 30, days: 2 }))
-  apply(s, ev('duel.result', { duel: 4, deal: false, points: 0 }))
-  apply(s, ev('duel.message', { duel: 5, role: 'buyer', sender: 't01', price: 31, days: 3 }))
-  const rows = duelRows(s)
-  assert.deepEqual(rows.map((r) => [r.id, r.status, r.tone]), [[5, 'open', 'neutral'], [4, 'no deal', 'bad'], [3, 'deal', 'good']])
-  const d = rows[2]
-  assert.deepEqual([d!.role, d!.ourPrice, d!.ourDays, d!.theirPrice, d!.theirDays, d!.rounds, d!.dealPrice, d!.points, d!.gap],
-    ['seller', 60, 4, 41, 7, 2, 47, 1.2, 19])
-  assert.ok(d!.lastEventId != null)
-  assert.strictEqual(rows[0]!.gap, null)
-})
-
-test('duel rows carry the rival', () => {
-  const s = fresh()
-  apply(s, ev('duel.message', { duel: 3, role: 'seller', rival: 'Rival Azul', sender: 'Rival Azul', price: 41 }))
-  apply(s, ev('duel.result', { duel: 4, rival: 'Rival Oro', deal: false, price: null, points: 0 }))
-  assert.deepEqual(duelRows(s).map((r) => [r.id, r.rival]), [[3, 'Rival Azul'], [4, 'Rival Oro']])
-})
-
-test('rival summary: per rival its duels, live and finished, deals, no deals and points; live rivals first', () => {
-  const s = fresh()
-  const msg = (duel: number, rival: string | undefined) => apply(s, ev('duel.message', { duel, role: 'buyer', rival, sender: 't01', price: 30 }))
-  const end = (duel: number, rival: string | undefined, deal: boolean, points: number | null) => apply(s, ev('duel.result', { duel, rival, deal, price: deal ? 30 : null, points }))
-  end(1, 'Rival Oro', true, 2.5)
-  end(2, 'Rival Oro', true, 1.25)
-  end(3, 'Rival Oro', false, 0)
-  end(4, 'Rival Noche', false, null)
-  msg(5, 'Rival Azul')
-  end(6, 'Rival Azul', true, null)
-  end(7, 'Rival Luna', true, null)
-  end(8, 'Rival Sol', false, null)
-  msg(9, undefined)
-  assert.deepEqual(rivalSummary(s), [
-    { rival: 'Rival Azul', duels: 2, open: 1, finished: 1, deals: 1, noDeals: 0, points: null },
-    { rival: null, duels: 1, open: 1, finished: 0, deals: 0, noDeals: 0, points: null },
-    { rival: 'Rival Oro', duels: 3, open: 0, finished: 3, deals: 2, noDeals: 1, points: 3.75 },
-    { rival: 'Rival Luna', duels: 1, open: 0, finished: 1, deals: 1, noDeals: 0, points: null },
-    { rival: 'Rival Noche', duels: 1, open: 0, finished: 1, deals: 0, noDeals: 1, points: null },
-    { rival: 'Rival Sol', duels: 1, open: 0, finished: 1, deals: 0, noDeals: 1, points: null },
-  ])
-  assert.deepEqual(rivalSummary(fresh()), [])
-})
-
-test('a live duel shows from its start, before anyone speaks: rival, card at stake, ticks left to the deadline', () => {
-  const s = fresh(468)
-  apply(s, ev('duel.started', { duel: 2311, session: 2, role: 'buyer', rival: 'Rival Rojo', item: 'El Mesón de la Cava', deadline_tick: 484 }, 468))
-  const [row] = duelRows(s)
-  assert.deepEqual(
-    row && [row.id, row.status, row.role, row.rival, row.item, row.deadlineTick, row.session, row.ticksLeft, row.rounds],
-    [2311, 'open', 'buyer', 'Rival Rojo', 'El Mesón de la Cava', 484, 2, 16, 0],
-  )
-  // Words and the end keep what the start said; a finished duel has no ticks left.
-  apply(s, ev('duel.message', { duel: 2311, role: 'buyer', rival: 'Rival Rojo', sender: 'Rival Rojo', price: 62 }, 470))
-  apply(s, ev('duel.result', { duel: 2311, rival: 'Rival Rojo', deal: true, price: 60, points: null }, 471))
-  const [done] = duelRows(s)
-  assert.deepEqual(done && [done.item, done.status, done.ticksLeft], ['El Mesón de la Cava', 'deal', null])
-})
-
-test('a started event read after the words still fills in the duel', () => {
-  const s = fresh(10)
-  apply(s, ev('duel.message', { duel: 9, role: 'seller', sender: 't01', price: 80 }))
-  apply(s, ev('duel.started', { duel: 9, session: 1, role: 'seller', rival: 'Rival Sol', item: 'Palacio de Cristal', deadline_tick: 12 }))
-  const [row] = duelRows(s)
-  assert.deepEqual(row && [row.rival, row.item, row.ticksLeft, row.ourPrice], ['Rival Sol', 'Palacio de Cristal', 2, 80])
 })
 
 // ---------------------------------------------------------------- the live negotiation: status, cap vs ask, verdict
@@ -409,18 +338,6 @@ test('our value falls back to the latest decision for the item, then to /me', ()
   assert.strictEqual(negRow(s, s.threads[1]!).value, 12)
   apply(s, decided('accept_ask', { item: 'LAT-08', counterparty: 't05', price: 9, value: 14 }, 5))
   assert.strictEqual(negRow(s, s.threads[1]!).value, 14)
-})
-
-test('duel columns: role, days and points only when they say something (our database has no days and no points)', () => {
-  const s = fresh()
-  apply(s, ev('duel.message', { duel: 1, role: 'buyer', rival: 'Rival Azul', sender: 't01', price: 40, days: null }))
-  apply(s, ev('duel.message', { duel: 2, role: 'seller', rival: 'Rival Oro', sender: 'Rival Oro', price: 41 }))
-  apply(s, ev('duel.result', { duel: 2, rival: 'Rival Oro', deal: true, price: 41 }))
-  assert.deepEqual(duelColumns(duelRows(s)), { role: true, days: false, points: false })
-  const api = fresh()
-  apply(api, ev('duel.message', { duel: 3, role: 'seller', sender: 't01', price: 60, days: 4 }))
-  apply(api, ev('duel.result', { duel: 3, deal: true, price: 47, points: 1.2 }))
-  assert.deepEqual(duelColumns(duelRows(api)), { role: false, days: true, points: true })
 })
 
 test('the mock opens with one thread stuck at our cap, one closing and two ended', () => {

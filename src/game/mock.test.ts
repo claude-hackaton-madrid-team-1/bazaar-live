@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MockGame } from './mock'
 import { apply, createState, KNOWN_TYPES, type GameEvent } from './state'
 import { albumSummary, bestMoves } from './views/album'
+import { liveDuels } from './views/duels'
 
 const play = (steps: number, seed = 7): GameEvent[] => {
   const game = new MockGame(seed, undefined, undefined, () => Date.UTC(2026, 9, 3, 10))
@@ -36,7 +37,8 @@ describe('MockGame', () => {
     const s = createState()
     events.forEach((e) => apply(s, e))
     const count = (type: string) => events.filter((e) => e.type === type).length
-    expect(count('offer.listed') + count('offer.cancelled')).toBeGreaterThan(events.length / 3)
+    // against the public feed: our duels and our agents' decisions are team-only, never in the feed
+    expect(count('offer.listed') + count('offer.cancelled')).toBeGreaterThan(events.filter((e) => e.scope === 'public').length / 3)
     expect(events.some((e) => e.type === 'offer.cancelled' && e.payload.reason === 'expired')).toBe(true)
     const offers = [...s.book.values()].flatMap((o) => [...o.values()])
     expect(offers.some((o) => o.side === 'ask') && offers.some((o) => o.side === 'bid')).toBe(true)
@@ -67,11 +69,21 @@ describe('MockGame', () => {
     expect(s.agents.ledger?.limits).toEqual({ spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 })
   })
 
-  it('duels three rivals by alias from the first step: two finished duels and a live one, each event naming its rival', () => {
+  it('duels by alias from the first step: five finished duels and two live ones, one inside our limit and one outside', () => {
     const first = createState()
     play(1).forEach((e) => apply(first, e))
     const duels = Object.values(first.duels)
-    expect(duels.map((d) => [d.id, d.rival, d.status])).toEqual([[1, 'Rival Noche', 'deal'], [2, 'Rival Azul', 'no deal'], [3, 'Rival Oro', 'open']])
+    expect(duels.map((d) => [d.id, d.rival, d.status])).toEqual([
+      [1, 'Rival Noche', 'deal'], [2, 'Rival Azul', 'no deal'], [3, 'Rival Oro', 'deal'], [4, 'Rival Azul', 'deal'], [5, 'Rival Noche', 'no deal'],
+      [6, 'Rival Verde', 'open'], [7, 'Rival Sol', 'open'],
+    ])
+    expect(duels.every((d) => d.limit != null)).toBe(true)
+    expect(duels.filter((d) => d.status === 'deal').map((d) => d.gain)).toEqual([11.5, 7.6, 17.4])
+    const early = createState()
+    play(8 * 7).forEach((e) => apply(early, e))
+    const live = liveDuels(early)
+    expect(live.map((d) => [d.id, d.state, d.decision?.action, d.decision?.status])).toEqual([[7, 'outside', 'offer', 'rejected'], [6, 'inside', 'offer', 'done']])
+    expect(live[1]?.decision?.price).toBe(49)
     const events = play(400).filter((e) => e.type.startsWith('duel.'))
     expect(events.every((e) => typeof e.payload.rival === 'string' && e.payload.rival.startsWith('Rival '))).toBe(true)
     expect(events.filter((e) => e.type === 'duel.message' && e.payload.sender !== 't01').every((e) => e.payload.sender === e.payload.rival)).toBe(true)
