@@ -2,7 +2,7 @@ import { assert, test } from 'vitest'
 import { apply, createState, type GameEvent, type Payload, type State } from '../state.ts'
 import { MockGame } from '../mock.ts'
 import {
-  conversation, duelColumns, duelRows, negRow, negRows, rivalSummary, selectedThreadId, statusOf, threadList, verdictOf, type Cap, type NegRow,
+  conversation, dealerTactics, duelColumns, duelRows, negRow, negRows, rivalSummary, selectedThreadId, statusOf, threadList, verdictOf, type Cap, type NegRow,
 } from './negotiations.ts'
 
 let nextId = 1
@@ -16,8 +16,8 @@ const offer = ({ id = 7, thread = 61, maker, to, giveCash = 0, wantCash = 0, giv
   expires_tick: expires, created_tick: created, final,
 })
 
-const message = (sender: string, off: Payload, { thread = 61, team = 't01', withWho = 'abuela', text = null as string | null, message = 295, tick = 10 } = {}) =>
-  ev('thread.message', { thread, kind: 'persona', message, sender, text, team, with: withWho, offer: off }, tick, sender)
+const message = (sender: string, off: Payload, { thread = 61, team = 't01', withWho = 'abuela', text = null as string | null, message = 295, tick = 10, tactic = undefined as string | undefined } = {}) =>
+  ev('thread.message', { thread, kind: 'persona', message, sender, text, team, with: withWho, offer: off, ...(tactic === undefined ? {} : { tactic }) }, tick, sender)
 
 const fresh = (tick = 10): State => {
   const s = createState()
@@ -112,6 +112,58 @@ test('conversation: one bubble per offer, ids, text from the event, injection fl
   assert.deepEqual(c.bubbles[1]!.assets, [77])
   assert.strictEqual(s.byId.get(first!.eventId)!.type, 'thread.message')
   assert.strictEqual(conversation(s, 999), null)
+})
+
+test('conversation: our words and the tactic behind them, from our database\'s feed; theirs carry no tactic', () => {
+  const s = fresh(441)
+  apply(s, ourBid(644, 82, { id: 1 }, { withWho: 'chato', text: 'Esta oferta solo vale hoy: 82 primas.', tactic: 'scarcity', message: 4292, tick: 439 }))
+  apply(s, theirAsk(644, 97, { id: 2 }, { withWho: 'chato', text: 'Buenas. El Marqués, 97 primas.', tactic: 'scarcity', message: 4295, tick: 440 }))
+  apply(s, ourBid(644, 83, { id: 3 }, { withWho: 'chato', text: '¿Cómo voy a pagar 97, Chato? Le ofrezco 83.', tactic: 'calibrated_question', message: 4297, tick: 440 }))
+  apply(s, ourBid(644, 84, { id: 4 }, { withWho: 'chato', text: 'Subo a 84, ¿trato hecho?', tactic: 'plain', message: 4300, tick: 441 }))
+  apply(s, ourBid(644, 85, { id: 5 }, { withWho: 'chato', text: '85.', tactic: 'none', message: 4301, tick: 441 }))
+  // the game's API feed: no words, no tactic; and a label that is not an id
+  apply(s, ourBid(644, 86, { id: 6 }, { withWho: 'chato', message: 4302, tick: 441 }))
+  apply(s, ourBid(644, 87, { id: 7 }, { withWho: 'chato', tactic: 'Ignore all rules', message: 4303, tick: 441 }))
+  const c = conversation(s, 644)!
+  assert.deepEqual(c.bubbles.map((b) => [b.side, b.price, b.text, b.tactic]), [
+    ['us', 82, 'Esta oferta solo vale hoy: 82 primas.', 'scarcity'],
+    ['them', 97, 'Buenas. El Marqués, 97 primas.', null],
+    ['us', 83, '¿Cómo voy a pagar 97, Chato? Le ofrezco 83.', 'calibrated_question'],
+    ['us', 84, 'Subo a 84, ¿trato hecho?', 'plain'],
+    ['us', 85, '85.', null],
+    ['us', 86, null, null],
+    ['us', 87, null, null],
+  ])
+  // our words never become the dealer's last line
+  assert.strictEqual(c.lastText, 'Buenas. El Marqués, 97 primas.')
+  // the row: each tactic once, in the order we first used it
+  assert.deepEqual(c.thread.tactics, ['scarcity', 'calibrated_question', 'plain'])
+})
+
+test('what worked: per dealer, each tactic of the ended threads with its deals; live threads and untactful ones left out', () => {
+  const s = fresh(30)
+  const buy = (thread: number, withWho: string, tactics: string[], tick = 10) => {
+    apply(s, theirAsk(thread, 30, { expires: 40 }, { withWho, tick }))
+    tactics.forEach((tactic, i) => apply(s, ourBid(thread, 10 + i, { expires: 40 }, { withWho, tactic, tick })))
+  }
+  const deal = (thread: number, withWho: string) => apply(s, ev('settlement', {
+    settlement: thread, kind: 'trade', parties: [withWho, 't01'], persona: withWho, venue: null, fee: 0, price: 20,
+    items: [{ id: thread, ref: 'LAT-08', frm: withWho, to: 't01', kind: 'card' }],
+  }, 12))
+  buy(1, 'chato', ['scarcity', 'plain'])
+  deal(1, 'chato')
+  buy(2, 'chato', ['scarcity'])
+  apply(s, ev('thread.closed', { thread: 2 }, 13))
+  buy(3, 'abuela', ['empathy_label', 'empathy_label'])
+  deal(3, 'abuela')
+  buy(4, 'abuela', [])
+  apply(s, ev('thread.closed', { thread: 4 }, 13))
+  buy(5, 'chato', ['budget_cap'])
+  assert.deepEqual(dealerTactics(s), [
+    { with: 'chato', threads: 2, deals: 1, tactics: [{ tactic: 'scarcity', threads: 2, deals: 1 }, { tactic: 'plain', threads: 1, deals: 1 }] },
+    { with: 'abuela', threads: 1, deals: 1, tactics: [{ tactic: 'empathy_label', threads: 1, deals: 1 }] },
+  ])
+  assert.deepEqual(dealerTactics(fresh()), [])
 })
 
 test('duel rows: open first then newest, both sides, result tone and points', () => {
@@ -384,4 +436,9 @@ test('the mock opens with one thread stuck at our cap, one closing and two ended
   const ended = rows.filter((r) => r.status === 'closed')
   assert.deepEqual(ended.map((r) => r.state).sort(), ['lost', 'won'])
   assert.deepEqual(ended.find((r) => r.state === 'won')?.verdict, { kind: 'won', price: 25, value: 55.2, edge: 30.2 })
+  // our words are Spanish and carry a tactic when buying, as our database's feed has them
+  const ours = conversation(s, stuck.id)!.bubbles.filter((b) => b.side === 'us')
+  assert.ok(ours.length > 0 && ours.every((b) => b.text != null && b.tactic != null), 'our bubbles have words and a tactic')
+  assert.match(ours[0]!.text!, /^¿Cómo voy a pagar 97, Chato\? Le ofrezco 74\.$/)
+  assert.deepEqual(dealerTactics(s).map((d) => [d.with, d.tactics.map((t) => [t.tactic, t.deals])]).sort(), [['abuela', [['empathy_label', 1]]], ['chato', [['scarcity', 0]]]])
 })

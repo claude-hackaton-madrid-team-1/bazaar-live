@@ -12,8 +12,8 @@ const offer = ({ id = 7, maker, to, giveCash = 0, wantCash = 0, giveTypes = [] a
   expires_tick: expires, created_tick: created, final,
 })
 
-const message = (sender: string, off: Payload, { team = 't01', text = null as string | null, message = 295 } = {}) =>
-  ev('thread.message', { thread: 61, kind: 'persona', message, sender, text, team, with: 'abuela', offer: off }, 10, sender)
+const message = (sender: string, off: Payload, { team = 't01', text = null as string | null, message = 295, tactic = undefined as unknown } = {}) =>
+  ev('thread.message', { thread: 61, kind: 'persona', message, sender, text, team, with: 'abuela', offer: off, ...(tactic === undefined ? {} : { tactic }) }, 10, sender)
 
 const ME = {
   cash: 412,
@@ -62,6 +62,15 @@ test('dealer ask and our bid keep thread, offer and message ids', () => {
   assert.strictEqual(th!.offers[0]!.createdTick, 31)
   assert.strictEqual(th!.offers[0]!.expiresTick, 33)
   assert.ok(th!.offers[0]!.eventId > 0)
+})
+
+test('the tactic of our messages is kept per offer; theirs, none and a label that is not an id are null', () => {
+  const s = fresh()
+  const ask = (tactic: unknown) => message('abuela', offer({ maker: 'abuela', to: 't01', giveTypes: ['card:LAT-08'], wantCash: 30 }), { tactic })
+  const bid = (tactic: unknown) => message('t01', offer({ maker: 't01', to: 'abuela', giveCash: 18, wantTypes: ['card:LAT-08'] }), { tactic })
+  for (const e of [bid('empathy_label'), ask('scarcity'), bid('none'), bid('Bad label!'), bid(7), bid(undefined), bid('plain')]) apply(s, e)
+  assert.deepEqual(s.threads[61]!.offers.map((o) => [o.side, o.tactic]),
+    [['us', 'empathy_label'], ['them', null], ['us', null], ['us', null], ['us', null], ['us', null], ['us', 'plain']])
 })
 
 test('final offer and topic from types', () => {

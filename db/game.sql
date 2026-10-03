@@ -10,25 +10,20 @@
 --
 -- Idempotent. Six views, read by server/game/dbsource.ts behind GAME_VIEW_TOKEN (the same gate as the
 -- relay of the game's API, which carries the same data):
---   * show.game_feed      the game feed as the agents received it (public events; one world: the real game)
+--   * show.game_feed      the game feed as the agents received it (public events; one world: the real game),
+--                         plus, on our own thread.message rows, the words we sent and their tactic
 --   * show.game_me        our team's /me snapshots in the real world, projected to what the screens read
 --   * show.game_duels     our duels: the outcome and, per message, only from/tick/price/days
 --   * show.game_threads   our dealer threads
---   * show.game_messages  the messages of our threads (no embedding, no tactic)
+--   * show.game_messages  the messages of our threads, with the tactic of each of ours (no embedding)
 --   * show.game_tape      the settlement tape (public)
 -- The views run with their OWNER's rights, so the role holds no grant on the tables. Never selected:
 -- collection_value, any key, an affinity that is not a number, badges, open threads; a duel's your_limit, your_offer, result
--- (our gain), limit_meaning, your_days_weight and its words.
+-- (our gain), limit_meaning, your_days_weight and its words; of a decision, anything but its tactic's id (no tactic_why,
+-- rag_context, jev, candidates or chosen).
 
 begin;
 set local lock_timeout = '15s';
-
--- The feed: ids are one sequence for the whole game (they do not reset by day), and the table holds one
--- world only (me_snapshots.world is always 'real'), so every row is kept. The id fits an int (the page
--- drops an event whose id is not a number, and pg hands a bigint over as text).
-create or replace view show.game_feed with (security_barrier = true) as
-select e.id::int as id, e.tick, e.type, e.actor, e.payload
-  from public.feed_events e;
 
 -- Our /me, field by field: the allow-list of server/game/me.ts (which trims the result again, by the same names).
 create or replace view show.game_me with (security_barrier = true) as
@@ -81,10 +76,36 @@ select t.id::int as id, t.counterpart, t.kind, t.topic, t.venue, t.status, t.ope
   from public.threads t
  where t.ours;
 
+-- Our messages, each with the tactic our agent picked for its words (the user's own strategy label, so it shows behind
+-- GAME_VIEW_TOKEN): messages.tactic when the agents filled it, else the `tactic` of the decision that sent it (same
+-- thread, tick and price). Only that one word, checked to be an id, leaves the decision: never its reasons
+-- (tactic_why), rag_context, jev, the other candidates or the rest of `chosen`. 'none' (no tactic) is null; 'plain'
+-- (the control arm: our usual words) stays.
 create or replace view show.game_messages with (security_barrier = true) as
-select m.id::int as id, m.thread_id::int as thread_id, m.sender, m.tick, m.text, m.price, m.offer, m.final, m.ours
+select m.id::int as id, m.thread_id::int as thread_id, m.sender, m.tick, m.text, m.price, m.offer, m.final, m.ours,
+       case when m.ours then coalesce(
+         case when m.tactic ~ '^[a-z_]{1,40}$' and m.tactic <> 'none' then m.tactic end,
+         (select d.candidates ->> 'tactic'
+            from public.decisions d
+           where d.thread_id = m.thread_id and d.tick = m.tick and d.dry_run is not true
+             and d.candidates ->> 'tactic' ~ '^[a-z_]{1,40}$' and d.candidates ->> 'tactic' <> 'none'
+             and show.as_int(d.chosen -> 'price') = m.price
+           order by d.id desc limit 1)) end as tactic
   from public.messages m
  where exists (select 1 from public.threads t where t.id = m.thread_id and t.ours);
+
+-- The feed: ids are one sequence for the whole game (they do not reset by day), and the table holds one
+-- world only (me_snapshots.world is always 'real'), so every row is kept. The id fits an int (the page
+-- drops an event whose id is not a number, and pg hands a bigint over as text). The game's feed never
+-- carries a team's words (`text` is null on every team's thread.message): on OUR thread.message rows the
+-- view adds what we said and its tactic, from show.game_messages; every other row is the feed unchanged.
+create or replace view show.game_feed with (security_barrier = true) as
+select e.id::int as id, e.tick, e.type, e.actor,
+       case when m.id is null then e.payload
+            else e.payload || jsonb_strip_nulls(jsonb_build_object('text', coalesce(e.payload ->> 'text', m.text), 'tactic', m.tactic)) end as payload
+  from public.feed_events e
+  left join show.game_messages m
+    on e.type = 'thread.message' and jsonb_typeof(e.payload) = 'object' and m.ours and m.id = show.as_int(e.payload -> 'message');
 
 create or replace view show.game_tape with (security_barrier = true) as
 select t.settlement_id::int as settlement_id, t.tick, t.venue, t.persona, t.buyer, t.seller, t.items, t.card_id, t.price, t.fee
