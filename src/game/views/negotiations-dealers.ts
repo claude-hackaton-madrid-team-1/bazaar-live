@@ -70,9 +70,9 @@ export function dealerGroups(s: State, rows: readonly NegRow[] = negRows(s)): De
     .sort((a, b) => b.threads - a.threads || a.with.localeCompare(b.with))
 }
 
-/** The dealer a `?dealer=` names, or null (every dealer) when it names none with threads. */
+/** The dealer a `?dealer=` names (`Pilar` as `pilar`), or null (every dealer) when it names none with threads. */
 export const dealerOf = (groups: readonly DealerGroup[], requested: string | null): DealerGroup | null =>
-  groups.find((g) => g.with === requested) ?? null
+  groups.find((g) => g.with.toLowerCase() === requested?.trim().toLowerCase()) ?? null
 
 /** The thread to read: the requested one when it is among these rows, else the first of them. */
 export function selectedIn(rows: readonly NegRow[], requested: string | null): number | null {

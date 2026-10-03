@@ -81,6 +81,7 @@ test("a dealer's summary: deals, our edge on them, how they move, their finals, 
 test('?dealer= names a dealer with threads, or every dealer', () => {
   const groups = dealerGroups(game())
   assert.equal(dealerOf(groups, 'chato')?.with, 'chato')
+  assert.equal(dealerOf(groups, 'Chato')?.with, 'chato')
   assert.isNull(dealerOf(groups, 'picaros'))
   assert.isNull(dealerOf(groups, null))
 })
