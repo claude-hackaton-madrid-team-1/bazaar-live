@@ -61,7 +61,7 @@ export function BoardPanel({ row }: { row: BoardRow }) {
           )}
         </span>
         <p className="rb-sentence">{t.move(move)}</p>
-        {row.guarded && row.guardReason && isTrade(row.moveKind) && <p className="gm-muted rb-note">{t.guardedTrade(row.guardReason)}</p>}
+        {row.guarded && row.guardReason && isTrade(row.moveKind) && <p className="gm-muted rb-note">{t.guardedTrade(row.guardReason, row.ourRank !== null)}</p>}
       </div>
 
       <dl className="rb-vs" aria-label={t.versusUs}>

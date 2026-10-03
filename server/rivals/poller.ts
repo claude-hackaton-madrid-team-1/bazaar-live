@@ -3,14 +3,15 @@
  * memory for GET /api/rivals.
  * Like the history poller: on the server's one shared pool (the reader role has a connection limit), one capped
  * query after the other; a view not applied yet (42P01), not granted (42501) or older than this code (42703) only
- * blanks its part, logged once;
+ * blanks its part, logged once; the board (private, ours) never holds up the albums: any other error of its own
+ * keeps its last rows without freezing `at` or backing the poller off;
  * any other error keeps the last good part and backs off; no exception leaves `pollOnce()`; error text is redacted.
  * `poke()` reads now (an agent's socket said something moved); `onChange` hears when a read's rows differ.
  */
 import { EMPTY_RIVALS, type RivalsParts, type RivalsSnapshot } from '../../shared/rivals.ts'
 import { parseAll } from '../learn/rows.ts'
 import type { Db } from '../transcript/poller.ts'
-import { BOARD_COLUMNS, boardOf } from './boardRows.ts'
+import { BOARD_COLUMNS, boardOf, onePerTeam } from './boardRows.ts'
 import { headOf, holdingOf, teamOf, wantOf } from './rows.ts'
 
 export const SQL = {
@@ -104,7 +105,7 @@ export class RivalsPoller {
     this.timer = (this.deps.setTimer ?? setTimeout)(() => void this.loop(), delay)
   }
 
-  /** One read of the four views. Never throws. */
+  /** One read of the five views. Never throws. */
   async pollOnce(): Promise<void> {
     const prev = this.snapshot
     const parts: Record<Part, boolean> = { ...prev.parts }
@@ -123,7 +124,7 @@ export class RivalsPoller {
           this.missingLogged.add(part)
           return []
         }
-        failed = true
+        if (part !== 'board') failed = true
         this.deps.log({ route: 'rivals', event: 'poll_error', part, code, message: this.redact(error) })
         return keep
       }
@@ -132,7 +133,7 @@ export class RivalsPoller {
     const teams = await read('teams', teamOf, prev.teams)
     const wants = await read('wants', wantOf, prev.wants)
     const tick = (await read('head', headOf, prev.tick === null ? [] : [prev.tick]))[0] ?? null
-    const board = await read('board', boardOf, prev.board)
+    const board = onePerTeam(await read('board', boardOf, prev.board))
     this.failures = failed ? this.failures + 1 : 0
     const at = failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString()
     const changed =

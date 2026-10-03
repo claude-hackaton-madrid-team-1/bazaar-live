@@ -1,7 +1,8 @@
 /**
  * The words of the rival board (the private part of the Rivals screen), in the page's language: kept apart from
  * ./rivalStrings.ts (the public albums). The move is said from its fields (./views/rivalBoard.ts `moveOf`), never copied
- * from the view's English sentence. Gains are the board's estimates (their side at book value), and the words say so.
+ * from the view's English sentence. Gains are the board's estimates (their side at book × their best set multiplier,
+ * page bonus not counted), and the words say so.
  */
 import type { Lang } from '../../shared/lang.ts'
 import type { GuardReason, MoveKind, StrengthCode, WeaknessCode } from '../../shared/rivalBoard.ts'
@@ -36,8 +37,8 @@ export interface RivalBoardStrings {
   readonly moveKind: Readonly<Record<MoveKind, string>>
   readonly moveTitle: (give: number, get: number) => string
   readonly move: (m: MoveView) => string
-  /** A guarded team we may still trade with: why the board allows it. */
-  readonly guardedTrade: (reason: GuardReason) => string
+  /** A guarded team we may still trade with: why the board allows it (`ourRankKnown` false: every team is guarded). */
+  readonly guardedTrade: (reason: GuardReason, ourRankKnown: boolean) => string
   readonly title: (team: string) => string
   readonly sub: string
   readonly versusUs: string
@@ -105,7 +106,7 @@ const ES_WEAKNESS: Readonly<Record<WeaknessCode, Badge>> = {
 function moveEn(m: MoveView): string {
   const g = gainIn('en')
   const gains = (t: { ourGain: number | null; theirGain: number | null }) => `${g(t.ourGain)} for us, ${g(t.theirGain)} for them (estimated)`
-  const rule = 'A deal only if our gain is at least twice theirs, with their side at book value.'
+  const rule = 'A deal only if our gain is at least twice theirs (theirs at book × their best set multiplier, page bonus not counted).'
   switch (m.kind) {
     case 'swap':
       return `Offer our spare ${m.give} for their ${m.get}: ${gains(m)}.`
@@ -129,7 +130,7 @@ function moveEn(m: MoveView): string {
 function moveEs(m: MoveView): string {
   const g = gainIn('es')
   const gains = (t: { ourGain: number | null; theirGain: number | null }) => `${g(t.ourGain)} para nosotros, ${g(t.theirGain)} para ellos (estimado)`
-  const rule = 'Solo un trato si ganamos al menos el doble que ellos, con su parte a valor de libro.'
+  const rule = 'Solo un trato si ganamos al menos el doble que ellos (lo suyo a valor de libro × su mejor multiplicador, sin contar el bonus de página).'
   switch (m.kind) {
     case 'swap':
       return `Ofrece nuestro ${m.give} repetido por su ${m.get}: ${gains(m)}.`
@@ -154,16 +155,16 @@ const EN: RivalBoardStrings = {
   missing: 'db/rival_board.sql is not applied yet (or the agents\' rival_board behind it): our move with each team is missing.',
   guard: { top5: 'Top 5', near: 'Near us' },
   guardTitle: {
-    top5: 'a top-5 team: we only trade when our gain is at least twice theirs (their side at book value)',
-    near: 'within 3 ranks of us (or our rank is unknown): we only trade when our gain is at least twice theirs (their side at book value)',
+    top5: 'a top-5 team: we only trade when our gain is at least twice theirs (an estimate: theirs at book × their best set multiplier)',
+    near: 'within 3 ranks of us (or our rank is unknown): we only trade when our gain is at least twice theirs (an estimate: theirs at book × their best set multiplier)',
   },
   strength: EN_STRENGTH,
   weakness: EN_WEAKNESS,
   moveKind: { swap: 'Swap', sell: 'Sell', buy: 'Buy', hold: 'Hold', watch: 'Watch' },
   moveTitle: (give, get) => `our move · ${plural(give, 'spare', 'spares')} of ours they want · ${plural(get, 'card', 'cards')} of theirs we miss`,
   move: moveEn,
-  guardedTrade: (reason) =>
-    `${reason === 'top5' ? 'A top-5 rival' : 'Close to us in the ranking'}, but by the board's estimate (their side at book value) we gain at least twice what they do.`,
+  guardedTrade: (reason, ourRankKnown) =>
+    `${reason === 'top5' ? 'A top-5 rival' : ourRankKnown ? 'Close to us in the ranking' : 'Guarded while our own rank is unknown'}, but by the board's estimate (theirs at book × their best set multiplier, page bonus not counted) we gain at least twice what they do.`,
   title: (team) => `Our move with ${team}`,
   sub: 'private: our spares, the cards we miss and our estimates',
   versusUs: 'Against us',
@@ -194,8 +195,8 @@ const ES: RivalBoardStrings = {
   missing: 'db/rival_board.sql aún no está aplicado (o el rival_board de los agentes que hay detrás): falta nuestra jugada con cada equipo.',
   guard: { top5: 'Top 5', near: 'Cerca' },
   guardTitle: {
-    top5: 'un equipo del top 5: solo negociamos si ganamos al menos el doble que ellos (su parte a valor de libro)',
-    near: 'a 3 puestos o menos de nosotros (o no sabemos nuestro puesto): solo negociamos si ganamos al menos el doble que ellos (su parte a valor de libro)',
+    top5: 'un equipo del top 5: solo negociamos si ganamos al menos el doble que ellos (estimado: lo suyo a valor de libro × su mejor multiplicador)',
+    near: 'a 3 puestos o menos de nosotros (o no sabemos nuestro puesto): solo negociamos si ganamos al menos el doble que ellos (estimado: lo suyo a valor de libro × su mejor multiplicador)',
   },
   strength: ES_STRENGTH,
   weakness: ES_WEAKNESS,
@@ -203,8 +204,8 @@ const ES: RivalBoardStrings = {
   moveTitle: (give, get) =>
     `nuestra jugada · ${plural(give, 'repetido nuestro', 'repetidos nuestros')} que buscan · ${plural(get, 'carta suya', 'cartas suyas')} que nos faltan`,
   move: moveEs,
-  guardedTrade: (reason) =>
-    `${reason === 'top5' ? 'Rival del top 5' : 'Cerca de nosotros en la clasificación'}, pero según la estimación del tablero (su parte a valor de libro) ganamos al menos el doble que ellos.`,
+  guardedTrade: (reason, ourRankKnown) =>
+    `${reason === 'top5' ? 'Rival del top 5' : ourRankKnown ? 'Cerca de nosotros en la clasificación' : 'Protegido mientras no sabemos nuestro puesto'}, pero según la estimación del tablero (lo suyo a valor de libro × su mejor multiplicador, sin bonus de página) ganamos al menos el doble que ellos.`,
   title: (team) => `Nuestra jugada con ${team}`,
   sub: 'privado: nuestros repetidos, las cartas que nos faltan y nuestras estimaciones',
   versusUs: 'Frente a nosotros',

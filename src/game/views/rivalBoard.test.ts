@@ -33,13 +33,13 @@ describe('moveOf and its words', () => {
   })
 
   it('a hold names the guard: top 5, ranks from us, level with us, or our rank unknown', () => {
-    const rule = 'A deal only if our gain is at least twice theirs, with their side at book value.'
+    const rule = 'A deal only if our gain is at least twice theirs (theirs at book × their best set multiplier, page bonus not counted).'
     const top5 = moveOf(row({ team: 't14', rank: 4, guarded: true, guardReason: 'top5', moveKind: 'hold' }))
     expect(en.move(top5)).toBe(`Do not trade: a top-5 rival (rank 4). ${rule}`)
-    expect(es.move(top5)).toBe('No negociar: rival del top 5 (puesto 4). Solo un trato si ganamos al menos el doble que ellos, con su parte a valor de libro.')
+    expect(es.move(top5)).toBe('No negociar: rival del top 5 (puesto 4). Solo un trato si ganamos al menos el doble que ellos (lo suyo a valor de libro × su mejor multiplicador, sin contar el bonus de página).')
     const near = moveOf(row({ team: 't18', rank: 6, ourRank: 9, guarded: true, guardReason: 'near', moveKind: 'hold' }))
     expect(en.move(near)).toBe(`Do not trade: 3 ranks from us (rank 6, we are 9). ${rule}`)
-    expect(es.move(near)).toBe('No negociar: a 3 puestos de nosotros (puesto 6, nosotros 9). Solo un trato si ganamos al menos el doble que ellos, con su parte a valor de libro.')
+    expect(es.move(near)).toBe('No negociar: a 3 puestos de nosotros (puesto 6, nosotros 9). Solo un trato si ganamos al menos el doble que ellos (lo suyo a valor de libro × su mejor multiplicador, sin contar el bonus de página).')
     const level = moveOf(row({ team: 't18', rank: 9, ourRank: 9, guarded: true, guardReason: 'near', moveKind: 'hold' }))
     expect(en.move(level)).toBe(`Do not trade: level with us (rank 9). ${rule}`)
     const unknown = moveOf(row({ team: 't18', rank: 9, ourRank: null, guarded: true, guardReason: 'near', moveKind: 'hold' }))
@@ -59,9 +59,14 @@ describe('moveOf and its words', () => {
     expect(es.move(moveOf(r))).not.toContain(r.suggestedMove)
   })
 
-  it('a guarded trade says why the rule lets it through, as an estimate', () => {
-    expect(en.guardedTrade('top5')).toBe("A top-5 rival, but by the board's estimate (their side at book value) we gain at least twice what they do.")
-    expect(es.guardedTrade('near')).toContain('valor de libro')
+  it('a guarded trade says why the rule lets it through, as an estimate, and why the team is guarded', () => {
+    expect(en.guardedTrade('top5', true)).toBe(
+      "A top-5 rival, but by the board's estimate (theirs at book × their best set multiplier, page bonus not counted) we gain at least twice what they do.",
+    )
+    expect(en.guardedTrade('near', true)).toMatch(/^Close to us in the ranking, but/)
+    expect(en.guardedTrade('near', false)).toMatch(/^Guarded while our own rank is unknown, but/)
+    expect(es.guardedTrade('near', false)).toMatch(/^Protegido mientras no sabemos nuestro puesto, pero/)
+    expect(es.guardedTrade('top5', true)).toContain('valor de libro × su mejor multiplicador')
   })
 })
 

@@ -163,15 +163,13 @@ export function boardOf(raw: unknown): BoardRow | null {
   }
 }
 
+/** Each team once, its first row, in the given order (the view gives one row per team; a second is dropped). */
+export function onePerTeam(rows: readonly BoardRow[]): BoardRow[] {
+  const seen = new Set<string>()
+  return rows.filter((r) => !seen.has(r.team) && seen.add(r.team) !== undefined)
+}
+
 /** The view's rows for the screen, in its order (best rank first): each team once, its first row. */
 export function boardRowsOf(rows: readonly unknown[]): BoardRow[] {
-  const seen = new Set<string>()
-  const out: BoardRow[] = []
-  for (const raw of rows) {
-    const row = boardOf(raw)
-    if (!row || seen.has(row.team)) continue
-    seen.add(row.team)
-    out.push(row)
-  }
-  return out
+  return onePerTeam(rows.map(boardOf).filter((r): r is BoardRow => r !== null))
 }

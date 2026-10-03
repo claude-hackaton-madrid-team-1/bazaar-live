@@ -37,6 +37,24 @@ describe('RivalsPoller', () => {
     expect(s.board[0]).toMatchObject({ team: 't14', rank: 1, guarded: true, guardReason: 'top5', moveKind: 'hold' })
   })
 
+  it('a slow or failing board keeps its last rows and never freezes the albums or backs the poller off', async () => {
+    const logs: Record<string, unknown>[] = []
+    let slow = false
+    const d = db((sql) => (sql === SQL.board && slow ? Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' }) : null))
+    let now = new Date('2026-10-03T10:00:00Z')
+    const poller = new RivalsPoller({ db: d, log: (e) => logs.push(e), now: () => now })
+    await poller.pollOnce()
+    slow = true
+    now = new Date('2026-10-03T10:00:15Z')
+    await poller.pollOnce()
+    const s = poller.current()
+    expect(s.at).toBe('2026-10-03T10:00:15.000Z')
+    expect(s.board).toHaveLength(1)
+    expect(s.parts.board).toBe(true)
+    expect((poller as unknown as { failures: number }).failures).toBe(0) // no backoff: the next read comes on time
+    expect(logs).toEqual([{ route: 'rivals', event: 'poll_error', part: 'board', code: '57014', message: 'canceling statement due to statement timeout' }])
+  })
+
   it('the board read from an older agents\' view (42703) blanks only the board', async () => {
     const logs: Record<string, unknown>[] = []
     const d = db((sql) => (sql === SQL.board ? { code: '42703' } : null))

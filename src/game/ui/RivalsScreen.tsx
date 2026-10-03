@@ -10,6 +10,7 @@ import { setParam, useParam } from '../../ui/route'
 import { pagePush } from '../fresh.ts'
 import { agoText, whoName } from '../humanize.ts'
 import { useRivals } from '../rivals.ts'
+import { useRivalBoardStrings } from '../rivalBoardStrings.ts'
 import { useRivalStrings } from '../rivalStrings.ts'
 import { SETS } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
@@ -259,6 +260,7 @@ function CompareAlbum({ team, row, us, pages }: { team: string; row: TeamRow | n
 export function RivalsScreen() {
   const store = useGame()
   const t = useRivalStrings()
+  const tb = useRivalBoardStrings()
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token'), [])
   const push = pagePush(store.status, store.state, 'rivals')
   const { status, snapshot } = useRivals(store.status === 'mock', token, store.state.tick, push)
@@ -276,11 +278,13 @@ export function RivalsScreen() {
     setParam('team', id)
     document.getElementById('rv-album')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
-  const missingParts = Object.entries(snapshot.parts).filter(([, ok]) => !ok).map(([k]) => k)
+  // the board has its own file (db/rival_board.sql): its own notice, never the albums' one
+  const missingParts = Object.entries(snapshot.parts).filter(([k, ok]) => !ok && k !== 'board').map(([k]) => k)
   return (
     <>
       {status !== 'live' && status !== 'mock' && <NoticeBar>{t.notice[status]}</NoticeBar>}
       {status === 'live' && missingParts.length > 0 && <NoticeBar>{`${missingParts.join(', ')}: ${t.missingView}`}</NoticeBar>}
+      {status === 'live' && !snapshot.parts.board && <NoticeBar>{tb.missing}</NoticeBar>}
       <Panel
         title={t.needs}
         sub={
