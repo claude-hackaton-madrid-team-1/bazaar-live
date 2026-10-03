@@ -91,7 +91,11 @@ export type Trend = {
 }
 
 export type Ended = {
-  readonly how: 'deal' | 'walked' | 'idle' | 'expired' | 'closed'
+  /** `final`: their last word was a final offer on the wrong side of our last price, and nobody took it. */
+  readonly how: 'deal' | 'final' | 'walked' | 'idle' | 'expired' | 'closed'
+  /** With `final`: their final price, and the last price we sent (never our private limit). */
+  readonly theirs?: number | null
+  readonly ours?: number | null
   readonly price: number | null
   /** What the deal made against our value: positive is good for us. */
   readonly edge: number | null
@@ -107,7 +111,7 @@ export type Verdict =
   | { readonly kind: 'apart'; readonly gap: number }
   | { readonly kind: 'waiting' }
   | { readonly kind: 'won'; readonly price: number; readonly value: number | null; readonly edge: number | null }
-  | { readonly kind: 'lost'; readonly how: Ended['how'] }
+  | { readonly kind: 'lost'; readonly how: Ended['how']; readonly theirs: number | null; readonly ours: number | null }
 
 export type NegRow = ThreadRow & {
   readonly state: NegStatus
@@ -233,8 +237,25 @@ export function endedOf(s: State, th: Thread, value: number | null, own: Decisio
   const walked = own.some((d) => d.kind === 'dealer_walk' && d.status !== 'rejected')
   const lapsed = th.expiresTick != null && th.expiresTick < s.tick
   if (!outcome && th.status !== 'closed' && !lapsed) return null
-  const how: Ended['how'] = walked ? 'walked' : th.closedReason === 'idle' ? 'idle' : th.status === 'closed' || outcome ? 'closed' : 'expired'
-  return { how, price: null, edge: null, firstAsk }
+  const final = finalMiss(th)
+  // Most specific first. Our own threads' thread.closed rarely reaches the feed, so a scored thread whose last offer
+  // lapsed says "lapsed", not a bare "closed".
+  const how: Ended['how'] = final ? 'final'
+    : walked ? 'walked'
+    : th.closedReason === 'idle' ? 'idle'
+    : th.status === 'closed' ? 'closed'
+    : lapsed ? 'expired'
+    : 'closed'
+  return { how, price: null, edge: null, firstAsk, theirs: final?.theirs ?? null, ours: final?.ours ?? null }
+}
+
+/** Their last offer was final and on the wrong side of our last price (above our bid, below our ask): nobody took it. */
+function finalMiss(th: Thread): { theirs: number; ours: number } | null {
+  const theirs = th.offers.filter((o) => o.side === 'them').at(-1)
+  const ours = th.offers.filter((o) => o.side === 'us' && o.price != null).at(-1)?.price
+  if (!theirs?.final || theirs.price == null || ours == null) return null
+  const apart = th.side === 'buy' ? theirs.price > ours : theirs.price < ours
+  return apart ? { theirs: theirs.price, ours } : null
 }
 
 /** A gap this small closes on the next move or two. */
@@ -265,7 +286,7 @@ export function verdictOf(r: Pick<NegRow, 'state' | 'side' | 'theirPrice' | 'gap
   if (r.ended) {
     return r.ended.how === 'deal' && r.ended.price != null
       ? { kind: 'won', price: r.ended.price, value: r.value, edge: r.ended.edge }
-      : { kind: 'lost', how: r.ended.how }
+      : { kind: 'lost', how: r.ended.how, theirs: r.ended.theirs ?? null, ours: r.ended.ours ?? null }
   }
   const ask = r.theirPrice
   if (r.state === 'stuck' && r.cap && ask != null) {
@@ -351,6 +372,24 @@ export function conversation(s: State, id: number): Conversation | null {
     }
   })
   return { thread: negRow(s, th), bubbles, lastText: th.lastText }
+}
+
+// ---------------------------------------------------------------- ended threads, grouped
+
+/** Ended threads without a deal on the same counterparty, item and side: one row, the newest leading. A deal is always its own row. */
+export type EndedGroup = { readonly key: string; readonly latest: NegRow; readonly rows: NegRow[]; readonly deals: number }
+
+/** Groups the ended rows (already newest first) by counterparty, item and side, in the order of their newest thread. */
+export function endedGroups(rows: readonly NegRow[]): EndedGroup[] {
+  const by = new Map<string, NegRow[]>()
+  for (const r of rows) {
+    if (r.status === 'open') continue
+    const key = r.ended?.how === 'deal' ? `deal|${r.id}` : `${r.with}|${r.topic}|${r.side}`
+    const list = by.get(key)
+    if (list) list.push(r)
+    else by.set(key, [r])
+  }
+  return [...by].map(([key, list]) => ({ key, latest: list[0] as NegRow, rows: list, deals: list.filter((r) => r.ended?.how === 'deal').length }))
 }
 
 // ---------------------------------------------------------------- what worked, per dealer

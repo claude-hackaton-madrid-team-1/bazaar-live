@@ -3753,3 +3753,18 @@
     border-color: var(--text);
   }
 }
+
+/* the older threads of a grouped ended row (×N) */
+.neg-ended-more {
+  padding: 0 var(--s-3) var(--s-2);
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.neg-ended-more summary {
+  cursor: pointer;
+}
+
+.neg-ended-more .gm-eid {
+  margin-right: 4px;
+}
