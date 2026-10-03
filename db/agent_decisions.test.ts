@@ -89,7 +89,7 @@ const DECISIONS: Row[] = [
     chosen: { buy: 'b69-3', sell: 'b69-19', price: 43 } },
   // a live match as broker.py writes it: the card as `card:LAV-08`, the two offer ids, the makers sorted
   { tick: 131, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed',
-    candidates: { ask: 2020, bid: 3030, item: 'card:LAV-08', bench: false, makers: ['t04', 't15'], fee: 0, price: 25, surplus: 10.25, sell: 13276, buy: 13280, reason_text: SECRET_REASON },
+    candidates: { ask: 2020, bid: 3030, item: 'card:LAV-08', bench: false, makers: ['m9f8e7d6c', 'm1a2b3c4d'], fee: 0, price: 25, surplus: 10.25, sell: 13276, buy: 13280, reason_text: SECRET_REASON },
     chosen: { sell: 13276, buy: 13280, price: 25 } },
   { tick: 132, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed', dry_run: true, candidates: { item: 'DRY-02' }, chosen: { buy: 'x', sell: 'y', price: 1 } },
   // 22-24: matches the game never took: refused by a guardrail, past the tick window, refused by the game
@@ -259,7 +259,7 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
     // only what the game took: not the rejected, expired or failed ones (22-24), nor the dry run
     expect(rows).toEqual([
       { id: '19', tick: 130, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: '15.0', makers: 'b69-19 b69-3' },
-      { id: '20', tick: 131, bench: false, item: 'LAV-08', buyer: '13280', seller: '13276', price: 25, surplus: '10.3', makers: 't04 t15' },
+      { id: '20', tick: 131, bench: false, item: 'LAV-08', buyer: '13280', seller: '13276', price: 25, surplus: '10.3', makers: 'm1a2b3c4d m9f8e7d6c' },
     ])
     const dump = JSON.stringify(rows)
     for (const secret of ['3636', '5151', '2020', '3030', SECRET_REASON, 'DRY-02']) expect(dump).not.toContain(secret)

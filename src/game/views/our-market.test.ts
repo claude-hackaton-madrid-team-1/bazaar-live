@@ -78,13 +78,13 @@ test("our broker's matches and the bench sessions: bench matches counted inside 
     broker(2111, 893, { price: 73, surplus: 20 }),
     broker(2112, 895, { surplus: 28 }),
     broker(2113, 920, { surplus: 26 }), // after session 4 ended (892 + 16 = 908)
-    broker(2120, 899, { bench: false, item: 'LAV-08', buyer: '13280', seller: '13276', makers: ['t04', 't15'], price: 25, surplus: 10 }),
+    broker(2120, 899, { bench: false, item: 'LAV-08', buyer: '13280', seller: '13276', makers: ['m1a2b3c4d', 'm9f8e7d6c'], price: 25, surplus: 10 }),
     broker(2112, 895, { surplus: 28 }), // the same match sent again: kept once
   ])
   assert.deepEqual(brokerMatches(s).map((m) => m.decision), [2120, 2113, 2112, 2111])
   assert.deepEqual(brokerMatches(s, { bench: false }).map((m) => [m.buyer, m.seller, m.price]), [['13280', '13276', 25]])
   const [live, , , bench] = brokerMatches(s)
-  assert.equal(OUR_MARKET_STRINGS.en.match(live!), 't04 × t15 (offers #13276 → #13280) at 25 P')
+  assert.equal(OUR_MARKET_STRINGS.en.match(live!), 'm1a2b3c4d × m9f8e7d6c (offers #13276 → #13280) at 25 P')
   assert.equal(OUR_MARKET_STRINGS.es.match(bench!), 'b69-19 → b69-3 a 73 P')
   const [now, before] = benchRows(s)
   assert.deepInclude(now, { session: 4, startTick: 892, endTick: 908, live: true, ours: true, matches: 2, surplus: 48 })
@@ -111,14 +111,14 @@ test('what people are asking us: addressed to us first, then bids for our cards,
   assert.deepInclude(rows[0], { venue: 'v02', expiresIn: 2 })
   const en = OUR_MARKET_STRINGS.en
   const es = OUR_MARKET_STRINGS.es
-  assert.equal(en.askLine(rows[0]!, true), "t08 offers SAL-04 to us for free if we give LAV-02 (we're missing it; our only LAV-02)")
+  assert.equal(en.askLine(rows[0]!, true), "t08 offers SAL-04 to us with no cash if we give LAV-02 (we're missing SAL-04; LAV-02 is our only copy)")
   assert.equal(en.askLine(rows[1]!, false), 't17 bids 15 P for LAV-06 (we hold 1, not a duplicate: keep)')
   assert.equal(en.askLine(rows[2]!, true), 't09 bids 6 P for SAL-01 (we hold 2, a duplicate; worth 3.2 P to us: sell)')
   assert.equal(en.askLine(rows[3]!, true), 't02 sells LAT-04 at 7 P (worth 5 P to us: skip)')
   // without GAME_VIEW_TOKEN no value and no verdict read off one
   assert.equal(en.askLine(rows[2]!, false), 't09 bids 6 P for SAL-01 (we hold 2, a duplicate)')
   assert.equal(en.askLine(rows[3]!, false), "t02 sells LAT-04 at 7 P (we're missing it)")
-  assert.equal(es.askLine(rows[0]!, false), 't08 nos ofrece SAL-04 gratis si le damos LAV-02 (nos falta; nuestra única LAV-02)')
+  assert.equal(es.askLine(rows[0]!, false), 't08 nos ofrece SAL-04 sin dinero si le damos LAV-02 (nos falta SAL-04; LAV-02 es nuestra única copia)')
   assert.equal(es.askLine(rows[3]!, true), 't02 vende LAT-04 a 7 P (nos vale 5 P: no comprar)')
   assert.equal(es.askLine(rows[1]!, true), 't17 puja 15 P por LAV-06 (tenemos 1, no es repetida: la guardamos)')
 })

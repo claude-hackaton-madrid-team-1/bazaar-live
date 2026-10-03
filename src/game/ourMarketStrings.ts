@@ -74,7 +74,8 @@ function noteEn(r: AskRow, values: boolean): string {
     return values && r.worth != null && r.valueVerdict ? `${head}; worth ${p(r.worth)} to us: ${v(r.verdict)}` : head
   }
   if (values && r.worth != null && r.valueVerdict) return `worth ${p(r.worth)} to us: ${v(r.verdict)}`
-  return r.kind === 'askMissing' || (r.side !== 'bid' && r.held === 0) ? "we're missing it" : r.held > 0 ? `we hold ${r.held}` : ''
+  const missing = r.kind === 'forUs' && r.side === 'swap' ? `we're missing ${r.ref}` : "we're missing it"
+  return r.kind === 'askMissing' || (r.side !== 'bid' && r.held === 0) ? missing : r.held > 0 ? `we hold ${r.held}` : ''
 }
 
 function noteEs(r: AskRow, values: boolean): string {
@@ -85,7 +86,8 @@ function noteEs(r: AskRow, values: boolean): string {
     return values && r.worth != null && r.valueVerdict ? `${head}; nos vale ${p(r.worth)}: ${v(r.verdict)}` : head
   }
   if (values && r.worth != null && r.valueVerdict) return `nos vale ${p(r.worth)}: ${v(r.verdict)}`
-  return r.kind === 'askMissing' || (r.side !== 'bid' && r.held === 0) ? 'nos falta' : r.held > 0 ? `tenemos ${r.held}` : ''
+  const missing = r.kind === 'forUs' && r.side === 'swap' ? `nos falta ${r.ref}` : 'nos falta'
+  return r.kind === 'askMissing' || (r.side !== 'bid' && r.held === 0) ? missing : r.held > 0 ? `tenemos ${r.held}` : ''
 }
 
 const withNote = (line: string, note: string) => (note ? `${line} (${note})` : line)
@@ -94,10 +96,10 @@ const both = (a: string, b: string) => [a, b].filter(Boolean).join('; ')
 
 /** What a swap would take from us: our only copy, a duplicate, or a card we do not even hold. */
 const takesEn = (r: AskRow) =>
-  r.wantHeld.map((w) => (w.held === 1 ? `our only ${w.ref}` : w.held > 1 ? `${w.ref} is a duplicate of ours` : `we don't hold ${w.ref}`)).join(', ')
+  r.wantHeld.map((w) => (w.held === 1 ? `${w.ref} is our only copy` : w.held > 1 ? `${w.ref} is a duplicate of ours` : `we don't hold ${w.ref}`)).join(', ')
 
 const takesEs = (r: AskRow) =>
-  r.wantHeld.map((w) => (w.held === 1 ? `nuestra única ${w.ref}` : w.held > 1 ? `${w.ref} la tenemos repetida` : `no tenemos ${w.ref}`)).join(', ')
+  r.wantHeld.map((w) => (w.held === 1 ? `${w.ref} es nuestra única copia` : w.held > 1 ? `${w.ref} la tenemos repetida` : `no tenemos ${w.ref}`)).join(', ')
 
 const isOfferId = (v: string | null) => v != null && /^\d+$/.test(v)
 
@@ -150,8 +152,8 @@ const EN: OurMarketStrings = {
     const gives = goods(r.give, '+')
     const wants = goods(r.want, '+')
     if (r.kind === 'forUs' && r.side === 'swap') {
-      const price = r.want.cash > 0 ? `for ${p(r.want.cash)}` : 'for free'
-      return withNote(`${r.maker} offers ${gives ?? 'nothing'} to us ${price}${r.want.cards.length ? ` if we give ${r.want.cards.join(' + ')}` : ''}`, both(noteEn(r, values), takesEn(r)))
+      const cash = r.want.cash > 0 ? `for ${p(r.want.cash)}` : r.want.cards.length ? 'with no cash' : 'for free'
+      return withNote(`${r.maker} offers ${gives ?? 'nothing'} to us ${cash}${r.want.cards.length ? ` if we give ${r.want.cards.join(' + ')}` : ''}`, both(noteEn(r, values), takesEn(r)))
     }
     if (r.side === 'bid') return withNote(`${r.maker} bids ${r.price == null ? '?' : p(r.price)} ${r.kind === 'forUs' ? 'to us ' : ''}for ${wants ?? r.ref}`, noteEn(r, values))
     if (r.side === 'swap') return withNote(`${r.maker} swaps ${gives ?? r.ref} for ${wants ?? 'nothing'}`, noteEn(r, values))
@@ -204,8 +206,8 @@ const ES: OurMarketStrings = {
     const gives = goods(r.give, '+')
     const wants = goods(r.want, '+')
     if (r.kind === 'forUs' && r.side === 'swap') {
-      const price = r.want.cash > 0 ? `por ${p(r.want.cash)}` : 'gratis'
-      return withNote(`${r.maker} nos ofrece ${gives ?? 'nada'} ${price}${r.want.cards.length ? ` si le damos ${r.want.cards.join(' + ')}` : ''}`, both(noteEs(r, values), takesEs(r)))
+      const cash = r.want.cash > 0 ? `por ${p(r.want.cash)}` : r.want.cards.length ? 'sin dinero' : 'gratis'
+      return withNote(`${r.maker} nos ofrece ${gives ?? 'nada'} ${cash}${r.want.cards.length ? ` si le damos ${r.want.cards.join(' + ')}` : ''}`, both(noteEs(r, values), takesEs(r)))
     }
     if (r.side === 'bid') return withNote(`${r.maker} ${r.kind === 'forUs' ? 'nos puja' : 'puja'} ${r.price == null ? '?' : p(r.price)} por ${wants ?? r.ref}`, noteEs(r, values))
     if (r.side === 'swap') return withNote(`${r.maker} cambia ${gives ?? r.ref} por ${wants ?? 'nada'}`, noteEs(r, values))

@@ -499,14 +499,13 @@ function ourVenuesEvent(s: State, e: GameEvent) {
   }
   for (const x of list) {
     if (typeof x?.venue !== 'string' || typeof x.tick !== 'number') continue
-    const known = s.venues.has(x.venue)
     // seen now (not at its opening tick, or it would be the first evicted past the venue cap)
     const v = touchVenue(s, x.venue, s.tick)
     v.owner = s.team
     if (typeof x.name === 'string') v.name = x.name
-    // the opening fees only for a venue the page did not know: a fee change seen in the window stays
-    if (!known && typeof x.feeBps === 'number') v.feeBps = x.feeBps
-    if (!known && typeof x.feePerCard === 'number') v.feePerCard = x.feePerCard
+    // the opening fees only where the page has no fee yet: a fee change seen in the window stays
+    if (v.feeBps == null && typeof x.feeBps === 'number') v.feeBps = x.feeBps
+    if (v.feePerCard == null && typeof x.feePerCard === 'number') v.feePerCard = x.feePerCard
     v.openedTick = x.tick
     if (typeof x.closedTick === 'number') v.status = 'closed'
     s.market.venues.set(x.venue, { bond: typeof x.bond === 'number' ? x.bond : null, mechanism: typeof x.mechanism === 'string' ? x.mechanism : null })

@@ -259,8 +259,11 @@ export class DecisionsPoller {
   private brokerSaid = false
   private venuesSent = ''
   private venuesPolls = 0
-  /** Polls since the last try at the broker views, while they are missing: they are tried again every `venuesEvery`. */
-  private brokerWait = 0
+  /** After any failure of the broker views (missing, slow, refused) they are tried only every `venuesEvery` rounds. */
+  private brokerBackoff = false
+  private brokerRounds = 0
+  /** Set by a failed broker read this round. */
+  private brokerFailedNow = false
   private brokerFails = 0
   /** The broker views' last error this round: logged only when the other three answered (else their own log says it). */
   private brokerError: { code: string; message: string } | null = null
@@ -342,7 +345,18 @@ export class DecisionsPoller {
 
   /** One round over the three views, published as one batch. Never throws. */
   async pollOnce(): Promise<void> {
-    const results = await Promise.allSettled([this.readDecisions(), this.readOutcomes(), this.readLedger(), this.readBroker(), this.readVenues()])
+    // the broker views never slow the round down for long: after a failure they wait `venuesEvery` rounds
+    const broker = !this.brokerBackoff || this.brokerRounds++ % this.o.venuesEvery === 0
+    this.brokerFailedNow = false
+    const results = await Promise.allSettled([
+      this.readDecisions(), this.readOutcomes(), this.readLedger(), ...(broker ? [this.readBroker(), this.readVenues()] : []),
+    ])
+    if (broker) {
+      this.brokerBackoff = this.brokerFailedNow
+      // a failure waits a full `venuesEvery` rounds before the next try; a success reads every round again
+      this.brokerRounds = this.brokerFailedNow ? 1 : 0
+      if (!this.brokerFailedNow) this.brokerFails = 0
+    }
     const batch = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
     if (batch.length > 0) this.deps.hub.publish(batch)
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
@@ -436,8 +450,6 @@ export class DecisionsPoller {
    * re-applied yet) is said once and the other three views go on.
    */
   private async readBroker(): Promise<GameEvent[]> {
-    // while the views are missing, try again only every `venuesEvery` polls (the other three views poll on)
-    if (this.brokerOff && (this.brokerWait++ % this.o.venuesEvery) !== 0) return []
     let rows: unknown[]
     try {
       rows = this.brokerMark === null
@@ -450,8 +462,6 @@ export class DecisionsPoller {
     if (this.brokerOff && this.brokerSaid) this.deps.log({ route: 'agent_decisions', event: 'broker_on' })
     this.brokerOff = false
     this.brokerSaid = false
-    this.brokerWait = 0
-    this.brokerFails = 0
     const out: GameEvent[] = []
     for (const raw of rows) {
       const b = brokerOf(raw)
@@ -466,7 +476,7 @@ export class DecisionsPoller {
   /** The venues we opened, every `venuesEvery` polls; sent again only when they changed. Off with the broker view. */
   private async readVenues(): Promise<GameEvent[]> {
     this.venuesPolls += 1
-    if ((this.venuesSent || this.brokerOff) && (this.venuesPolls - 1) % this.o.venuesEvery !== 0) return []
+    if (this.venuesSent && (this.venuesPolls - 1) % this.o.venuesEvery !== 0) return []
     let rows: unknown[]
     try {
       rows = (await this.deps.db.query(SQL.ourVenues)).rows
@@ -486,6 +496,7 @@ export class DecisionsPoller {
 
   /** A failed read of the broker views never fails the round: a missing view turns them off, anything else is logged. */
   private brokerFailed(err: unknown): void {
+    this.brokerFailedNow = true
     const { code, message } = this.describe(err)
     if (MISSING.has(code)) {
       this.brokerOff = true

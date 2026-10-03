@@ -320,6 +320,22 @@ describe('our broker\'s matches (show.agent_broker)', () => {
     expect(JSON.stringify(logs)).not.toContain('hunter2-secret')
   })
 
+  it('after any broker failure the broker views wait venuesEvery rounds while the other views poll every round; the count is per round', async () => {
+    let broken = true
+    const { db, calls } = fakeDb((c) => (c.sql.includes('show.agent_broker') || c.sql.includes('show.our_venues') ? (broken ? pgError('57014', 'statement timeout') : []) : []))
+    const logs: Record<string, unknown>[] = []
+    const poller = new DecisionsPoller({ db, hub: new GameHub(), log: (e) => logs.push(e), venuesEvery: 5 })
+    for (let i = 0; i < 12; i++) await poller.pollOnce()
+    const brokerReads = calls.filter((c) => c.sql.includes('show.agent_broker')).length
+    expect(brokerReads).toBe(3) // rounds 1, 6 and 11
+    expect(calls.filter((c) => c.sql === SQL.ledger)).toHaveLength(12)
+    expect(logs.filter((l) => l.event === 'broker_poll_failed').map((l) => l.fails)).toEqual([1])
+    broken = false
+    for (let i = 0; i < 6; i++) await poller.pollOnce()
+    const after = calls.filter((c) => c.sql.includes('show.agent_broker')).length
+    expect(after - brokerReads).toBeGreaterThanOrEqual(2) // back to every round once a read succeeds
+  })
+
   it('a missing broker view (the SQL not re-applied yet) is said once and never stops the other views', async () => {
     const { db } = fakeDb((c) => (c.sql.includes('show.agent_broker') ? pgError('42P01', 'relation "show.agent_broker" does not exist') : c.sql === SQL.decisionsBackfill ? [decisionRow(1)] : []))
     const hub = new GameHub()
