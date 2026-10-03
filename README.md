@@ -131,8 +131,9 @@ logged or committed. The proxy is public, so it guards what it speaks and what i
 - **Limits.** Per address (Railway's `X-Real-IP`; `X-Forwarded-For` is never trusted) a burst of 40
   then 24 lines a minute; all callers together a burst of 160 then 72 a minute. The address is checked
   before the shared bucket, so one caller over its limit cannot drain it for everyone. A daily budget of
-  40,000 characters sent to a provider (UTC day) caps the cost, at most 12,000 of them per address, and
-  a failed call gives its characters back. Env: `TTS_PER_ADDRESS_BURST`, `TTS_PER_ADDRESS_PER_MINUTE`,
+  40,000 characters sent to a provider (UTC day) caps the cost; a share per address is opt-in
+  (`TTS_DAILY_CHARS_PER_ADDRESS`, off by default because the pitch screen is one address too), and a
+  call the provider refused gives its characters back. IPv6 callers are counted by their /64. Env: `TTS_PER_ADDRESS_BURST`, `TTS_PER_ADDRESS_PER_MINUTE`,
   `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`, `TTS_DAILY_CHARS`, `TTS_DAILY_CHARS_PER_ADDRESS`,
   `TTS_CLIENT_IP_HEADER` (each must be declared in bazaar's `.railway/railway.py` before it is set, or
   the next apply deletes it). For the pitch, size `TTS_DAILY_CHARS` to the window (the mock scene talks
@@ -163,7 +164,11 @@ URL=https://<the bazaar-live domain>
 curl -s $URL/health                                   # {"ok":true,"service":"bazaar-live","tts":[...]}
 # The page's own POSTs must pass: the Origin check compares with Host (or X-Forwarded-Host).
 # The per-address limit must hold even when a caller sends its own X-Real-IP: with a key set,
-# 45 POSTs of a show line with a rotating X-Real-IP should start answering 429 by the 41st.
+# 45 POSTs of DIFFERENT show lines (a repeated line is a cache hit and skips the limiter), each with
+# a new X-Real-IP, should start answering 429 by the 41st:
+for n in $(seq 1 45); do curl -s -o /dev/null -w '%{http_code} ' -X POST $URL/api/tts \
+  -H 'Content-Type: application/json' -H "Origin: $URL" -H "X-Real-IP: 198.51.100.$n" \
+  -d "{\"provider\":\"elevenlabs\",\"speaker\":\"seller\",\"text\":\"La Latina number $n stays put.\"}"; done
 ```
 
 ## Layout

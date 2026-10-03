@@ -112,7 +112,7 @@ export interface TtsLimits {
   readonly globalPerMinute: number
   /** Characters sent to a provider per UTC day, all callers together... */
   readonly dailyChars: number
-  /** ...and the share of it one address may use. */
+  /** ...and the share of it one address may use: the whole day unless set (the pitch screen is one address). */
   readonly dailyCharsPerAddress: number
   /** The header Railway's edge sets to the caller's address. */
   readonly clientIpHeader: string
@@ -125,7 +125,7 @@ export const DEFAULT_LIMITS: TtsLimits = {
   globalBurst: 160,
   globalPerMinute: 72,
   dailyChars: 40_000,
-  dailyCharsPerAddress: 12_000,
+  dailyCharsPerAddress: 40_000,
   clientIpHeader: 'x-real-ip',
 }
 
@@ -135,13 +135,14 @@ export function readLimits(env: Readonly<Record<string, string | undefined>>): T
     return Number.isFinite(n) && n > 0 ? n : fallback
   }
   const header = env.TTS_CLIENT_IP_HEADER?.trim().toLowerCase()
+  const dailyChars = read('TTS_DAILY_CHARS', DEFAULT_LIMITS.dailyChars)
   return {
     perAddressBurst: read('TTS_PER_ADDRESS_BURST', DEFAULT_LIMITS.perAddressBurst),
     perAddressPerMinute: read('TTS_PER_ADDRESS_PER_MINUTE', DEFAULT_LIMITS.perAddressPerMinute),
     globalBurst: read('TTS_GLOBAL_BURST', DEFAULT_LIMITS.globalBurst),
     globalPerMinute: read('TTS_GLOBAL_PER_MINUTE', DEFAULT_LIMITS.globalPerMinute),
-    dailyChars: read('TTS_DAILY_CHARS', DEFAULT_LIMITS.dailyChars),
-    dailyCharsPerAddress: read('TTS_DAILY_CHARS_PER_ADDRESS', DEFAULT_LIMITS.dailyCharsPerAddress),
+    dailyChars,
+    dailyCharsPerAddress: Math.min(dailyChars, read('TTS_DAILY_CHARS_PER_ADDRESS', dailyChars)),
     clientIpHeader: header && /^[a-z0-9-]{1,40}$/.test(header) ? header : DEFAULT_LIMITS.clientIpHeader,
   }
 }
@@ -183,4 +184,21 @@ export class LruCache<V extends { readonly body: { readonly length: number } }> 
   get size(): number {
     return this.entries.size
   }
+}
+
+/**
+ * The key a caller is limited by: an IPv4 address as it is, an IPv6 address by its /64 (one
+ * subscriber usually holds a whole /64, so per-address limits must not count each address in it).
+ */
+export function addressKey(address: string): string {
+  const raw = address.trim().toLowerCase()
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(raw)
+  if (mapped?.[1]) return mapped[1]
+  if (!raw.includes(':')) return raw
+  const [head = '', tail = ''] = raw.split('::')
+  const left = head ? head.split(':') : []
+  const right = raw.includes('::') && tail ? tail.split(':') : []
+  const missing = raw.includes('::') ? 8 - left.length - right.length : 0
+  const groups = [...left, ...Array.from({ length: Math.max(0, missing) }, () => '0'), ...right]
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`
 }

@@ -15,7 +15,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isShowLine } from '../shared/lines.ts'
 import { isSpeaker } from '../shared/tags.ts'
-import { DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
+import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
 import { createStatic } from './static.ts'
 
@@ -94,7 +94,7 @@ function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
 export function clientAddress(req: IncomingMessage, header = DEFAULT_LIMITS.clientIpHeader): string {
   const value = req.headers[header]
   const first = (Array.isArray(value) ? value[0] : value)?.trim()
-  return first || req.socket.remoteAddress || 'unknown'
+  return addressKey(first || req.socket.remoteAddress || 'unknown')
 }
 
 /**
@@ -200,8 +200,9 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
         audio = await pending
         cache.set(key, audio)
       } catch (error: unknown) {
-        // A failed call produced no audio: its characters go back (only the caller that spent them).
-        if (!shared) budget.refund(address, parsed.text.length)
+        // The provider refused (an HTTP error answer): nothing was billed, so the characters go back, to
+        // the caller that spent them. A timeout or a cut-off body may have been billed: no refund.
+        if (!shared && error instanceof UpstreamError) budget.refund(address, parsed.text.length)
         const status = error instanceof UpstreamError ? error.status : 0
         log({ route: 'tts', status: 502, provider: parsed.provider, upstream: status, error: error instanceof Error ? error.message : String(error) })
         return json(res, 502, { error: 'tts_failed', provider: parsed.provider })

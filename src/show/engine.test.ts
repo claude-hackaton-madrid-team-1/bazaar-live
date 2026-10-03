@@ -135,7 +135,9 @@ describe('a /state snapshot older than our own events (review P2 #1)', () => {
     expect(board(show)).toEqual([])
     show.syncBoard(offer(68), 10) // read at the start of tick 10, before the cancel
     expect(board(show)).toEqual([])
-    show.syncBoard(offer(68), 11) // a newer snapshot still lists it: the cancel did not happen
+    show.syncBoard(offer(68), 11) // stamped 11 while tick 11 runs: its offers are still tick 10's
+    expect(board(show)).toEqual([])
+    show.syncBoard(offer(68), 12) // two ticks later it still lists it: the cancel did not happen
     expect(board(show)).toEqual([['LAT-09', 68, 0]])
   })
 
@@ -145,6 +147,8 @@ describe('a /state snapshot older than our own events (review P2 #1)', () => {
     show.syncBoard([], 10)
     expect(board(show)).toEqual([['LAT-09', 68, 0]])
     show.syncBoard([], 11)
+    expect(board(show)).toEqual([['LAT-09', 68, 0]])
+    show.syncBoard([], 12)
     expect(board(show)).toEqual([])
   })
 
@@ -155,7 +159,9 @@ describe('a /state snapshot older than our own events (review P2 #1)', () => {
     expect(board(show)).toEqual([['LAT-09', 59, 1]])
     show.syncBoard(offer(68), 10)
     expect(board(show)).toEqual([['LAT-09', 59, 1]])
-    show.syncBoard(offer(59), 11)
+    show.syncBoard(offer(68), 11)
+    expect(board(show)).toEqual([['LAT-09', 59, 1]])
+    show.syncBoard(offer(59), 12)
     expect(board(show)).toEqual([['LAT-09', 59, 1]])
   })
 })

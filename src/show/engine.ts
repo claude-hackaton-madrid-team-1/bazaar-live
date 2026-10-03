@@ -122,11 +122,14 @@ export function applyToBoard(board: readonly BoardCard[], cue: Cue, now = Date.n
 
 /** Without a snapshot tick, a card or cancel an event made in the last SYNC_GRACE_MS still wins. */
 const SYNC_GRACE_MS = 20_000
+/** How many ticks the maker's /state open offers can lag behind its /state tick (bazaar maker.py). */
+const SNAPSHOT_LAG_TICKS = 1
 
 /**
- * The board as /state lists it. The maker reads its open offers at the start of a tick, before that
- * tick's own posts and cancels, so an event wins over any snapshot that is not newer than the event:
- * a card it posted stays, a price it set stays (no second flash), a card it cancelled stays gone.
+ * The board as /state lists it. The maker's /state offers trail its own posts and cancels (they are
+ * read at the start of a tick and published at its end, under the next tick's stamp), so an event wins
+ * over any snapshot less than two ticks newer: a card it posted stays, a price it set stays (no second
+ * flash), a card it cancelled stays gone. A card sold right after it was posted stays one tick longer.
  */
 export function syncBoard(
   board: readonly BoardCard[],
@@ -135,8 +138,10 @@ export function syncBoard(
   stateTick: number | null = null,
   tombstones: ReadonlyMap<string, Tombstone> = new Map(),
 ): readonly BoardCard[] {
+  // The maker stamps /state with tick T when tick T starts but swaps its open offers only when T ends:
+  // until then a snapshot at T still lists the offers read at the start of T-1.
   const eventWins = (tick: number | null, at: number) =>
-    tick !== null && stateTick !== null ? tick >= stateTick : now - at < SYNC_GRACE_MS
+    tick !== null && stateTick !== null ? tick >= stateTick - SNAPSHOT_LAG_TICKS : now - at < SYNC_GRACE_MS
   const listed = offers
     .filter((o) => o.side === 'ask' || o.side === 'bid')
     .filter((o) => {
@@ -213,7 +218,7 @@ export class ShowEngine {
     this.set({ board: syncBoard(this.state.board, offers, now, stateTick, this.tombstones) })
     if (stateTick !== null) {
       // A snapshot taken after a cancel already reflects it: that tombstone is no longer needed.
-      this.tombstones = new Map([...this.tombstones].filter(([, t]) => t.tick === null || t.tick >= stateTick))
+      this.tombstones = new Map([...this.tombstones].filter(([, t]) => t.tick === null || t.tick >= stateTick - SNAPSHOT_LAG_TICKS))
     }
   }
 

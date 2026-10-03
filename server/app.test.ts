@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { clientAddress, createApp, parseTtsRequest } from './app.ts'
-import { DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, readLimits } from './limits.ts'
+import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, readLimits } from './limits.ts'
 import { geminiAudioData, geminiRequest, readProviderConfig, wavFromPcm } from './providers.ts'
 
 const servers: Server[] = []
@@ -228,8 +228,12 @@ describe('shared upstream calls and limits from env', () => {
       ...DEFAULT_LIMITS,
       globalPerMinute: 90,
       dailyChars: 5000,
+      dailyCharsPerAddress: 5000,
       clientIpHeader: 'x-client-ip',
     })
+    expect(readLimits({ TTS_DAILY_CHARS: '100000' }).dailyCharsPerAddress).toBe(100_000)
+    expect(readLimits({ TTS_DAILY_CHARS: '100000', TTS_DAILY_CHARS_PER_ADDRESS: '30000' }).dailyCharsPerAddress).toBe(30_000)
+    expect(readLimits({ TTS_DAILY_CHARS: '1000', TTS_DAILY_CHARS_PER_ADDRESS: '30000' }).dailyCharsPerAddress).toBe(1000)
     expect(readLimits({ TTS_CLIENT_IP_HEADER: 'bad header!' }).clientIpHeader).toBe('x-real-ip')
     expect(DEFAULT_LIMITS.perAddressPerMinute).toBeLessThan(DEFAULT_LIMITS.globalPerMinute)
   })
@@ -306,5 +310,31 @@ describe('budget shares and the edge host (review P2 #3, P3 #5, P3 #6)', () => {
     const viaEdge = await tts(base, holdLine(9), { Origin: 'https://bazaar-live.example', 'X-Forwarded-Host': 'bazaar-live.example' })
     expect(viaEdge.status).toBe(200)
     expect((await tts(base, holdLine(10), { Origin: 'https://evil.example', 'X-Forwarded-Host': 'bazaar-live.example' })).status).toBe(403)
+  })
+})
+
+describe('second review of the follow-ups', () => {
+  it('lets one address (the pitch screen) use the whole day unless a share is set', async () => {
+    const fake = (async () => new Response(Buffer.from('mp3'))) as unknown as typeof fetch
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { limits: readLimits({ TTS_DAILY_CHARS: '60', TTS_PER_ADDRESS_BURST: '100', TTS_GLOBAL_BURST: '100' }) })
+    expect((await tts(base, holdLine(1))).status).toBe(200)
+    expect((await tts(base, holdLine(2))).status).toBe(200)
+    expect((await tts(base, holdLine(3))).status).toBe(429)
+  })
+
+  it('refunds only a provider refusal, not a call that may have been billed', async () => {
+    const budget = new DailyBudget(1000, 1000)
+    const cutOff = (async () => ({ ok: true, status: 200, arrayBuffer: () => Promise.reject(new Error('connection reset')) })) as unknown as typeof fetch
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, cutOff, { budget })
+    expect((await tts(base, holdLine(1))).status).toBe(502)
+    expect(budget.remaining).toBe(1000 - holdLine(1).text.length)
+  })
+
+  it('keys an IPv6 caller by its /64 and an IPv4-mapped one by its IPv4', () => {
+    expect(addressKey('2001:db8:1:2:aaaa::1')).toBe('2001:db8:1:2::/64')
+    expect(addressKey('2001:db8:1:2:bbbb:cccc:dddd:eeee')).toBe('2001:db8:1:2::/64')
+    expect(addressKey('2001:db8::1')).toBe('2001:db8:0:0::/64')
+    expect(addressKey('::ffff:10.0.0.7')).toBe('10.0.0.7')
+    expect(addressKey('203.0.113.9')).toBe('203.0.113.9')
   })
 })
