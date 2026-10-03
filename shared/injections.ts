@@ -235,7 +235,11 @@ export function oddUnicode(text: string): boolean {
   return (text.match(/[\p{L}\p{M}\p{N}_]+/gu) ?? []).some(mixesScripts)
 }
 
-/** The names of the injection shapes in a text, as bazaar's recorder (`injection_flags`) would tag it. */
+/**
+ * The names of the injection shapes in a text: every one bazaar's recorder (`injection_flags`) tags, except in a text
+ * `readsDifferently` refuses (a character that reads otherwise to the recorder's Unicode), and a few more, since the
+ * port also reads every non-ASCII character as a break. The voice guard is `looksLikeInjection`, which refuses both.
+ */
 export function injectionFlags(text: string | null | undefined): string[] {
   if (!text) return []
   const plains = readings(text)
@@ -245,21 +249,34 @@ export function injectionFlags(text: string | null | undefined): string[] {
 
 /** Compatibility characters a dealer may well type, which read the same to a pattern: … º ª µ, a no-break space, ½ ¼ ¾. */
 const PLAIN_COMPAT = new Set([0x2026, 0x00ba, 0x00aa, 0x00b5, 0x00a0, 0x00bd, 0x00bc, 0x00be])
-const NON_SPACING = /\p{Mn}/u
-const INHERITED = /\p{Script=Inherited}/u
+/**
+ * The plain accents: the Combining Diacritical Marks block (U+0300-036F, every code point assigned, so no newer Unicode
+ * can add a mark there) and the variation selectors (U+FE00-FE0F, an emoji's own). Any other mark reads differently: a
+ * mark this runtime knows and the recorder's Python does not (Unicode 17 added inherited marks at U+1ACF-1AEB) is
+ * dropped here, joining two words the recorder reads apart.
+ */
+const plainMark = (cp: number): boolean => (cp >= 0x0300 && cp <= 0x036f) || (cp >= 0xfe00 && cp <= 0xfe0f)
+/** Hangul syllables decompose into their letters (jamo) the same way in every Unicode version. */
+const HANGUL_SYLLABLE = /[\uac00-\ud7a3]/u
+
+/** One character that decomposes into several letters: one character to a runtime that does not know it, several here. */
+const expands = (ch: string): boolean => !HANGUL_SYLLABLE.test(ch) && Array.from(ch.normalize('NFD')).filter((c) => !MARK.test(c)).length > 1
 
 /**
- * A text that reads differently to a pattern than it looks: a mark other than a plain combining accent (a spacing mark,
- * an enclosing mark, a script's own sign), or a compatibility character (an outlined letter, a fullwidth form, a
- * ligature) beyond a few a dealer may type. No voice reads such a text, whatever any pattern says about it.
+ * A text that reads differently to a pattern than it looks: a mark other than a plain accent (a spacing mark, an
+ * enclosing mark, a script's own sign, a mark newer than the recorder's Unicode), a compatibility character (an
+ * outlined letter, a fullwidth form, a ligature) beyond a few a dealer may type, or a character that decomposes into several letters (the Kirat Rai vowel signs, new
+ * in Unicode 16: one unknown character to the recorder's Python, two or three letters here, enough to stretch a
+ * pattern's gap). No voice reads such a text, whatever any pattern says about it.
  */
 export function readsDifferently(text: string): boolean {
   for (const ch of text) {
     if (MARK.test(ch)) {
-      if (!(NON_SPACING.test(ch) && INHERITED.test(ch))) return true
+      if (!plainMark(ch.codePointAt(0) ?? 0)) return true
       continue
     }
     if (ch.normalize('NFKD') !== ch.normalize('NFD') && !PLAIN_COMPAT.has(ch.codePointAt(0) ?? 0)) return true
+    if (expands(ch)) return true
   }
   return false
 }

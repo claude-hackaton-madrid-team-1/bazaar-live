@@ -158,9 +158,11 @@ function Cell({ c }: { c: RivalSlot }) {
     lines.push(t.since(c.known.how, agoOf(c.known.since)))
     if (c.known.seen > c.known.since) lines.push(t.seen(agoOf(c.known.seen)))
   } else lines.push(t.unknown)
-  if (c.need) lines.push(t.needed)
+  // A card we need is worth a highlight only where they hold it: an unknown slot is no swap target.
+  const need = c.need && c.known != null
+  if (need) lines.push(t.needed)
   return (
-    <span className="alb-cell rv-cell" data-known={c.known ? true : undefined} data-need={c.need || undefined} title={lines.join('\n')} style={style}>
+    <span className="alb-cell rv-cell" data-known={c.known ? true : undefined} data-need={need || undefined} title={lines.join('\n')} style={style}>
       {c.known ? '✓' : '?'}
       {c.known && c.known.copies > 1 && <span className="alb-dup">×{c.known.copies}</span>}
     </span>

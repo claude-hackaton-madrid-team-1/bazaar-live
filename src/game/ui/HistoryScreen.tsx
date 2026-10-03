@@ -13,6 +13,7 @@ import { Badge, CardRef, Empty, Fresh, Panel, Seg } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 import { ByHand } from './MarketScreen.tsx'
 import { ScorePanel } from './ScorePanel.tsx'
+import { TeamsScorePanel } from './TeamsScorePanel.tsx'
 import { useWidth } from './useWidth.ts'
 import { Ago, ItemName } from './words.tsx'
 
@@ -256,6 +257,9 @@ export function HistoryScreen() {
         >
           <Chart points={snapshot.points} />
         </Panel>
+      )}
+      {store.state.team !== '' && (snapshot.board.length > 0 || (live && !snapshot.parts.board)) && (
+        <TeamsScorePanel board={snapshot.board} marks={snapshot.marks} us={store.state.team} missing={<Missing part="board" parts={snapshot.parts} live={live} />} />
       )}
       <div className="gm-history-cols">
         <Panel

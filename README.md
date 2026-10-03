@@ -14,7 +14,7 @@ generated once by hand, so it is added here when it exists; add `?mock=1` to pre
 
 ## Run
 
-Node 22.18 or newer (`.nvmrc` pins 22.22.0): the server runs TypeScript directly by stripping types.
+Node 22.18 or newer (`.nvmrc` pins 22.23.3): the server runs TypeScript directly by stripping types.
 
 ```sh
 npm ci
@@ -99,7 +99,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
 | `/rivals` | Who is ahead, and who has the cards we need? | The cards our target pages lack (incomplete pages our affinity boosts), each with the teams holding it (a spare first, then the freshest sighting; how we know: bought, from a pack, a gift, crafted, listed; since when) and the teams also after it lately (board bids with their best cash, dealer asks). Then the standings by the leaderboard's last read (score, complete pages, how many of our needs each holds, the set its public moves chase, flagged when it is one we aim for), and our album beside the album of the team picked there (`?team=`): neighbourhood by neighbourhood in our Album screen's order, our twelve cells next to theirs slot by slot, their cards seen in public moves filled and every other one drawn as unknown, never missing. Read from Postgres (db/rival_albums.sql): only public game facts, never a value of ours. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams; our open offers on the boards, each posted by hand marked "a mano" (no agent manages it). Ours come from `db/game.sql`'s `show.game_our_offers`, however long ago they were listed (`server/game/dbsource.ts` sends them as the sticky `offers.ours`, replayed after the backlog). |
-| `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
+| `/history` | Where did our cash go? Where do the other teams beat us? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. Every team's score from the public leaderboard: where they beat us and where we beat them (vs the leader, the team just above and the mean), every team's score and our place over the day, and what moved our place (db/teams_score.sql). |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
 | `/injections` | Who tried to prompt-inject our agents, and what did they do? | The judges' view: every recorded injection attempt, its exact text (plain text, hidden characters shown as markers), the proof to verify it and what our agent did. See [Injection attempts](#injection-attempts-the-show-debug-and-injections). |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
@@ -280,8 +280,22 @@ ticks before it (▲ moving faster, ▼ slower), which is the answer to "did the
 on the big chart. Changes to the agents' GUARDRAILS.md, STRATEGY.md or flags are not marked: that repository is
 private, and the server holds no GitHub token. Until `show.score_points` is applied the panel is the cash chart.
 
+Under it, **every team's score** (`db/teams_score.sql`, `show.team_scores`: the public leaderboard as our agents stored
+it, one read per team about every 10 ticks, kept when something moved for that team). It answers "where do they beat
+us, and where do we beat them?" first: one sentence ("Nos ganan sobre todo en creación de mercado (−0.97 vs la media)
+… El líder, Equipo 10, nos saca 5.07 en negociación"), then per part our value, our place, and the gap against the
+leader, the team just above us and the mean of the others (green where we lead, red where we trail). Then every team's
+score over the day as steps (ours highlighted, up to five followed teams in colour, the rest muted; hover, drag or the
+arrow keys list every team at that moment, highest first, with its gap to us), our place and the followed teams' over
+the day, and what moved our place (who passed us and with which part, or our own move, and our agents' restarts and
+the game's turns between the two reads). Only the board's numbers are compared, ours included: the board's `score` is
+`negotiating + market`, in points, normalised the same way for every team, and for us it equals `/me`'s `score`,
+`negotiating` and `market` at every tick. `/me`'s `neg_points`, `mm_points`, `duel_points`, `ladder_points` and
+`bench_points` (the strips above) are our private raw parts in their own units, which the board hides for every team,
+so they are never set beside a rival's number. Pages, deals and level score nothing by themselves: shown as context.
+
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql -f db/rival_board.sql`. The server reads
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/rival_board.sql`. The server reads
 the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4), and as soon as our
 agents' sockets say something moved (below), and serves `GET /api/history`, behind `GAME_VIEW_TOKEN`. `?mock=1` shows a
 made-up day of money.
@@ -321,7 +335,7 @@ are newer than the docs; else from the server's `GUARDRAIL_*` variables (`/api/s
 cap no fresh denial has named (the rare's, the pack's) comes from `shared/guardrails.ts`, a typed copy of bazaar's
 GUARDRAILS.md and STRATEGY.md. When those files change a value, change it there and move its `since` to the first tick
 that runs it: an older denial never overrides it. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql -f db/rival_board.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/rival_board.sql`.
 The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
 
@@ -350,7 +364,7 @@ it. It carries our spares and estimates, so it stays behind `GAME_VIEW_TOKEN` an
 refuses to apply before the agents' view exists, and until then the screen says the board is not applied.
 
 Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql -f db/rival_board.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/rival_board.sql`.
 The server reads them every 15 s on the shared pool, and 5 s after the taker's tick, and serves `GET /api/rivals` (the
 same token). `?mock=1` shows a made-up market and board. Proof: `sh scripts/test-sql.sh` runs `db/rival_albums.test.ts` and
 `db/rival_board.test.ts`.
@@ -384,7 +398,7 @@ a url or money words only, often a venue's own format notice.
   desc, id desc)`. The shared pool runs with JIT off (`server/transcript/pg.ts`): with a production-sized `feed_events`
   the planner's estimates cross `jit_above_cost`, and JIT compiling cost about 240 ms per read. Until bazaar creates
   the table, the file creates nothing and succeeds: re-run it after. Apply it after the other show files, each time:
-  `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql -f db/rival_board.sql`.
+  `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/rival_board.sql`.
 - **The server.** `server/injections/` reads both views every 10 s on the shared pool. A `proof` keeps only the
   characters of an endpoint and its ids.
   - It serves `GET /api/injections`, which is **public** like `/api/transcript` (the show has no token).
@@ -402,12 +416,15 @@ a url or money words only, often a venue's own format notice.
   - `shared/injections.ts` ports the recorder's own `injection_flags`, checked against its Python output. Python and
     Node ship different Unicode versions, so the port reads a text both ways: with every mark dropped (words joined)
     and with every other non-ASCII character as a break (words split). It also refuses a text that reads differently
-    than it looks: a mark other than a plain accent, or a compatibility character beyond `… º ª µ ½ ¼ ¾` and the
-    no-break space.
+    than it looks: a mark other than a plain accent (U+0300–036F, or an emoji's variation selector), a compatibility
+    character beyond `… º ª µ ½ ¼ ¾` and the no-break space, or a character that decomposes into several letters.
   - It flags whatever the recorder flags, on every code point: `server/injections/unicode-parity.test.ts` checks it
     against `server/injections/recorder-unicode.json`, which `scripts/recorder-unicode.py` writes from bazaar's Python.
     That covers what the recorder drops, what it calls odd, its look-alike letters, its case folds, and any character
-    between two words of a keyword phrase. Re-run the script after a change to `chooser.py` or a Python upgrade.
+    between two words of a keyword phrase; and no character the port lets through may read longer (a stretched gap) or
+    as nothing (two words joined) than it does to the recorder. The test's title names the runtime's Unicode version:
+    the pinned Node (`.nvmrc`, 22.23.3) ships Unicode 17, the recorder's Python 3.12 Unicode 15. Re-run the script after
+    a change to `chooser.py` or a Python upgrade.
   - The transcript mutes a dealer's quote when its RAW words have any of those shapes, or reach the view's
     1,000-character cap (`server/transcript/rows.ts`, `muted`). The server then never vouches it to the TTS proxy, and
     the page keeps it a caption, even with `?quotes=speak`. An item without the flag counts as muted.
