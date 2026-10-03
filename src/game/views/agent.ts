@@ -31,6 +31,8 @@ export type Line = {
   price: number | null
   gain: number | null
   deal: boolean
+  /** A duel's start or result, for the screen to say in its language (`text` is the English fallback). */
+  duel?: { readonly start: boolean; readonly rival: string | null; readonly role: string | null; readonly item: string | null; readonly deadline: number | null; readonly deal: boolean; readonly price: number | null }
 }
 
 /** One line of the timeline; `tick` is where it sorts (a run's or an idle stretch's newest tick). */
@@ -85,11 +87,13 @@ function duelLine(s: State, e: GameEvent): Line {
   if (e.type === 'duel.started') {
     const stake = [p.role, p.item].filter((v) => typeof v === 'string' && v).join(' · ')
     const text = `${duel} starts${stake ? ` · ${stake}` : ''}${typeof p.deadline_tick === 'number' ? ` · ends by tick ${p.deadline_tick}` : ''}`
-    return line(e, 'result', text, { icon: LOG_ICON.open, who: rival, deal: true })
+    const duelOf = { start: true, rival, role: typeof p.role === 'string' ? p.role : null, item: typeof p.item === 'string' ? p.item : null, deadline: typeof p.deadline_tick === 'number' ? p.deadline_tick : null, deal: false, price: null }
+    return line(e, 'result', text, { icon: LOG_ICON.open, who: rival, deal: true, duel: duelOf })
   }
   const text = p.deal ? `${duel} deal at ${fmtP(p.price)}${p.points != null ? ` · ${signedNum(p.points)} pts` : ''}` : `${duel} no deal`
   return line(e, 'result', text, {
     icon: p.deal ? LOG_ICON.accept : LOG_ICON.walk, tone: p.deal ? 'good' : 'bad', who: rival, price: p.price ?? null, deal: true,
+    duel: { start: false, rival, role: null, item: null, deadline: null, deal: Boolean(p.deal), price: typeof p.price === 'number' ? p.price : null },
   })
 }
 

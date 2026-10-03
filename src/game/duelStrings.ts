@@ -34,7 +34,8 @@ export interface DuelStrings {
   readonly rounds: (n: number) => string
   readonly decay: (share: number, cost: number | null) => string
   readonly decayTitle: (decay: number) => string
-  readonly left: (n: number) => string
+  /** `span` is the time left said as "~2 min". */
+  readonly left: (n: number, span: string) => string
   readonly leftTitle: (deadline: number) => string
   readonly agent: string
   readonly action: Readonly<Record<DuelAction, string>>
@@ -42,7 +43,8 @@ export interface DuelStrings {
   readonly blockedBy: (rule: string) => string
   readonly failedWith: (error: string) => string
   readonly atTick: (tick: number) => string
-  readonly acceptPlan: (tick: number) => string
+  /** When the accept is planned, said as "in ~1 min". */
+  readonly acceptPlan: (when: string) => string
   readonly acceptPlanTitle: string
   readonly noDecision: string
   readonly details: string
@@ -71,8 +73,9 @@ export interface DuelStrings {
   readonly endedAt: (tick: number) => string
   readonly health: string
   readonly healthState: Readonly<Record<AgentState, string>>
-  readonly silentSince: (tick: number | null, ticks: number | null) => string
-  readonly decidedAt: (tick: number) => string
+  /** `ago` as "3 min ago", null when it never decided. */
+  readonly silentSince: (ago: string | null) => string
+  readonly decidedAt: (ago: string) => string
   readonly topBlock: (rule: string, n: number) => string
   readonly noBlock: string
   readonly link: (n: number) => string
@@ -116,7 +119,7 @@ const EN: DuelStrings = {
   rounds: (n) => plural(n, 'round', 'rounds'),
   decay: (share, cost) => `decay −${pct(share)}${cost != null ? ` (−${p(cost)})` : ''}`,
   decayTitle: (decay) => `Every round keeps ${pct(1 - decay)} of the deal's value; this is what the rounds so far have cost`,
-  left: (n) => (n === 0 ? 'ends this tick' : `${n}t left`),
+  left: (n, span) => (n === 0 ? 'ends this tick' : `${span} left`),
   leftTitle: (deadline) => `Ticks until the deadline (tick ${deadline})`,
   agent: 'Agent',
   action: { offer: 'offer', accept: 'accept', hold: 'hold', other: 'act' },
@@ -124,7 +127,7 @@ const EN: DuelStrings = {
   blockedBy: (rule) => `blocked by ${rule}`,
   failedWith: (error) => `failed: ${error}`,
   atTick: (tick) => `tick ${tick}`,
-  acceptPlan: (tick) => `accept planned by tick ${tick}`,
+  acceptPlan: (when) => `accept planned ${when}`,
   acceptPlanTitle: 'duel_policy v2 plans each accept by the deadline − 2 (one accept per tick for the whole team)',
   noDecision: 'no decision on this duel yet',
   details: 'details',
@@ -154,8 +157,8 @@ const EN: DuelStrings = {
   endedAt: (tick) => `t${tick}`,
   health: 'Duels agent',
   healthState: { none: 'NO LOG', silent: 'SILENT', quiet: 'QUIET', stuck: 'BLOCKED', ok: 'OK' },
-  silentSince: (tick, ticks) => (tick == null ? 'has never decided' : `silent since tick ${tick}${ticks != null ? ` (${plural(ticks, 'tick', 'ticks')})` : ''}`),
-  decidedAt: (tick) => `last decision at tick ${tick}`,
+  silentSince: (ago) => (ago == null ? 'has never decided' : `silent: last decision ${ago}`),
+  decidedAt: (ago) => `last decision ${ago}`,
   topBlock: (rule, n) => `blocked most by ${rule} ×${n} this game hour`,
   noBlock: 'nothing blocked this game hour',
   link: (n) => `${plural(n, 'live duel', 'live duels')} →`,
@@ -199,7 +202,7 @@ const ES: DuelStrings = {
   rounds: (n) => plural(n, 'ronda', 'rondas'),
   decay: (share, cost) => `desgaste −${pct(share)}${cost != null ? ` (−${p(cost)})` : ''}`,
   decayTitle: (decay) => `Cada ronda conserva el ${pct(1 - decay)} del valor del trato; esto es lo que han costado las rondas hasta ahora`,
-  left: (n) => (n === 0 ? 'acaba este turno' : `quedan ${n}t`),
+  left: (n, span) => (n === 0 ? 'acaba este turno' : `quedan ${span}`),
   leftTitle: (deadline) => `Turnos hasta el plazo (turno ${deadline})`,
   agent: 'Agente',
   action: { offer: 'oferta', accept: 'aceptar', hold: 'esperar', other: 'actuar' },
@@ -207,7 +210,7 @@ const ES: DuelStrings = {
   blockedBy: (rule) => `bloqueada por ${rule}`,
   failedWith: (error) => `fallida: ${error}`,
   atTick: (tick) => `turno ${tick}`,
-  acceptPlan: (tick) => `aceptación prevista antes del turno ${tick}`,
+  acceptPlan: (when) => `aceptación prevista ${when}`,
   acceptPlanTitle: 'duel_policy v2 planifica cada aceptación para el plazo − 2 (una aceptación por turno para todo el equipo)',
   noDecision: 'aún sin decisión en este duelo',
   details: 'detalles',
@@ -237,8 +240,8 @@ const ES: DuelStrings = {
   endedAt: (tick) => `t${tick}`,
   health: 'Agente de duelos',
   healthState: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', quiet: 'CALLADO', stuck: 'BLOQUEADO', ok: 'OK' },
-  silentSince: (tick, ticks) => (tick == null ? 'nunca ha decidido' : `en silencio desde el turno ${tick}${ticks != null ? ` (${plural(ticks, 'turno', 'turnos')})` : ''}`),
-  decidedAt: (tick) => `última decisión en el turno ${tick}`,
+  silentSince: (ago) => (ago == null ? 'nunca ha decidido' : `en silencio: última decisión ${ago}`),
+  decidedAt: (ago) => `última decisión ${ago}`,
   topBlock: (rule, n) => `lo bloquea sobre todo ${rule} ×${n} esta hora de juego`,
   noBlock: 'nada bloqueado esta hora de juego',
   link: (n) => `${plural(n, 'duelo en curso', 'duelos en curso')} →`,

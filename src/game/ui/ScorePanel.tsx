@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import type { ScoreMark, ScorePoint } from '../../../shared/history.ts'
 import { fmtP, signed } from '../game.ts'
+import { agentName } from '../humanize.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
 import {
   PAD,
@@ -41,7 +42,7 @@ const clock = (iso: string | null): string | null => (iso ? new Date(iso).toLoca
 
 function markText(g: MarkGroup, t: GameStrings): string {
   const S = t.history.score
-  return g.kind === 'start' ? S.start(g.agent ?? '?', g.count, g.tick, g.last) : (S.game[g.action ?? ''] ?? g.action ?? '?')
+  return g.kind === 'start' ? S.start(agentName(t, g.agent ?? '?'), g.count, g.tick, g.last) : (S.game[g.action ?? ''] ?? g.action ?? '?')
 }
 
 /** After the mark against the same number of ticks before it: faster, slower, the same. */
@@ -147,7 +148,7 @@ export function ScorePanel({ scores, marks, missing }: { scores: readonly ScoreP
           <span className="gm-muted">{S.from}</span> <strong>{markText(span.from, t)}</strong>
           <span className="gm-muted">
             {' '}
-            · {clock(span.from.at) ?? ''} t{span.start}
+            · <span title={`${t.tick} ${span.start}`}>{clock(span.from.at) ?? `${t.tick} ${span.start}`}</span>
           </span>{' '}
           → <strong>{span.to ? markText(span.to, t) : S.now}</strong>
           <span className="gm-muted"> · {S.ticks(span.end - span.start, minutes)}</span>
@@ -220,7 +221,7 @@ export function ScorePanel({ scores, marks, missing }: { scores: readonly ScoreP
                 <strong>{markText(tip, t)}</strong>
                 <span>{tip.kind === 'start' ? S.startWhy : tip.note}</span>
                 <span className="gm-muted">
-                  {clock(tip.at) ?? ''} · t{tip.tick}
+                  <span title={`${t.tick} ${tip.tick}`}>{clock(tip.at) ?? `${t.tick} ${tip.tick}`}</span>
                 </span>
               </>
             ) : (

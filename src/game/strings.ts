@@ -11,6 +11,7 @@ import type { AgentName, DecisionStatus } from '../../shared/decisions.ts'
 import type { HealthError } from '../../shared/health.ts'
 import type { ChipReason } from './views/health.ts'
 import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
+import { labelOf, rarityOfRule, type Denial, type ItemOf, type Who } from './humanize.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -40,6 +41,26 @@ const TACTICS_ES: Readonly<Record<string, string>> = {
 }
 
 export interface GameStrings {
+  /** One word per agent id, rule, decision kind, dealer and duel, for every screen (`humanize.ts` takes the ids apart). */
+  readonly hum: {
+    readonly agents: Readonly<Record<AgentName, string>>
+    readonly rules: Readonly<Record<string, string>>
+    readonly kinds: Readonly<Record<string, string>>
+    readonly jevVerdicts: Readonly<Record<string, string>>
+    /** A guardrail's denial as one sentence, from its numbers. */
+    readonly denial: (d: Denial) => string
+    /** How long ago: "now", "3 min ago", or ticks when the clock has not said how long a tick lasts. */
+    readonly ago: (ticks: number, seconds: number | null) => string
+    /** How long until: "in ~8 min". */
+    readonly within: (ticks: number, seconds: number | null) => string
+    readonly who: (w: Who) => string
+    readonly item: (i: ItemOf) => string
+    readonly jev: (verdict: string, percent: number | null) => string
+    /** A length of game time: "~6 min", or ticks without the clock's tick length. */
+    readonly span: (ticks: number, seconds: number | null) => string
+    readonly duelStart: (rival: string | null, role: string | null, card: string | null, lasts: string | null) => string
+    readonly duelEnd: (rival: string | null, deal: boolean, price: string | null) => string
+  }
   readonly nav: Readonly<Record<Route, string>>
   readonly navHint: Readonly<Record<Route, string>>
   readonly navLabel: string
@@ -87,7 +108,7 @@ export interface GameStrings {
     readonly now_: string
     readonly deals: (n: number) => string
   }
-  /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agent names and rule ids stay as the agents write them. */
+  /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agents, kinds and rules get their words from `hum` (via `../humanize.ts`). */
   readonly decide: {
     readonly idle: (agents: readonly { readonly agent: string; readonly last: number | null }[]) => string
     /** A run of the same refusal, folded into one row. */
@@ -126,12 +147,12 @@ export interface GameStrings {
     readonly jevWrong: string
     readonly target: Readonly<Record<'trade' | 'dealer' | 'duel', string>>
   }
-  /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agent names, kinds and rule ids stay as written. */
+  /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agents, kinds and rules get their words from `hum`. */
   readonly agt: {
     readonly agents: string
-    readonly agentsSub: (silence: Silence) => string
+    readonly agentsSub: (silence: Silence, names: Readonly<Record<AgentName, string>>) => string
     readonly state: Readonly<Record<'none' | 'silent' | 'quiet' | 'stuck' | 'ok', string>>
-    readonly ago: (n: number) => string
+    readonly ago: (n: number, seconds: number | null) => string
     readonly never: string
     readonly noLog: string
     readonly last: string
@@ -139,7 +160,7 @@ export interface GameStrings {
     readonly noBlocks: string
     readonly ofHour: (blocks: number, decisions: number) => string
     readonly inARow: (n: number) => string
-    readonly restarted: (n: number, tick: number) => string
+    readonly restarted: (n: number, when: string) => string
     readonly money: string
     readonly acceptsTick: (n: number, cap: number) => string
     readonly idle: string
@@ -346,7 +367,7 @@ export interface GameStrings {
     readonly forUs: string
     readonly forUsTitle: string
     readonly more: (n: number) => string
-    readonly expiresIn: (ticks: number, minutes: number | null) => string
+    readonly expiresIn: (ticks: number, seconds: number | null) => string
     readonly from: (maker: string, venue: string) => string
     readonly untaken: (age: number) => string
     readonly agentSaid: (agent: string, status: string, rule: string | null) => string
@@ -415,7 +436,7 @@ export interface GameStrings {
     readonly inForce: string
     readonly inForceSub: (n: number, lifted: number) => string
     readonly noneInForce: string
-    readonly lifts: (n: number) => string
+    readonly lifts: (n: number, seconds: number | null) => string
     readonly liftsUnknown: string
     readonly forUs: string
     readonly forAll: string
@@ -426,6 +447,8 @@ export interface GameStrings {
     readonly factsSub: (n: number) => string
     readonly noFacts: string
     readonly support: (n: number) => string
+    /** The organiser's subjects (the schedule, the duels, the radio), named; anyone else by `whoName`. */
+    readonly subjects: Readonly<Record<string, string>>
     readonly confidence: string
     readonly kinds: Readonly<Record<string, string>>
     readonly sources: Readonly<Record<string, string>>
@@ -453,7 +476,6 @@ export interface GameStrings {
     readonly notice: Readonly<Record<'loading' | 'off' | 'locked' | 'error' | 'mock', string>>
     readonly missing: string
     readonly now: string
-    readonly nowSub: (tick: number | null) => string
     readonly stats: Readonly<Record<'open' | 'low' | 'high' | 'in' | 'out' | 'fees' | 'trades', string>>
     readonly tradesValue: (buys: number, sells: number) => string
     readonly chart: string
@@ -467,8 +489,9 @@ export interface GameStrings {
     readonly filters: Readonly<Record<'all' | 'in' | 'out', string>>
     readonly head: readonly string[]
     readonly line: {
-      readonly buy: (card: string, from: string, fee: number) => string
-      readonly sell: (card: string, to: string) => string
+      /** The card is the chip beside the sentence. */
+      readonly buy: (from: string, fee: number) => string
+      readonly sell: (to: string) => string
       readonly bond: (venue: string, bond: number | null) => string
       readonly gift: string
       readonly pack: (pack: string, best: string | null) => string
@@ -511,7 +534,98 @@ export interface GameStrings {
   }
 }
 
+/** A span as a person says it, rounded: 40 s, 3 min, 1 h 5 min. */
+const roughly = (s: number): string => (s < 55 ? `${Math.max(10, Math.round(s / 10) * 10)} s` : s < 3570 ? `${Math.round(s / 60)} min` : span(s))
+
+const RARITY_PL_EN: Readonly<Record<string, string>> = { common: 'commons', uncommon: 'uncommons', rare: 'rares', epic: 'epics', legendary: 'legendaries' }
+const RARITY_PL_ES: Readonly<Record<string, string>> = { common: 'comunes', uncommon: 'poco comunes', rare: 'raras', epic: 'épicas', legendary: 'legendarias' }
+
+const JEV_EN: Readonly<Record<string, string>> = { yes: 'yes', no: 'no', undecided: 'unsure', aggressive: 'aggressive', counter: 'counter', accept: 'accept', fair: 'fair' }
+
+const HUM_EN: GameStrings['hum'] = {
+  agents: { taker: 'Buyer', maker: 'Seller', duels: 'Duels' },
+  rules: {
+    max_price: 'price cap', max_price_common: 'price cap for commons', max_price_uncommon: 'price cap for uncommons', max_price_rare: 'price cap for rares',
+    max_price_epic: 'price cap for epics', max_price_legendary: 'price cap for legendaries', cash_floor: 'cash floor',
+    max_spend_per_game_hour: 'spend cap per game hour', max_packs_per_game_hour: 'pack cap per game hour', block_buying_held_cards: 'never buy a card we hold',
+    protect_page_sets: 'protect our pages', max_accepts_per_tick: 'accepts per tick', max_counterparty_share: 'too much with one counterparty',
+    allow_flags: 'switched off', open_sealed_packs: 'pack opening off', duel_inside_limit: 'outside our duel limit', allow_venue_open: 'opening a venue off',
+    venue_open_after_game_hours: 'venue out of hours', trading_enabled: 'trading off', inspect_accepts: 'accept check', pause_file: 'paused by hand',
+    sell_min_value_ratio: 'sale under our value', other: 'another rule',
+  },
+  kinds: {
+    accept_ask: 'buy off the board', team_open: 'open a deal with a team', post_ask: 'list for sale', cancel_ask: 'take off sale',
+    dealer_sell: 'sell to a dealer', dealer_bid: 'bid to a dealer', dealer_open: 'open with a dealer', dealer_opened: 'dealer thread opened',
+    dealer_closed: 'dealer thread closed', dealer_accept: "take the dealer's price", dealer_walk: 'walk away from the dealer', pack_open: 'open a pack',
+    duel_offer: 'offer', duel_hold: 'hold', duel_accept: 'accept', process_started: 'restart (deploy)',
+    listing: 'listed', accept: 'accepted', spend: 'spent',
+  },
+  jevVerdicts: JEV_EN,
+  denial: (d) => {
+    switch (d.shape) {
+      case 'price': {
+        const r = rarityOfRule(d.rule)
+        return `costs ${d.price} P; our cap${r ? ` for ${RARITY_PL_EN[r] ?? r}` : ''} is ${d.cap} P`
+      }
+      case 'cash': return `would leave us ${Math.round((d.cash - d.cost) * 10) / 10} P, under the ${d.floor} P floor`
+      case 'spend': return `we would spend ${Math.round((d.spent + d.cost) * 10) / 10} P this game hour; the cap is ${d.cap} P`
+    }
+  },
+  ago: (ticks, seconds) => (ticks <= 0 ? 'now' : seconds == null ? `${plural(ticks, 'tick', 'ticks')} ago` : `${roughly(seconds)} ago`),
+  within: (ticks, seconds) => (ticks <= 0 ? 'now' : seconds == null ? `in ${plural(ticks, 'tick', 'ticks')}` : `in ~${roughly(seconds)}`),
+  who: (w) => (w.kind === 'team' ? `Team ${w.n}` : w.kind === 'venue' ? `venue ${w.n}` : w.name),
+  item: (i) => (i.kind === 'card' ? i.name ?? i.ref : i.kind === 'duel' ? (i.rival ? `duel with ${i.rival}` : `duel #${i.id}`) : i.kind === 'pack' ? `${i.pack} pack` : i.text),
+  jev: (verdict, pct) => `Jev: ${labelOf(JEV_EN, verdict)}${pct == null ? '' : ` (${pct}%)`}`,
+  span: (ticks, seconds) => (seconds == null ? plural(ticks, 'tick', 'ticks') : `~${roughly(seconds)}`),
+  duelStart: (rival, role, card, lasts) =>
+    `Duel with ${rival ?? 'a rival'} starts${role ? ` · we ${role === 'seller' ? 'sell' : 'buy'}` : ''}${card ? ` ${card}` : ''}${lasts ? ` · lasts ${lasts}` : ''}`,
+  duelEnd: (rival, deal, price) => `Duel with ${rival ?? 'a rival'}: ${deal ? `deal${price ? ` at ${price}` : ''}` : 'no deal'}`,
+}
+
+const JEV_ES: Readonly<Record<string, string>> = { yes: 'sí', no: 'no', undecided: 'no lo ve claro', aggressive: 'agresivo', counter: 'contraoferta', accept: 'aceptar', fair: 'justo' }
+
+const HUM_ES: GameStrings['hum'] = {
+  agents: { taker: 'Comprador', maker: 'Vendedor', duels: 'Duelos' },
+  rules: {
+    max_price: 'tope de precio', max_price_common: 'tope para comunes', max_price_uncommon: 'tope para poco comunes', max_price_rare: 'tope para raras',
+    max_price_epic: 'tope para épicas', max_price_legendary: 'tope para legendarias', cash_floor: 'suelo de caja',
+    max_spend_per_game_hour: 'tope de gasto por hora de juego', max_packs_per_game_hour: 'tope de sobres por hora de juego', block_buying_held_cards: 'no comprar cartas que ya tenemos',
+    protect_page_sets: 'proteger nuestras páginas', max_accepts_per_tick: 'aceptaciones por turno', max_counterparty_share: 'demasiado con una misma contraparte',
+    allow_flags: 'opción apagada', open_sealed_packs: 'abrir sobres apagado', duel_inside_limit: 'fuera de nuestro límite del duelo', allow_venue_open: 'abrir puesto apagado',
+    venue_open_after_game_hours: 'puesto fuera de horario', trading_enabled: 'comercio apagado', inspect_accepts: 'revisión de aceptaciones', pause_file: 'pausa manual',
+    sell_min_value_ratio: 'venta por debajo de nuestro valor', other: 'otra regla',
+  },
+  kinds: {
+    accept_ask: 'comprar del tablón', team_open: 'abrir trato con un equipo', post_ask: 'poner a la venta', cancel_ask: 'retirar de la venta',
+    dealer_sell: 'vender a un tratante', dealer_bid: 'pujar a un tratante', dealer_open: 'abrir trato con un tratante', dealer_opened: 'trato con tratante abierto',
+    dealer_closed: 'trato con tratante cerrado', dealer_accept: 'aceptar el precio del tratante', dealer_walk: 'dejar al tratante', pack_open: 'abrir un sobre',
+    duel_offer: 'ofertar', duel_hold: 'esperar', duel_accept: 'aceptar', process_started: 'reinicio (despliegue)',
+    listing: 'a la venta', accept: 'aceptada', spend: 'gasto',
+  },
+  jevVerdicts: JEV_ES,
+  denial: (d) => {
+    switch (d.shape) {
+      case 'price': {
+        const r = rarityOfRule(d.rule)
+        return `cuesta ${d.price} P; nuestro tope${r ? ` para ${RARITY_PL_ES[r] ?? r}` : ''} es ${d.cap} P`
+      }
+      case 'cash': return `nos dejaría con ${Math.round((d.cash - d.cost) * 10) / 10} P, por debajo del suelo de ${d.floor} P`
+      case 'spend': return `gastaríamos ${Math.round((d.spent + d.cost) * 10) / 10} P esta hora de juego; el tope es ${d.cap} P`
+    }
+  },
+  ago: (ticks, seconds) => (ticks <= 0 ? 'ahora' : seconds == null ? `hace ${plural(ticks, 'turno', 'turnos')}` : `hace ${roughly(seconds)}`),
+  within: (ticks, seconds) => (ticks <= 0 ? 'ya' : seconds == null ? `en ${plural(ticks, 'turno', 'turnos')}` : `en ~${roughly(seconds)}`),
+  who: (w) => (w.kind === 'team' ? `Equipo ${w.n}` : w.kind === 'venue' ? `puesto ${w.n}` : w.name),
+  item: (i) => (i.kind === 'card' ? i.name ?? i.ref : i.kind === 'duel' ? (i.rival ? `duelo con ${i.rival}` : `duelo #${i.id}`) : i.kind === 'pack' ? `sobre de ${i.pack}` : i.text),
+  jev: (verdict, pct) => `Jev: ${labelOf(JEV_ES, verdict)}${pct == null ? '' : ` (${pct} %)`}`,
+  span: (ticks, seconds) => (seconds == null ? plural(ticks, 'turno', 'turnos') : `~${roughly(seconds)}`),
+  duelStart: (rival, role, card, lasts) =>
+    `Empieza un duelo con ${rival ?? 'un rival'}${role ? ` · ${role === 'seller' ? 'vendemos' : 'compramos'}` : ''}${card ? ` ${card}` : ''}${lasts ? ` · dura ${lasts}` : ''}`,
+  duelEnd: (rival, deal, price) => `Duelo con ${rival ?? 'un rival'}: ${deal ? `trato${price ? ` a ${price}` : ''}` : 'sin trato'}`,
+}
+
 const EN: GameStrings = {
+  hum: HUM_EN,
   nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
@@ -592,7 +706,7 @@ const EN: GameStrings = {
     jev: 'Jev',
     error: (code) => `error ${code}`,
     blocks: 'Blocks by rule',
-    blocksSub: (fromTick) => `last game hour, since tick ${fromTick}`,
+    blocksSub: () => 'last game hour',
     noBlocks: 'No guardrail blocked anything in the last game hour.',
     times: (n) => `${n}×`,
     ledger: 'Ledger',
@@ -616,9 +730,9 @@ const EN: GameStrings = {
   },
   agt: {
     agents: 'Agents',
-    agentsSub: (x) => `silent after ${plural(x.taker.silent, 'tick', 'ticks')} without a decision · maker quiet first, silent after ${x.maker.silent} · duels after ${x.duels.silent}`,
+    agentsSub: (x, n) => `${n.taker} silent after ${plural(x.taker.silent, 'tick', 'ticks')} without deciding · ${n.maker} after ${x.maker.silent} · ${n.duels} after ${x.duels.silent}`,
     state: { none: 'NO LOG', silent: 'SILENT', quiet: 'QUIET', stuck: 'BLOCKED', ok: 'OK' },
-    ago: (n) => (n === 0 ? 'decided this tick' : `last decision ${plural(n, 'tick', 'ticks')} ago`),
+    ago: (n, sec) => (n === 0 ? 'decided this tick' : `last decision ${HUM_EN.ago(n, sec)}`),
     never: 'never decided',
     noLog: 'no decision log from this source',
     last: 'last',
@@ -626,7 +740,7 @@ const EN: GameStrings = {
     noBlocks: 'nothing blocked this game hour',
     ofHour: (blocks, decisions) => `${blocks} of ${plural(decisions, 'decision', 'decisions')} this game hour`,
     inARow: (n) => `×${n} in a row`,
-    restarted: (n, tick) => (n > 1 ? `restarted ×${n} this game hour` : `restarted at tick ${tick}`),
+    restarted: (n, when) => (n > 1 ? `restarted ×${n} this game hour` : `restarted ${when}`),
     money: 'Money',
     acceptsTick: (n, cap) => `accepts this tick ${n} / ${cap}`,
     idle: 'no decisions',
@@ -876,7 +990,7 @@ const EN: GameStrings = {
     forUs: 'for us',
     forUsTitle: 'Addressed to our team alone',
     more: (n) => `+${n} more`,
-    expiresIn: (ticks, minutes) => (ticks <= 0 ? 'expires now' : `expires in ${ticks}t${minutes == null ? '' : ` · ~${minutes} min`}`),
+    expiresIn: (ticks, seconds) => (ticks <= 0 ? 'expires now' : `expires ${HUM_EN.within(ticks, seconds)}`),
     from: (maker, venue) => `${maker} on ${venue}`,
     untaken: (age) => `Up for ${plural(age, 'tick', 'ticks')} and our agents have not taken it`,
     agentSaid: (agent, status, rule) => `${agent}: ${status}${rule ? ` · ${rule}` : ''}`,
@@ -951,7 +1065,7 @@ const EN: GameStrings = {
     inForce: 'Blocking us now',
     inForceSub: (n, lifted) => `${plural(n, 'learning', 'learnings')}${lifted ? ` · ${lifted} lifted` : ''}`,
     noneInForce: 'Nothing is blocking a deal right now.',
-    lifts: (n) => (n <= 0 ? 'lifts now' : `lifts in ${n}t`),
+    lifts: (n, sec) => (n <= 0 ? 'lifts now' : `lifts ${HUM_EN.within(n, sec)}`),
     liftsUnknown: 'until a tick',
     forUs: 'us',
     forAll: 'everyone',
@@ -961,11 +1075,13 @@ const EN: GameStrings = {
     facts: 'Read from the feed',
     factsSub: (n) => `${plural(n, 'fact', 'facts')} · newest first`,
     noFacts: 'No fact read from the feed yet.',
-    support: (n) => `${n} ×`,
+    support: (n) => `seen ${n}×`,
+    subjects: { organiser: 'the organisers', schedule: 'schedule', duels: 'duels', radio: 'radio' },
     confidence: 'confidence',
     kinds: {
       blocker: 'blocked', cooloff: 'cooloff', quota: 'quota', sold_out: 'sold out', price_floor: 'price floor', behaviour: 'behaviour',
       rule_change: 'rule', fee_change: 'fee', announcement: 'notice', lesson: 'lesson', policy: 'policy', tactic: 'tactic',
+      schedule: 'schedule', news: 'news',
     },
     sources: { rules: 'rules', llm: 'LLM', outcome: 'outcome' },
     dealers: 'How each dealer behaves',
@@ -981,7 +1097,7 @@ const EN: GameStrings = {
     moves: 'Dealer moves',
     movesSub: (n) => plural(n, 'move', 'moves'),
     noMoves: 'No dealer move matches.',
-    moveHead: ['tick', 'dealer', 'thread', 'move', 'her price', 'our price', 'step', 'whose'],
+    moveHead: ['when', 'dealer', 'thread', 'move', 'her price', 'our price', 'step', 'whose'],
     which: 'Whose threads',
     ours: 'Ours',
     all: 'All',
@@ -991,7 +1107,7 @@ const EN: GameStrings = {
     rivals: 'Rivals',
     rivalsSub: (n) => `${plural(n, 'team', 'teams')} · most active first`,
     noRivals: 'No rival profile yet.',
-    rivalHead: ['team', 'level', 'venue', 'bought', 'sold', 'spent', 'earned', 'chases', 'dealer deals', 'pack price', 'tick'],
+    rivalHead: ['team', 'level', 'venue', 'bought', 'sold', 'spent', 'earned', 'chases', 'dealer deals', 'pack price', 'updated'],
   },
   history: {
     notice: {
@@ -1003,7 +1119,6 @@ const EN: GameStrings = {
     },
     missing: 'not applied yet (db/history.sql)',
     now: 'Cash now',
-    nowSub: (tick) => (tick === null ? 'no reading yet' : `at tick ${tick}`),
     stats: { open: 'first today', low: 'lowest', high: 'highest', in: 'money in', out: 'money out', fees: 'fees paid', trades: 'trades' },
     tradesValue: (buys, sells) => `${buys} bought · ${sells} sold`,
     chart: 'Cash today',
@@ -1015,13 +1130,13 @@ const EN: GameStrings = {
     noMoves: 'No movement matches.',
     filter: 'Show',
     filters: { all: 'All', in: 'Money in', out: 'Money out' },
-    head: ['tick', 'change', 'cash after', 'what moved it'],
+    head: ['when', 'change', 'cash after', 'what moved it'],
     line: {
-      buy: (card, from, fee) => `Bought ${card} from ${from}${fee ? ` (+${fee} P fee)` : ''}`,
-      sell: (card, to) => `Sold ${card} to ${to}`,
+      buy: (from, fee) => `bought from ${from}${fee ? ` (+${fee} P fee)` : ''}`,
+      sell: (to) => `sold to ${to}`,
       bond: (venue, bond) => `Opened our market ${venue}${bond ? `: a ${bond} P bond` : ''}`,
       gift: 'A gift',
-      pack: (pack, best) => `Opened a pack (${pack})${best ? `, best card ${best}` : ''}`,
+      pack: (pack, best) => `Opened a ${pack}${best ? `; best card ${best}` : ''}`,
       level: (level, why) => `Level ${level ?? '?'} unlocked${why ? `: ${why}` : ''}`,
       failed: 'A settlement failed',
       closed: (venue) => `Market ${venue} closed`,
@@ -1032,7 +1147,7 @@ const EN: GameStrings = {
     orders: 'What our agents committed',
     ordersSub: (n) => `${plural(n, 'order', 'orders')} in the ledger · newest first`,
     noOrders: 'No order in the ledger yet.',
-    ordersHead: ['tick', 'agent', 'order', 'card', 'price'],
+    ordersHead: ['when', 'agent', 'order', 'card', 'price'],
     agent: 'Agent',
     allAgents: 'All',
     score: {
@@ -1042,13 +1157,13 @@ const EN: GameStrings = {
       until: 'Compare until',
       untilNow: 'until now',
       untilNext: 'until the next mark',
-      start: (agent, count, first, last) => `${agent} restart${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      start: (agent, count) => `${agent} restart${count > 1 ? ` ×${count}` : ''}`,
       startWhy: 'the process started: a deploy or a restart',
       game: { round: 'New round', bench: 'Market Test', duels: 'Duels', day: 'New day' },
       from: 'since',
       to: 'until',
       now: 'now',
-      ticks: (n, minutes) => `${plural(n, 'tick', 'ticks')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      ticks: (n, minutes) => (minutes === null ? plural(n, 'tick', 'ticks') : `${minutes} min`),
       after: 'since the mark',
       before: (ticks) => `the ${ticks} ticks before`,
       better: 'moving faster than before the mark',
@@ -1062,6 +1177,7 @@ const EN: GameStrings = {
 }
 
 const ES: GameStrings = {
+  hum: HUM_ES,
   nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
@@ -1142,7 +1258,7 @@ const ES: GameStrings = {
     jev: 'Jev',
     error: (code) => `error ${code}`,
     blocks: 'Bloqueos por regla',
-    blocksSub: (fromTick) => `última hora de juego, desde el turno ${fromTick}`,
+    blocksSub: () => 'última hora de juego',
     noBlocks: 'Ningún límite ha bloqueado nada en la última hora de juego.',
     times: (n) => `${n}×`,
     ledger: 'Libro de gastos',
@@ -1166,9 +1282,9 @@ const ES: GameStrings = {
   },
   agt: {
     agents: 'Agentes',
-    agentsSub: (x) => `en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · el maker primero callado, en silencio tras ${x.maker.silent} · duelos tras ${x.duels.silent}`,
+    agentsSub: (x, n) => `${n.taker} en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · ${n.maker} tras ${x.maker.silent} · ${n.duels} tras ${x.duels.silent}`,
     state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', quiet: 'CALLADO', stuck: 'BLOQUEADO', ok: 'OK' },
-    ago: (n) => (n === 0 ? 'ha decidido este turno' : `última decisión hace ${plural(n, 'turno', 'turnos')}`),
+    ago: (n, sec) => (n === 0 ? 'ha decidido este turno' : `última decisión ${HUM_ES.ago(n, sec)}`),
     never: 'nunca ha decidido',
     noLog: 'esta fuente no trae registro de decisiones',
     last: 'última',
@@ -1176,7 +1292,7 @@ const ES: GameStrings = {
     noBlocks: 'nada bloqueado esta hora de juego',
     ofHour: (blocks, decisions) => `${blocks} de ${plural(decisions, 'decisión', 'decisiones')} esta hora de juego`,
     inARow: (n) => `×${n} seguidas`,
-    restarted: (n, tick) => (n > 1 ? `reiniciado ×${n} esta hora de juego` : `reiniciado en el turno ${tick}`),
+    restarted: (n, when) => (n > 1 ? `reiniciado ×${n} esta hora de juego` : `reiniciado ${when}`),
     money: 'Dinero',
     acceptsTick: (n, cap) => `aceptaciones este turno ${n} / ${cap}`,
     idle: 'sin decisiones',
@@ -1426,7 +1542,7 @@ const ES: GameStrings = {
     forUs: 'para nosotros',
     forUsTitle: 'Dirigida solo a nuestro equipo',
     more: (n) => `+${n} más`,
-    expiresIn: (ticks, minutes) => (ticks <= 0 ? 'caduca ya' : `caduca en ${ticks}t${minutes == null ? '' : ` · ~${minutes} min`}`),
+    expiresIn: (ticks, seconds) => (ticks <= 0 ? 'caduca ya' : `caduca ${HUM_ES.within(ticks, seconds)}`),
     from: (maker, venue) => `${maker} en ${venue}`,
     untaken: (age) => `Lleva ${plural(age, 'turno', 'turnos')} y nuestros agentes no la han cogido`,
     agentSaid: (agent, status, rule) => `${agent}: ${status}${rule ? ` · ${rule}` : ''}`,
@@ -1501,7 +1617,7 @@ const ES: GameStrings = {
     inForce: 'Lo que nos bloquea ahora',
     inForceSub: (n, lifted) => `${plural(n, 'aprendizaje', 'aprendizajes')}${lifted ? ` · ${lifted} levantados` : ''}`,
     noneInForce: 'Nada bloquea un trato ahora mismo.',
-    lifts: (n) => (n <= 0 ? 'se levanta ya' : `se levanta en ${n}t`),
+    lifts: (n, sec) => (n <= 0 ? 'se levanta ya' : `se levanta ${HUM_ES.within(n, sec)}`),
     liftsUnknown: 'hasta un turno',
     forUs: 'nosotros',
     forAll: 'todos',
@@ -1511,11 +1627,13 @@ const ES: GameStrings = {
     facts: 'Leído del feed',
     factsSub: (n) => `${plural(n, 'hecho', 'hechos')} · los más recientes primero`,
     noFacts: 'Aún no se ha leído ningún hecho del feed.',
-    support: (n) => `${n} ×`,
+    support: (n) => `visto ${plural(n, 'vez', 'veces')}`,
+    subjects: { organiser: 'la organización', schedule: 'calendario', duels: 'duelos', radio: 'radio' },
     confidence: 'confianza',
     kinds: {
       blocker: 'bloqueo', cooloff: 'enfriamiento', quota: 'cupo', sold_out: 'agotado', price_floor: 'precio suelo', behaviour: 'conducta',
       rule_change: 'regla', fee_change: 'comisión', announcement: 'aviso', lesson: 'lección', policy: 'política', tactic: 'táctica',
+      schedule: 'calendario', news: 'noticia',
     },
     sources: { rules: 'reglas', llm: 'LLM', outcome: 'resultado' },
     dealers: 'Cómo se comporta cada tratante',
@@ -1531,7 +1649,7 @@ const ES: GameStrings = {
     moves: 'Movimientos de los tratantes',
     movesSub: (n) => plural(n, 'movimiento', 'movimientos'),
     noMoves: 'Ningún movimiento coincide.',
-    moveHead: ['turno', 'tratante', 'hilo', 'movimiento', 'su precio', 'el nuestro', 'paso', 'de quién'],
+    moveHead: ['cuándo', 'tratante', 'hilo', 'movimiento', 'su precio', 'el nuestro', 'paso', 'de quién'],
     which: 'Qué hilos',
     ours: 'Nuestros',
     all: 'Todos',
@@ -1541,7 +1659,7 @@ const ES: GameStrings = {
     rivals: 'Rivales',
     rivalsSub: (n) => `${plural(n, 'equipo', 'equipos')} · los más activos primero`,
     noRivals: 'Aún no hay perfiles de rivales.',
-    rivalHead: ['equipo', 'nivel', 'puesto', 'compró', 'vendió', 'gastó', 'ganó', 'busca', 'tratos con tratantes', 'precio sobre', 'turno'],
+    rivalHead: ['equipo', 'nivel', 'puesto', 'compró', 'vendió', 'gastó', 'ganó', 'busca', 'tratos con tratantes', 'precio sobre', 'actualizado'],
   },
   history: {
     notice: {
@@ -1553,7 +1671,6 @@ const ES: GameStrings = {
     },
     missing: 'aún sin aplicar (db/history.sql)',
     now: 'Caja ahora',
-    nowSub: (tick) => (tick === null ? 'aún sin lectura' : `en el turno ${tick}`),
     stats: { open: 'primera de hoy', low: 'mínima', high: 'máxima', in: 'entra', out: 'sale', fees: 'comisiones', trades: 'tratos' },
     tradesValue: (buys, sells) => `${buys} compras · ${sells} ventas`,
     chart: 'Caja de hoy',
@@ -1565,13 +1682,13 @@ const ES: GameStrings = {
     noMoves: 'Ningún movimiento coincide.',
     filter: 'Mostrar',
     filters: { all: 'Todo', in: 'Entra', out: 'Sale' },
-    head: ['turno', 'cambio', 'caja después', 'qué la movió'],
+    head: ['cuándo', 'cambio', 'caja después', 'qué la movió'],
     line: {
-      buy: (card, from, fee) => `Compramos ${card} a ${from}${fee ? ` (+${fee} P de comisión)` : ''}`,
-      sell: (card, to) => `Vendimos ${card} a ${to}`,
+      buy: (from, fee) => `comprada a ${from}${fee ? ` (+${fee} P de comisión)` : ''}`,
+      sell: (to) => `vendida a ${to}`,
       bond: (venue, bond) => `Abrimos nuestro mercado ${venue}${bond ? `: ${bond} P de fianza` : ''}`,
       gift: 'Un regalo',
-      pack: (pack, best) => `Abrimos un sobre (${pack})${best ? `, mejor carta ${best}` : ''}`,
+      pack: (pack, best) => `Abrimos un ${pack}${best ? `; la mejor carta, ${best}` : ''}`,
       level: (level, why) => `Nivel ${level ?? '?'} desbloqueado${why ? `: ${why}` : ''}`,
       failed: 'Falló una liquidación',
       closed: (venue) => `Se cerró el mercado ${venue}`,
@@ -1582,7 +1699,7 @@ const ES: GameStrings = {
     orders: 'Lo que comprometieron nuestros agentes',
     ordersSub: (n) => `${plural(n, 'orden', 'órdenes')} en el libro · las más recientes primero`,
     noOrders: 'Aún no hay órdenes en el libro.',
-    ordersHead: ['turno', 'agente', 'orden', 'carta', 'precio'],
+    ordersHead: ['cuándo', 'agente', 'orden', 'carta', 'precio'],
     agent: 'Agente',
     allAgents: 'Todos',
     score: {
@@ -1592,13 +1709,13 @@ const ES: GameStrings = {
       until: 'Comparar hasta',
       untilNow: 'hasta ahora',
       untilNext: 'hasta la siguiente',
-      start: (agent, count, first, last) => `reinicio de ${agent}${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      start: (agent, count) => `${agent} reiniciado${count > 1 ? ` ×${count}` : ''}`,
       startWhy: 'arrancó el proceso: un despliegue o un reinicio',
       game: { round: 'Nueva ronda', bench: 'Prueba de mercado', duels: 'Duelos', day: 'Nuevo día' },
       from: 'desde',
       to: 'hasta',
       now: 'ahora',
-      ticks: (n, minutes) => `${plural(n, 'turno', 'turnos')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      ticks: (n, minutes) => (minutes === null ? plural(n, 'turno', 'turnos') : `${minutes} min`),
       after: 'desde la marca',
       before: (ticks) => `${ticks} turnos antes`,
       better: 'avanza más rápido que antes de la marca',

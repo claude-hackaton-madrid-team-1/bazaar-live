@@ -25,3 +25,9 @@ export const setOfName = (name: string | null | undefined): { name: string; colo
   const ref = refOfName(name)
   return ref ? setOf(ref) : null
 }
+
+/** The name of a card by its ref (`RET-11` → `Palacio de Cristal`); null for a ref the catalog lacks. */
+export const nameOfRef = (ref: string | null | undefined): string | null => {
+  const m = /^([A-Z]{3})-(\d{2})$/.exec((ref ?? '').trim().toUpperCase())
+  return m ? NAMES[m[1] ?? '']?.[Number(m[2]) - 1] ?? null : null
+}

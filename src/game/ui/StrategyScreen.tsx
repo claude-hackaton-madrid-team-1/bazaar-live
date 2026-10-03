@@ -14,7 +14,12 @@ import {
   bindingOf, blockedBuys, boardOf, holdingsOf, jevVetoOf, leversOf, nowTickOf, planOf, rulesOf, unblockOf, windowOf, WINDOW_TICKS,
   type BlockedBuy, type Binding, type KeptPage, type Levers, type Plan, type RuleValue, type Spare, type SpareWhy,
 } from '../views/strategy.ts'
+import { nameOfRef } from '../cards.ts'
+import { agoText } from '../humanize.ts'
+import { useGameStrings } from '../strings.ts'
+import { nowTick } from '../views/decisions.ts'
 import { Badge, CardRef, Empty, Fresh, Panel } from './bits.tsx'
+import { Ago } from './words.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 
 /** A value read from GUARDRAILS.md rather than live carries the source as its tooltip. */
@@ -111,7 +116,7 @@ function BlockedRow({ b }: { b: BlockedBuy }) {
           </Badge>
         )}
         <span className="gm-muted">
-          ×{b.count} · {t.ticks(b.firstTick, b.lastTick)}
+          ×{b.count} · <Ago tick={b.lastTick} from={b.firstTick} />
         </span>
       </span>
       <span className="st-block-now">
@@ -228,6 +233,7 @@ function groupByWhy(rows: readonly Spare[], label: (w: SpareWhy) => string): [st
 
 export function StrategyScreen() {
   const store = useGame()
+  const g = useGameStrings()
   const t = useStrategyStrings()
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token'), [])
   const push = pagePush(store.status, store.state, 'strategy')
@@ -272,7 +278,7 @@ export function StrategyScreen() {
         </p>
         {binding.latest && (
           <p className="st-line">
-            {t.latest(binding.latest.card, binding.latest.price, binding.latest.value, binding.latest.count, binding.latest.lastTick, binding.latest.onSaleNow !== null, sameCard ? (unblock?.cashNeeded ?? null) : null)}
+            {t.latest(nameOfRef(binding.latest.card) ?? binding.latest.card, binding.latest.price, binding.latest.value, binding.latest.count, agoText(g, store.state, binding.latest.lastTick, nowTick(store.state)), binding.latest.onSaleNow !== null, sameCard ? (unblock?.cashNeeded ?? null) : null)}
           </p>
         )}
         {unblock && !sameCard && <p className="st-line st-hint">{t.unblock(unblock)}</p>}
@@ -287,7 +293,7 @@ export function StrategyScreen() {
             ))}
           </ul>
         )}
-        {jev && <p className="st-line">{t.jev(jev)}</p>}
+        {jev && <p className="st-line">{t.jev({ ...jev, give: jev.give && (nameOfRef(jev.give) ?? jev.give), want: jev.want && (nameOfRef(jev.want) ?? jev.want) })}</p>}
         <details className="st-details st-blocked">
           <summary>
             {t.blocked} ({blocked.length})

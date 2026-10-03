@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import type { HistoryParts } from '../../../shared/history.ts'
-import { fmtP, signed } from '../game.ts'
+import { nameOfRef } from '../cards.ts'
+import { fmtP, setOf, signed } from '../game.ts'
 import { pagePush } from '../fresh.ts'
+import { agentName, itemOf, kindName, whoName } from '../humanize.ts'
 import { useHistory } from '../history.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
@@ -10,6 +12,7 @@ import { Badge, CardRef, Empty, Fresh, Panel, Seg } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 import { ScorePanel } from './ScorePanel.tsx'
 import { useWidth } from './useWidth.ts'
+import { Ago, ItemName } from './words.tsx'
 
 const tone = (n: number | null): 'in' | 'out' | undefined => (n === null || n === 0 ? undefined : n > 0 ? 'in' : 'out')
 
@@ -20,7 +23,7 @@ function Missing({ part, parts, live }: { part: keyof HistoryParts; parts: Histo
 
 function lineText(l: MoveLine, t: GameStrings): string {
   const L = t.history.line
-  if (l.trade) return l.trade.side === 'buy' ? L.buy(l.trade.card ?? '?', l.trade.counterparty, l.trade.fee) : L.sell(l.trade.card ?? '?', l.trade.counterparty)
+  if (l.trade) return l.trade.side === 'buy' ? L.buy(whoName(t, l.trade.counterparty), l.trade.fee) : L.sell(whoName(t, l.trade.counterparty))
   const e = l.event
   switch (l.kind) {
     case 'bond':
@@ -28,7 +31,7 @@ function lineText(l: MoveLine, t: GameStrings): string {
     case 'gift':
       return L.gift
     case 'pack':
-      return L.pack(e?.pack ?? '?', e?.best ?? null)
+      return L.pack(t.hum.item(itemOf(e?.pack ?? '?')), e?.best ? (nameOfRef(e.best) ?? e.best) : null)
     case 'level':
       return L.level(e?.level ?? null, e?.why ?? null)
     case 'failed':
@@ -79,10 +82,7 @@ function Moves({ rows, today }: { rows: Movement[]; today: string | null }) {
             const flow = m.delta ?? m.lines.reduce((n, l) => n + (l.amount ?? 0), 0)
             return (
               <tr key={m.key}>
-                <td className="gm-r gm-mono">
-                  {m.tick}
-                  {m.day !== today && <small className="gm-muted"> {m.day.slice(5)}</small>}
-                </td>
+                <td className="gm-r gm-when">{m.day === today ? <Ago tick={m.tick} /> : <span title={`${t.tick} ${m.tick}`}>{m.day.slice(5)}</span>}</td>
                 <td className="gm-r gm-mono gm-amount" data-tone={tone(flow)}>
                   {flow === 0 && m.delta === null ? '—' : signed(flow)}
                 </td>
@@ -173,10 +173,9 @@ export function HistoryScreen() {
           <div className="eyebrow">{t.history.now}</div>
           <div className="gm-cashhero-value">{now === null ? '—' : fmtP(now)}</div>
           <div className="gm-cashhero-sub">
-            {t.history.nowSub(own ? store.state.tick : sum.tick)}
             {sum.last && (
               <Badge tone={sum.last.delta > 0 ? 'good' : 'bad'} title={t.cashLast(signed(sum.last.delta), sum.last.tick)}>
-                {sum.last.delta > 0 ? '▲' : '▼'} {signed(sum.last.delta)} · t{sum.last.tick}
+                {sum.last.delta > 0 ? '▲' : '▼'} {signed(sum.last.delta)} · <Ago tick={sum.last.tick} />
               </Badge>
             )}
             <Fresh page="history" status={status} at={snapshot.at} push={push} />
@@ -266,13 +265,13 @@ export function HistoryScreen() {
           }
           actions={
             agents.length > 1 ? (
-              <Seg label={t.history.agent} value={agent} options={[['all', t.history.allAgents], ...agents.map((a) => [a, a] as const)]} onChange={setAgent} />
+              <Seg label={t.history.agent} value={agent} options={[['all', t.history.allAgents], ...agents.map((a) => [a, agentName(t, a)] as const)]} onChange={setAgent} />
             ) : undefined
           }
         >
           {orders.length ? (
             <div className="gm-scroll gm-scroll-tall">
-              <table className="gm-table">
+              <table className="gm-table gm-orders">
                 <thead>
                   <tr>
                     {t.history.ordersHead.map((h, i) => (
@@ -285,13 +284,13 @@ export function HistoryScreen() {
                 <tbody>
                   {orders.map((o) => (
                     <tr key={o.id}>
-                      <td className="gm-r gm-mono">{o.tick}</td>
-                      <td>{o.agent}</td>
+                      <td className="gm-r gm-when">{o.day === sum.day ? <Ago tick={o.tick} /> : <span title={`${t.tick} ${o.tick}`}>{o.day.slice(5)}</span>}</td>
+                      <td>{agentName(t, o.agent)}</td>
                       <td>
-                        <Badge tone={o.kind === 'listing' ? 'neutral' : o.kind === 'accept' ? 'us' : 'warn'}>{o.kind}</Badge>
+                        <Badge tone={o.kind === 'listing' ? 'neutral' : o.kind === 'accept' ? 'us' : 'warn'}>{kindName(t, o.kind)}</Badge>
                       </td>
-                      <td>{o.item ? <CardRef code={o.item} /> : '—'}</td>
-                      <td className="gm-r gm-mono">{o.price === null ? '—' : fmtP(o.price)}</td>
+                      <td>{o.item ? setOf(o.item) ? <CardRef code={o.item} /> : <ItemName item={o.item} /> : '—'}</td>
+                      <td className="gm-r gm-mono">{o.price === null || (o.price === 0 && o.agent === 'duels') ? '—' : fmtP(o.price)}</td>
                     </tr>
                   ))}
                 </tbody>

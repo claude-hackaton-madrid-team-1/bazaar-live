@@ -207,12 +207,22 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
   bursts (quiet in between), the duels every other tick, scored deals and a ledger.
 - Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` runs `db/agent_decisions.test.ts` after `db/show.test.ts`.
 
+### Words (`src/game/humanize.ts`)
+
+Every game screen names things the same way: the agents as Comprador / Vendedor / Duelos (Buyer / Seller / Duels),
+guardrail rules and decision kinds in words (`suelo de caja`, `abrir trato con un equipo`), a denial as one sentence
+from its numbers (`cash 81 - 79 < cash_floor 50` → "nos dejaría con 2 P, por debajo del suelo de 50 P"; the raw text
+stays under Detalles), cards by name with the code as a small token, dealers, rivals and teams by name (Abuela Carmen,
+Rival Sol, Equipo 6), and times as game time from the newest tick ("hace 3 min", "caduca en ~8 min", the tick on hover).
+The parsers live in `src/game/humanize.ts` (tested), the words in `strings.ts` (`hum`, es and en). An id with no word
+yet reads with spaces instead of underscores.
+
 ### Our agents' health (header)
 
 Every game screen's header has one chip per agent (taker, maker, duels): green, amber or red with the one
 reason that matters (`dry run`, `ledger down`, `tick 14.2/15 s`, `429 ×3`, `Jev slow 9 s`, `no tick for 2 min`,
 `silent 12 ticks`, `quiet 5 ticks`, `closed · opens 09:00`); a click opens the details. On `/agent`, a silent or
-quiet agent carries the same reason: `taker silent for 12 ticks: ledger down since 11:40`.
+quiet agent carries the same reason: `Buyer silent for 12 ticks: ledger down since 11:40`.
 
 - The server (`server/game/health.ts`) asks the taker's and the maker's public `/health` every 10 s (4 s
   timeout, one round at a time) and relays an allow-listed report (`shared/health.ts`) as `agent.health` on the
@@ -249,7 +259,7 @@ own `/me`, live; the screen reads Postgres through `db/history.sql`, six more re
   before it starts a new run of the clock, as does a day that starts far below the last day's last tick.
 
 The top of `/history` is **Score today**: the score tick by tick with a mark at each start (an agent's starts
-within 10 ticks of each other fold into one, `taker restart ×8 (t434–480)`) and each game turn. Tap a mark to
+within 10 ticks of each other fold into one, `Buyer restart ×8`) and each game turn. Tap a mark to
 compare from it, until now or until the next mark: each part's change since the mark against the same number of
 ticks before it (▲ moving faster, ▼ slower), which is the answer to "did the change help?". Tap a part to put it
 on the big chart. Changes to the agents' GUARDRAILS.md, STRATEGY.md or flags are not marked: that repository is

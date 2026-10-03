@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { fmtP } from '../game.ts'
+import { fmtP, SETS } from '../game.ts'
 import { pagePush } from '../fresh.ts'
 import { useLearn } from '../learn.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
@@ -7,8 +7,10 @@ import { useGame } from '../store.ts'
 import { learningGroups, moveTone, pct, recentMoves, rivalRows, traderProfiles, type LearningRow, type MoveFilter, type TraderProfile } from '../views/learn.ts'
 import { useParam } from '../../ui/route'
 import type { LearnParts, RivalProfile, TraderMove } from '../../../shared/learn.ts'
+import { whoName } from '../humanize.ts'
 import { Badge, Empty, Fresh, Panel, Seg } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
+import { Ago } from './words.tsx'
 
 /** Header cells; the indexes in `right` are numbers, aligned right. */
 function Head({ cells, right, hints = {} }: { cells: readonly string[]; right: readonly number[]; hints?: Readonly<Record<number, string>> }) {
@@ -33,16 +35,17 @@ function Missing({ part, parts, live }: { part: keyof LearnParts; parts: LearnPa
   return !live || parts[part] ? null : <span className="gm-warn"> · {t.learn.missing}</span>
 }
 
-function LearningLine({ l, t }: { l: LearningRow; t: GameStrings }) {
+function LearningLine({ l, t, tickSeconds }: { l: LearningRow; t: GameStrings; tickSeconds: number }) {
+  const subject = l.subjectKind === 'organiser' ? (t.learn.subjects[l.subject] ?? l.subject) : whoName(t, l.subject)
   return (
     <li className="gm-learning" data-kind={l.kind}>
       <div className="gm-learning-head">
         <Badge tone={l.left !== null ? (l.left <= 2 ? 'warn' : 'bad') : l.kind === 'lesson' || l.kind === 'policy' ? 'good' : 'neutral'}>{t.learn.kinds[l.kind] ?? l.kind}</Badge>
-        <b className="gm-learning-subject">{l.subject}</b>
-        {l.team && <span className="gm-muted">· {l.team === 't01' ? t.learn.forUs : l.team}</span>}
+        {subject !== (t.learn.kinds[l.kind] ?? l.kind) && <b className="gm-learning-subject">{subject}</b>}
+        {l.team && <span className="gm-muted">· {l.team === 't01' ? t.learn.forUs : whoName(t, l.team)}</span>}
         <span className="gm-spacer" />
         {l.left !== null ? (
-          <span className="gm-mono">{t.learn.lifts(l.left)}</span>
+          <span className="gm-mono">{t.learn.lifts(l.left, l.left * tickSeconds)}</span>
         ) : (
           l.untilTick === null && ['blocker', 'cooloff', 'quota', 'sold_out'].includes(l.kind) && <span className="gm-mono gm-muted">{t.learn.liftsUnknown}</span>
         )}
@@ -55,9 +58,13 @@ function LearningLine({ l, t }: { l: LearningRow; t: GameStrings }) {
           </span>
           <span className="gm-mono">{pct(l.confidence)}</span>
         </span>
-        <span className="gm-mono gm-muted">{t.learn.support(l.support)}</span>
-        <span className="gm-mono gm-muted">{t.learn.sources[l.source] ?? l.source}</span>
-        {l.createdTick !== null && <span className="gm-mono gm-muted">t{l.createdTick}</span>}
+        {l.support > 0 && <span className="gm-muted">{t.learn.support(l.support)}</span>}
+        <span className="gm-muted">{t.learn.sources[l.source] ?? l.source}</span>
+        {l.createdTick !== null && (
+          <span className="gm-muted">
+            <Ago tick={l.createdTick} />
+          </span>
+        )}
       </div>
     </li>
   )
@@ -65,11 +72,12 @@ function LearningLine({ l, t }: { l: LearningRow; t: GameStrings }) {
 
 function Learnings({ rows, empty }: { rows: LearningRow[]; empty: string }) {
   const t = useGameStrings()
+  const { state } = useGame()
   if (!rows.length) return <Empty>{empty}</Empty>
   return (
     <ul className="gm-learnings">
       {rows.map((l) => (
-        <LearningLine key={l.id} l={l} t={t} />
+        <LearningLine key={l.id} l={l} t={t} tickSeconds={state.tickSeconds} />
       ))}
     </ul>
   )
@@ -86,7 +94,7 @@ function Dealers({ rows }: { rows: TraderProfile[] }) {
           {rows.map((d) => (
             <tr key={d.trader}>
               <td>
-                <b>{d.trader}</b>
+                <b>{whoName(t, d.trader)}</b>
               </td>
               <td className="gm-r">{d.stat?.threads ?? '—'}</td>
               <td className="gm-r">{d.stat ? `${d.stat.deals} · ${pct(d.stat.threads ? d.stat.deals / d.stat.threads : null)}` : '—'}</td>
@@ -99,7 +107,7 @@ function Dealers({ rows }: { rows: TraderProfile[] }) {
               <td className="gm-r">{pct(d.firmness)}</td>
               <td className="gm-r">{d.avgConcession === null ? '—' : fmtP(Math.round(d.avgConcession * 10) / 10)}</td>
               <td className="gm-r">{num1(d.stat?.avgSteps ?? null)}</td>
-              <td className="gm-r gm-muted">{d.lastTick ?? '—'}</td>
+              <td className="gm-r gm-muted">{d.lastTick == null ? '—' : <Ago tick={d.lastTick} />}</td>
             </tr>
           ))}
         </tbody>
@@ -118,9 +126,9 @@ function Moves({ rows }: { rows: TraderMove[] }) {
         <tbody>
           {rows.map((m) => (
             <tr key={m.id} data-ours={m.ours || undefined}>
-              <td className="gm-r">{m.tick ?? '—'}</td>
+              <td className="gm-r">{m.tick == null ? '—' : <Ago tick={m.tick} />}</td>
               <td>
-                <b>{m.trader}</b>
+                <b>{whoName(t, m.trader)}</b>
               </td>
               <td className="gm-r gm-muted">{m.thread ?? '—'}</td>
               <td>
@@ -149,7 +157,7 @@ function Rivals({ rows }: { rows: RivalProfile[] }) {
           {rows.map((r) => (
             <tr key={r.team}>
               <td>
-                <b>{r.team}</b>
+                <b>{whoName(t, r.team)}</b>
               </td>
               <td className="gm-r">{r.level ?? '—'}</td>
               <td>{r.venue ?? <span className="gm-muted">—</span>}</td>
@@ -157,16 +165,16 @@ function Rivals({ rows }: { rows: RivalProfile[] }) {
               <td className="gm-r">{r.sells ?? '—'}</td>
               <td className="gm-r">{r.spent === null ? '—' : fmtP(r.spent)}</td>
               <td className="gm-r">{r.earned === null ? '—' : fmtP(r.earned)}</td>
-              <td className="gm-mono">
+              <td>
                 {Object.entries(r.setInterest)
                   .sort((a, b) => b[1] - a[1])
                   .slice(0, 3)
-                  .map(([set, n]) => `${set} ${n}`)
+                  .map(([set, n]) => `${SETS[set]?.name ?? set} ${n}`)
                   .join(' · ') || '—'}
               </td>
               <td className="gm-r">{pct(r.dealerDealRate)}</td>
               <td className="gm-r">{r.avgPackPrice === null ? '—' : fmtP(Math.round(r.avgPackPrice))}</td>
-              <td className="gm-r gm-muted">{r.updatedTick ?? '—'}</td>
+              <td className="gm-r gm-muted">{r.updatedTick == null ? '—' : <Ago tick={r.updatedTick} />}</td>
             </tr>
           ))}
         </tbody>

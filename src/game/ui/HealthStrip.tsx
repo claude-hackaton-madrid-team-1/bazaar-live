@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { TICK_BUDGET_S } from '../../../shared/health.ts'
+import { agentName } from '../humanize.ts'
 import { hhmm, useGameStrings, type GameStrings } from '../strings.ts'
 import { useGame, useWallNow } from '../store.ts'
 import { healthChips, type HealthChip } from '../views/health.ts'
@@ -17,16 +18,16 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** The panel a chip opens: what /health said, every reason that holds, and what the decisions say. */
-function Details({ chip, t, nowMs, onClose }: { chip: HealthChip; t: GameStrings; nowMs: number; onClose: () => void }) {
+function Details({ chip, t, nowMs, tickSeconds, onClose }: { chip: HealthChip; t: GameStrings; nowMs: number; tickSeconds: number; onClose: () => void }) {
   const h = t.health
   const r = chip.report
   const st = chip.status
   const at = (iso: string | null) => (iso ? hhmm(iso) : null)
-  const decisions = st.state === 'none' ? t.agt.noLog : st.silentFor == null ? t.agt.never : t.agt.ago(st.silentFor)
+  const decisions = st.state === 'none' ? t.agt.noLog : st.silentFor == null ? t.agt.never : t.agt.ago(st.silentFor, st.silentFor * tickSeconds)
   return (
-    <div className="gm-health-panel" role="dialog" aria-label={`${chip.agent} · ${h.label}`}>
+    <div className="gm-health-panel" role="dialog" aria-label={`${agentName(t, chip.agent)} · ${h.label}`}>
       <div className="gm-health-head">
-        <b className="gm-mono">{chip.agent}</b>
+        <b>{agentName(t, chip.agent)}</b>
         <span className="gm-health-reason" data-tone={chip.tone}>
           {MARK[chip.tone]} {chip.reason ? h.reason(chip.reason) : h.ok}
           {at(chip.since) && <span className="gm-muted"> · {h.since(at(chip.since) as string)}</span>}
@@ -120,18 +121,18 @@ export function HealthStrip() {
             className="hdr-chip gm-health-chip"
             data-tone={c.tone}
             aria-expanded={open === c.agent}
-            title={t.health.title(c.agent, reason ?? t.health.ok)}
+            title={t.health.title(agentName(t, c.agent), reason ?? t.health.ok)}
             onClick={() => setOpen(open === c.agent ? null : c.agent)}
           >
             <span className="gm-health-mark" aria-hidden="true">
               {MARK[c.tone]}
             </span>
-            <span className="gm-health-name">{c.agent}</span>
+            <span className="gm-health-name">{agentName(t, c.agent)}</span>
             {reason && <span className="gm-health-why">{reason}</span>}
           </button>
         )
       })}
-      {chip && <Details chip={chip} t={t} nowMs={nowMs} onClose={() => setOpen(null)} />}
+      {chip && <Details chip={chip} t={t} nowMs={nowMs} tickSeconds={store.state.tickSeconds} onClose={() => setOpen(null)} />}
     </div>
   )
 }

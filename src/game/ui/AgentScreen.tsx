@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react'
 import type { OutcomeRow } from '../decisions.ts'
-import { fmtP, setOf, signed } from '../game.ts'
+import { fmtP, signed } from '../game.ts'
+import { agentName, ago, agoText, denialText, kindName, percent, ruleName, whoName } from '../humanize.ts'
 import { hhmm, useGameStrings, type GameStrings } from '../strings.ts'
 import { useGame, useWallNow } from '../store.ts'
-import { timeline, type Entry, type Filter } from '../views/agent.ts'
+import { timeline, type Entry, type Filter, type Line } from '../views/agent.ts'
 import { healthChips, type HealthChip } from '../views/health.ts'
 import {
-  agentStatuses, blocksByRule, dealTally, deals as dealsOf, isWrite, ledger as ledgerOf, share, SILENCE, STATUS_TONE,
+  agentStatuses, blocksByRule, dealTally, deals as dealsOf, isWrite, ledger as ledgerOf, nowTick, share, SILENCE, STATUS_TONE,
   type AgentState, type AgentStatus, type Blocks, type Deal, type DealTally, type Ledger, type Run,
 } from '../views/decisions.ts'
-import { Badge, Empty, EventLink, Panel, RefChip, Seg, type Tone } from './bits.tsx'
+import { Badge, Empty, EventLink, Panel, Seg, type Tone } from './bits.tsx'
 import { toneOf } from './tone.ts'
+import { Ago, ItemName } from './words.tsx'
 
 const STATE_TONE: Readonly<Record<AgentState, Tone>> = { none: 'neutral', silent: 'bad', quiet: 'warn', stuck: 'warn', ok: 'good' }
 
@@ -23,32 +25,31 @@ function because(t: GameStrings, st: AgentStatus, chip: HealthChip | undefined):
   return t.agt.because(t.health.reason(h.reason), hhmm(h.since))
 }
 
-/** An item: a card with its barrio's colour, or a pack, a name or a duel as plain mono text. */
-function Item({ item }: { item: string }) {
-  return setOf(item) ? <RefChip topic={item} /> : <span className="gm-mono gm-dec-item">{item}</span>
-}
-
 const priceText = (run: Run): string | null =>
   run.minPrice == null || run.maxPrice == null ? null : run.minPrice === run.maxPrice ? fmtP(run.minPrice) : `${run.minPrice}–${fmtP(run.maxPrice)}`
 
-/** What a run of decisions was and how it ended: kind · item · counterparty · price, then the rule that blocked it or its status. */
+/** What a run of decisions was and how it ended: kind · item · counterparty · price, then why a guardrail said no, or its status. */
 function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
   const t = useGameStrings()
   const price = priceText(run)
   return (
     <>
-      {agent && <b className="agt-agent-name gm-mono">{run.agent}</b>}
-      <span className="gm-mono">{run.kind}</span>
-      {run.item && <Item item={run.item} />}
-      {run.counterparty && <span className="gm-muted">· {run.counterparty}</span>}
+      {agent && <b className="agt-agent-name">{agentName(t, run.agent)}</b>}
+      <span>{kindName(t, run.kind)}</span>
+      {run.item && <ItemName item={run.item} />}
+      {run.counterparty && <span className="gm-muted">· {whoName(t, run.counterparty)}</span>}
       {price && <b className="gm-dec-price">{price}</b>}
       {run.verdict === 'denied' ? (
-        <span className="agt-rule">
-          <span className="gm-bad">✖</span> <b className="gm-mono">{run.rule ?? 'other'}</b>
+        <span className="agt-rule" title={ruleName(t, run.rule)}>
+          <span className="gm-bad">✖</span> <b>{denialText(t, run.rule, run.last.text)}</b>
         </span>
       ) : isWrite(run.kind) ? (
         <Badge tone={STATUS_TONE[run.status]}>{t.decide.status[run.status]}</Badge>
       ) : null}
+      {/* no guardrail said no: when Jev did not back it, that is why it was turned down */}
+      {run.status === 'rejected' && run.verdict !== 'denied' && run.last.jev && run.last.jev !== 'yes' && (
+        <span className="gm-muted">{t.hum.jev(run.last.jev, percent(run.last.jevValue))}</span>
+      )}
       {run.rows.length > 1 && <Badge tone={run.verdict === 'denied' ? 'bad' : 'neutral'}>×{run.rows.length}</Badge>}
     </>
   )
@@ -56,13 +57,16 @@ function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
 
 function AgentRow({ st, why }: { st: AgentStatus; why: string | null }) {
   const t = useGameStrings()
+  const { state } = useGame()
   const a = t.agt
-  const alive = (st.state === 'none' ? a.noLog : st.silentFor == null ? a.never : a.ago(st.silentFor)) + (why ?? '')
+  const seconds = (ticks: number) => ago(nowTick(state), nowTick(state) - ticks, state.tickSeconds)?.seconds ?? null
+  const alive = (st.state === 'none' ? a.noLog : st.silentFor == null ? a.never : a.ago(st.silentFor, seconds(st.silentFor))) + (why ?? '')
+  const restartedAgo = st.restartedAt == null ? null : agoText(t, state, st.restartedAt, nowTick(state))
   return (
     <li className="agt-agent" data-state={st.state}>
       <div className="agt-who">
         <span className="gm-dot" aria-hidden="true" />
-        <b className="gm-mono">{st.agent}</b>
+        <b>{agentName(t, st.agent)}</b>
         <Badge tone={STATE_TONE[st.state]}>{a.state[st.state]}</Badge>
       </div>
       <div className="agt-alive">{alive}</div>
@@ -71,13 +75,17 @@ function AgentRow({ st, why }: { st: AgentStatus; why: string | null }) {
           <dt className="eyebrow">{a.last}</dt>
           <dd>
             {st.last ? <RunWhat run={st.last} /> : <span className="gm-muted">—</span>}
-            {st.last && st.last.rows.length > 1 && <span className="gm-muted">{a.ticks(st.last.fromTick, st.last.toTick)}</span>}
+            {st.last && st.last.rows.length > 1 && (
+              <span className="gm-muted">
+                <Ago tick={st.last.toTick} from={st.last.fromTick} />
+              </span>
+            )}
           </dd>
           <dt className="eyebrow">{a.blockedMost}</dt>
           <dd>
             {st.topBlock ? (
               <>
-                <b className="gm-mono agt-rule">{st.topBlock.rule}</b>
+                <b className="agt-rule">{ruleName(t, st.topBlock.rule)}</b>
                 <b className="gm-bad">×{st.topBlock.count}</b>
                 <span className="gm-muted">· {a.ofHour(st.blocks, st.decisions)}</span>
               </>
@@ -85,7 +93,7 @@ function AgentRow({ st, why }: { st: AgentStatus; why: string | null }) {
               <span className="gm-muted">{a.noBlocks}</span>
             )}
           </dd>
-          {st.restarts > 0 && st.restartedAt != null && <dd className="agt-restarts">↻ {a.restarted(st.restarts, st.restartedAt)}</dd>}
+          {st.restarts > 0 && restartedAgo && <dd className="agt-restarts">↻ {a.restarted(st.restarts, restartedAgo)}</dd>}
         </dl>
       )}
     </li>
@@ -94,7 +102,8 @@ function AgentRow({ st, why }: { st: AgentStatus; why: string | null }) {
 
 /** The answer in one line: which agent is silent or stuck, and why; worst first. */
 function Alert({ statuses, why }: { statuses: AgentStatus[]; why: Partial<Record<string, string | null>> }) {
-  const a = useGameStrings().agt
+  const t = useGameStrings()
+  const a = t.agt
   if (statuses.every((st) => st.state === 'none')) return null
   const silent = statuses.filter((st) => st.state === 'silent')
   const quiet = statuses.filter((st) => st.state === 'quiet')
@@ -103,19 +112,19 @@ function Alert({ statuses, why }: { statuses: AgentStatus[]; why: Partial<Record
     <p className="agt-alert" role="status" data-ok={!silent.length && !quiet.length && !stuck.length ? true : undefined}>
       {silent.map((st) => (
         <span key={st.agent} className="gm-bad">
-          ● {a.alertSilent(st.agent, st.silentFor)}
+          ● {a.alertSilent(agentName(t, st.agent), st.silentFor)}
           {why[st.agent]}
         </span>
       ))}
       {quiet.map((st) => (
         <span key={st.agent} className="gm-warn">
-          ● {a.alertQuiet(st.agent, st.silentFor ?? 0)}
+          ● {a.alertQuiet(agentName(t, st.agent), st.silentFor ?? 0)}
           {why[st.agent]}
         </span>
       ))}
       {stuck.map((st) => (
         <span key={st.agent} className="gm-warn">
-          ● {a.alertStuck(st.agent, st.last?.rows.length ?? 0, st.last?.rule ?? 'other')}
+          ● {a.alertStuck(agentName(t, st.agent), st.last?.rows.length ?? 0, ruleName(t, st.last?.rule ?? null))}
         </span>
       ))}
       {!silent.length && !quiet.length && !stuck.length && <span className="gm-good">● {a.allOk}</span>}
@@ -127,7 +136,7 @@ function AgentsPanel({ statuses, chips }: { statuses: AgentStatus[]; chips: Heal
   const t = useGameStrings()
   const why = Object.fromEntries(statuses.map((st) => [st.agent, because(t, st, chips.find((c) => c.agent === st.agent))]))
   return (
-    <Panel title={t.agt.agents} sub={t.agt.agentsSub(SILENCE)} className="agt-agents-panel">
+    <Panel title={t.agt.agents} sub={t.agt.agentsSub(SILENCE, t.hum.agents)} className="agt-agents-panel">
       <Alert statuses={statuses} why={why} />
       <ul className="agt-agents">
         {statuses.map((st) => (
@@ -191,14 +200,14 @@ function BlocksPanel({ blocks }: { blocks: Blocks }) {
           {blocks.rules.slice(0, RULES_SHOWN).map((r) => (
             <li key={r.rule} className="gm-rule">
               <span className="gm-rule-head">
-                <b className="gm-mono">{r.rule}</b>
+                <b>{ruleName(t, r.rule)}</b>
                 <span className="gm-num">×{r.count}</span>
               </span>
               <span className="gm-track" aria-hidden="true">
                 <span className="gm-fill gm-fill-bad" style={{ width: `${Math.round(share(r.count, top) * 100)}%` }} />
               </span>
               <span className="gm-rule-meta gm-muted">
-                {r.agents.join(' · ')} · {t.tick} {r.lastTick}
+                {r.agents.map((name) => agentName(t, name)).join(' · ')} · <Ago tick={r.lastTick} />
               </span>
             </li>
           ))}
@@ -218,11 +227,14 @@ function DealWhat({ deal, details }: { deal: Deal; details: boolean }) {
   const { row, edge, verdict } = deal
   return (
     <>
-      {row.item ? <Item item={row.item} /> : <span className="gm-mono">{row.subject}</span>}
-      <span className="gm-muted">
-        {d.target[row.target]}
-        {row.counterparty && ` · ${row.counterparty}`}
-      </span>
+      <ItemName item={row.item ?? row.subject} />
+      {/* a duel already says "duel with …" */}
+      {(row.target !== 'duel' || row.counterparty) && (
+        <span className="gm-muted">
+          {row.target !== 'duel' && d.target[row.target]}
+          {row.counterparty && ` · ${whoName(t, row.counterparty)}`}
+        </span>
+      )}
       {row.price != null && (
         <span>
           {fmtP(row.price)}
@@ -278,6 +290,16 @@ function DealsPanel({ deals, tally, details }: { deals: Deal[]; tally: DealTally
   )
 }
 
+/** A timeline line in the page's language: a duel's start or result is said from its parts, anything else as the feed wrote it. */
+function lineText(t: GameStrings, line: Line, tick: number, tickSeconds: number): string {
+  const duel = line.duel
+  if (!duel) return line.text
+  const rival = duel.rival ? whoName(t, duel.rival) : null
+  if (!duel.start) return t.hum.duelEnd(rival, duel.deal, duel.price == null ? null : fmtP(duel.price))
+  const left = duel.deadline == null ? null : duel.deadline - tick
+  return t.hum.duelStart(rival, duel.role, duel.item, left == null || left <= 0 ? null : t.hum.span(left, left * tickSeconds))
+}
+
 function outcomeTone(row: OutcomeRow): Tone {
   return row.label === 'good' ? 'good' : row.label === 'bad' ? 'bad' : 'neutral'
 }
@@ -285,21 +307,26 @@ function outcomeTone(row: OutcomeRow): Tone {
 /** One timeline line: when (a tick or a range), what, and its event id only with the details on. */
 function EntryRow({ entry, details }: { entry: Entry; details: boolean }) {
   const t = useGameStrings()
+  const { state } = useGame()
   const a = t.agt
   switch (entry.kind) {
     case 'idle':
       return (
         <li className="agt-entry" data-kind="idle">
-          <span className="agt-when">{a.ticks(entry.from, entry.to)}</span>
+          <span className="agt-when">
+            <Ago tick={entry.to} from={entry.from} />
+          </span>
           <span className="agt-what">{a.idle}</span>
         </li>
       )
     case 'restart':
       return (
         <li className="agt-entry" data-kind="restart">
-          <span className="agt-when">{entry.tick}</span>
+          <span className="agt-when">
+            <Ago tick={entry.tick} />
+          </span>
           <span className="agt-what">
-            ↻ <b className="gm-mono">{entry.agent}</b> {a.restart}
+            ↻ <b>{agentName(t, entry.agent)}</b> {a.restart}
           </span>
           {details && <EventLink id={entry.eventId} />}
         </li>
@@ -307,7 +334,9 @@ function EntryRow({ entry, details }: { entry: Entry; details: boolean }) {
     case 'outcome':
       return (
         <li className="agt-entry" data-kind="outcome" data-tone={outcomeTone(entry.row)}>
-          <span className="agt-when">{entry.tick}</span>
+          <span className="agt-when">
+            <Ago tick={entry.tick} />
+          </span>
           <span className="agt-what">
             <span aria-hidden="true">◆</span>
             <DealWhat deal={entry.deal} details={false} />
@@ -318,10 +347,12 @@ function EntryRow({ entry, details }: { entry: Entry; details: boolean }) {
     case 'line':
       return (
         <li className="agt-entry" data-kind="line">
-          <span className="agt-when">{entry.tick}</span>
+          <span className="agt-when">
+            <Ago tick={entry.tick} />
+          </span>
           <span className="agt-what">
             <span aria-hidden="true">{entry.line.icon}</span>
-            <span data-tone={entry.line.tone}>{entry.line.text}</span>
+            <span data-tone={entry.line.tone}>{lineText(t, entry.line, entry.tick, state.tickSeconds)}</span>
             {entry.line.gain != null && <span className={`gm-gain ${toneOf(entry.line.gain)}`}>{signed(entry.line.gain)}</span>}
           </span>
           {details && <EventLink id={entry.line.eventId} />}
@@ -333,7 +364,9 @@ function EntryRow({ entry, details }: { entry: Entry; details: boolean }) {
       const d = t.decide
       return (
         <li className="agt-entry" data-kind="run" data-blocked={run.verdict === 'denied' || undefined} data-status={run.status}>
-          <span className="agt-when">{a.ticks(run.fromTick, run.toTick)}</span>
+          <span className="agt-when">
+            <Ago tick={run.toTick} from={run.fromTick} />
+          </span>
           <span className="agt-what">
             <RunWhat run={run} agent />
             {last.error && <Badge tone="bad">{d.error(last.error)}</Badge>}
@@ -347,12 +380,7 @@ function EntryRow({ entry, details }: { entry: Entry; details: boolean }) {
             {details && (
               <span className="agt-detail gm-muted">
                 {last.text && <span>{last.text}</span>}
-                {last.jev && (
-                  <span>
-                    {d.jev} {last.jev}
-                    {last.jevValue != null && ` ${last.jevValue.toFixed(2)}`}
-                  </span>
-                )}
+                {last.jev && <span>{t.hum.jev(last.jev, percent(last.jevValue))}</span>}
                 {last.method && <span className="gm-mono">{last.method}</span>}
                 <span className="gm-mono">#{run.rows.map((r) => r.decision).join(' #')}</span>
               </span>
