@@ -1,0 +1,210 @@
+/**
+ * Privacy proof for db/show.sql, on a LOCAL Postgres 17 with synthetic rows.
+ *
+ *   sh scripts/test-sql.sh        # starts a throwaway container, runs this file, removes it
+ *
+ * Runs only when SHOW_TEST_ADMIN_URL is set, and only against a loopback host: it creates and drops a
+ * database and a role, so it must never meet a shared server.
+ */
+import { readFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import pg from 'pg'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+const ADMIN_URL = process.env.SHOW_TEST_ADMIN_URL
+const SHOW_SQL = readFileSync(new URL('./show.sql', import.meta.url), 'utf8')
+
+/** The two tables the views read, as bazaar's sql/schema.sql declares them. */
+const TABLES = `
+  create table feed_events (id bigint primary key, tick int, type text, actor text, payload jsonb, received_at timestamptz default now());
+  create table duels (duel int primary key, session int, tick int, status text, role text, item text, your_limit int,
+    rival text, deadline_tick int, rounds int, decay_per_round numeric, price int, days int, result numeric,
+    payload jsonb, updated_at timestamptz default now());
+`
+
+const SECRET_LIMIT = 4242
+const SECRET_RESULT = 0.8765
+const SECRET_REASON = 'SECRET-REASON-xyzzy'
+const SECRET_WEIGHT = 'SECRET-WEIGHT-plugh'
+
+const feed = (id: number, tick: number, type: string, payload: Record<string, unknown>) => ({ id, tick, type, payload })
+
+const FEED = [
+  feed(1, 10, 'thread.opened', { kind: 'thread', team: 't01', with: 'chato', topic: { buy: { card: 'LAV-08' } }, thread: 187 }),
+  feed(2, 11, 'thread.message', {
+    kind: 'message', team: 't01', with: 'chato', sender: 't01', thread: 187, message: 5, text: null,
+    offer: { id: 9, to: 'chato', maker: 't01', give: { cash: 24, types: [] }, want: { cash: 0, types: ['card:LAV-08'] }, final: false, status: 'open', thread: 187 },
+  }),
+  feed(3, 12, 'thread.message', {
+    kind: 'message', team: 't01', with: 'chato', sender: 'chato', thread: 187, message: 6,
+    text: "Your abuela would've moved more than one. 31 P. I match what you move, nothing extra.",
+    offer: { id: 10, to: 't01', maker: 'chato', give: { cash: 0, types: ['card:LAV-08'] }, want: { cash: 31, types: [] }, final: true, status: 'open', thread: 187 },
+  }),
+  feed(4, 13, 'settlement', { kind: 'trade', tick: 13, price: 31, fee: 2, venue: 'rastro', parties: ['t01', 'abuela'], persona: 'abuela', items: [{ ref: 'LAV-08', name: 'x', rarity: 'common', frm: 'abuela', to: 't01', set: 'LAV' }] }),
+  // Not ours: another team's dealer thread and a settlement between two other teams.
+  feed(5, 14, 'thread.message', { kind: 'message', team: 't07', with: 'chato', sender: 'chato', thread: 300, text: 'not ours', offer: null }),
+  feed(6, 15, 'settlement', { kind: 'trade', tick: 15, price: 9, fee: 1, venue: 'rastro', parties: ['t03', 't07'], items: [{ ref: 'SAL-01' }] }),
+  // A malformed row must not break the view.
+  feed(7, 16, 'thread.message', { kind: 'message', team: 't01', with: 'abuela', sender: 'abuela', thread: 'oops', text: 'odd', offer: { give: { cash: 'lots', types: 'nope' }, want: 7 } }),
+  feed(8, 17, 'duel.closed', { duel: 61, item: 'MAL-02', status: 'deal', session: 2 }),
+]
+
+const MESSAGES = [
+  { from: 'Rival Noche', text: 'Sesenta y no se hable más.', tick: 40, price: 60, days: 3, limit: 99, reason: SECRET_REASON },
+  { from: 'us', text: 'I can do 50.', tick: 41, price: 50, days: 2, your_days_weight: SECRET_WEIGHT },
+]
+
+const DUELS = [
+  { duel: 61, status: 'deal', role: 'seller', item: 'MAL-02', rival: 'Rival Noche', price: 55, days: 3, payload: { messages: MESSAGES, your_offer: { price: 50, limit: SECRET_LIMIT }, limit_meaning: SECRET_REASON, your_days_weight: SECRET_WEIGHT } },
+  { duel: 62, status: 'no_deal', role: 'buyer', item: 'SAL-01', rival: 'Rival Mar', price: null, days: null, payload: { messages: [{ from: 'Rival Mar', text: 'No.', tick: 50, price: null, days: null }] } },
+  { duel: 63, status: 'live', role: 'buyer', item: 'LAT-05', rival: 'Rival Sol', price: 70, days: 1, payload: { messages: [{ from: 'Rival Sol', text: 'LIVE-TEXT-MUST-NOT-LEAK', tick: 60, price: 71 }], your_offer: { price: 70 } } },
+  { duel: 64, status: 'deal', role: 'seller', item: 'RET-03', rival: 'Rival Luna', price: 20, days: 0, payload: 'not an object' },
+]
+
+const dbName = `show_test_${randomBytes(4).toString('hex')}`
+const readerPassword = randomBytes(12).toString('hex')
+
+function withDb(url: string, db: string): string {
+  const u = new URL(url)
+  u.pathname = `/${db}`
+  return u.toString()
+}
+
+describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
+  let admin: pg.Client
+  let reader: pg.Client
+  let adminDb: pg.Client
+
+  beforeAll(async () => {
+    const url = new URL(ADMIN_URL ?? '')
+    if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname)) throw new Error('refusing to run the SQL test against a non-local host')
+    admin = new pg.Client({ connectionString: ADMIN_URL })
+    await admin.connect()
+    await admin.query(`create database ${dbName}`)
+    adminDb = new pg.Client({ connectionString: withDb(ADMIN_URL ?? '', dbName) })
+    await adminDb.connect()
+    await adminDb.query(TABLES)
+    for (const e of FEED) await adminDb.query('insert into feed_events (id, tick, type, actor, payload) values ($1,$2,$3,$4,$5)', [e.id, e.tick, e.type, 'x', e.payload])
+    for (const d of DUELS) {
+      await adminDb.query(
+        'insert into duels (duel, session, tick, status, role, item, your_limit, rival, price, days, result, payload) values ($1,2,50,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        [d.duel, d.status, d.role, d.item, SECRET_LIMIT, d.rival, d.price, d.days, SECRET_RESULT, JSON.stringify(d.payload)],
+      )
+    }
+    await adminDb.query(SHOW_SQL)
+    await adminDb.query(SHOW_SQL) // idempotent: a second run changes nothing and does not fail
+    await adminDb.query(`alter role bazaar_live_reader login password '${readerPassword}'`)
+    reader = new pg.Client({ connectionString: withDb(ADMIN_URL ?? '', dbName).replace(/\/\/[^@]*@/, `//bazaar_live_reader:${readerPassword}@`) })
+    await reader.connect()
+  })
+
+  afterAll(async () => {
+    await reader?.end().catch(() => undefined)
+    await adminDb?.end().catch(() => undefined)
+    await admin?.query(`drop database if exists ${dbName} with (force)`).catch(() => undefined)
+    await admin?.query('drop role if exists bazaar_live_reader').catch(() => undefined)
+    await admin?.end().catch(() => undefined)
+  })
+
+  it('creates the role NOLOGIN in the file itself (the coordinator adds LOGIN)', () => {
+    expect(SHOW_SQL).toMatch(/create role bazaar_live_reader nologin/i)
+    expect(SHOW_SQL).not.toMatch(/password\s+'/i)
+  })
+
+  it('reads the two views', async () => {
+    const t = await reader.query('select * from show.thread_lines order by event_id')
+    const d = await reader.query('select * from show.duel_lines')
+    expect(t.rowCount).toBeGreaterThan(0)
+    expect(d.rowCount).toBeGreaterThan(0)
+  })
+
+  it.each(['public.feed_events', 'feed_events', 'public.duels', 'duels'])('cannot read %s directly', async (table) => {
+    await expect(reader.query(`select 1 from ${table} limit 1`)).rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('cannot write, create, or reach the base tables through the schema', async () => {
+    // Read-only is only a default the role could switch off: the grants must refuse the write by themselves.
+    await reader.query('begin')
+    await reader.query('set transaction read write')
+    await expect(reader.query('insert into feed_events (id) values (99)')).rejects.toMatchObject({ code: '42501' })
+    await reader.query('rollback')
+    await reader.query('begin')
+    await reader.query('set transaction read write')
+    await expect(reader.query('delete from duels')).rejects.toMatchObject({ code: '42501' })
+    await reader.query('rollback')
+    for (const ddl of ['create table show.x (a int)', 'create table public.x (a int)']) {
+      await reader.query('begin')
+      await reader.query('set transaction read write')
+      await expect(reader.query(ddl)).rejects.toMatchObject({ code: '42501' })
+      await reader.query('rollback')
+    }
+    await expect(reader.query('update show.thread_lines set text = null')).rejects.toBeTruthy()
+  })
+
+  it('holds SELECT on exactly the two views and nothing else', async () => {
+    const grants = await adminDb.query(
+      `select table_schema, table_name, privilege_type from information_schema.role_table_grants where grantee = 'bazaar_live_reader' order by 1, 2, 3`,
+    )
+    expect(grants.rows).toEqual([
+      { table_schema: 'show', table_name: 'duel_lines', privilege_type: 'SELECT' },
+      { table_schema: 'show', table_name: 'thread_lines', privilege_type: 'SELECT' },
+    ])
+  })
+
+  it('may execute only the three pure helpers, which read no table', async () => {
+    const fns = await adminDb.query(
+      `select routine_schema, routine_name from information_schema.role_routine_grants where grantee = 'bazaar_live_reader' order by 2`,
+    )
+    expect(fns.rows).toEqual([
+      { routine_schema: 'show', routine_name: 'as_int' },
+      { routine_schema: 'show', routine_name: 'as_text' },
+      { routine_schema: 'show', routine_name: 'card_in' },
+    ])
+  })
+
+  it('is read-only with a short statement timeout', async () => {
+    expect((await reader.query('show default_transaction_read_only')).rows[0]).toEqual({ default_transaction_read_only: 'on' })
+    expect((await reader.query('show statement_timeout')).rows[0]).toEqual({ statement_timeout: '2s' })
+  })
+
+  it('shows only our dealer threads, with our own text null', async () => {
+    const { rows } = await reader.query('select * from show.thread_lines order by event_id')
+    expect(rows.map((r) => r.event_id)).toEqual(['1', '2', '3', '4', '7'])
+    const ours = rows.find((r) => r.event_id === '2')
+    expect(ours).toMatchObject({ kind: 'message', speaker: 'us', text: null, thread: 187, counterpart: 'chato', item_ref: 'LAV-08', give_cash: 24, want_cash: 0, final: false })
+    const theirs = rows.find((r) => r.event_id === '3')
+    expect(theirs).toMatchObject({ speaker: 'them', give_cash: 0, want_cash: 31, final: true, offer_maker: 'chato' })
+    expect(theirs?.text).toContain('I match what you move')
+    expect(rows.find((r) => r.event_id === '1')).toMatchObject({ kind: 'opened', item_ref: 'LAV-08', counterpart: 'chato' })
+    expect(rows.find((r) => r.event_id === '4')).toMatchObject({ kind: 'settlement', counterpart: 'abuela', price: 31, item_ref: 'LAV-08' })
+    // The malformed row survives with nulls instead of breaking the view.
+    expect(rows.find((r) => r.event_id === '7')).toMatchObject({ thread: null, give_cash: null, want_cash: null })
+  })
+
+  it('shows the conversation of CLOSED duels only; a live duel is item and rival', async () => {
+    const { rows } = await reader.query('select * from show.duel_lines order by duel, kind, n')
+    const messages = rows.filter((r) => r.kind === 'message')
+    expect(messages.map((r) => r.duel).sort()).toEqual([61, 61, 62])
+    expect(messages.find((r) => r.duel === 61 && r.n === 1)).toMatchObject({ speaker: 'them', text: 'Sesenta y no se hable más.', price: 60, days: 3, tick: 40, role: 'seller' })
+    expect(messages.find((r) => r.duel === 61 && r.n === 2)).toMatchObject({ speaker: 'us', price: 50 })
+    const live = rows.filter((r) => r.duel === 63)
+    expect(live).toHaveLength(1)
+    expect(live[0]).toMatchObject({ kind: 'live', item: 'LAT-05', rival: 'Rival Sol', text: null, price: null, days: null })
+    expect(rows.filter((r) => r.kind === 'closed').map((r) => [r.duel, r.status, r.final_price])).toEqual(
+      expect.arrayContaining([[61, 'deal', 55], [62, 'no_deal', null], [64, 'deal', 20]]),
+    )
+  })
+
+  it('never lets a private key or value into a row, a column or a text', async () => {
+    const t = await reader.query('select * from show.thread_lines')
+    const d = await reader.query('select * from show.duel_lines')
+    const dump = JSON.stringify([t.rows, d.rows, t.fields.map((f) => f.name), d.fields.map((f) => f.name)])
+    for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK']) {
+      expect(dump).not.toContain(secret)
+    }
+    const columns = [...t.fields, ...d.fields].map((f) => f.name)
+    for (const banned of ['your_limit', 'result', 'limit', 'reason', 'your_days_weight', 'limit_meaning', 'payload']) {
+      expect(columns).not.toContain(banned)
+    }
+  })
+})
