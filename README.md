@@ -360,9 +360,10 @@ a url or money words only, often a venue's own format notice.
 
   They never select the recorder's `normalised` text or its unique-key ids. The rules live once, in
   `show.injection_visible`, which is never granted. The window is an `ORDER BY ... LIMIT` inside the view: at 100,000
-  rows of 2,000 characters a read takes 46 ms, and 5 ms with an index on `injection_attempts (severity, seen_at desc,
-  id desc)`. Until bazaar creates the table, the file creates nothing and succeeds: re-run it after. Apply it after
-  the other show files, each time:
+  rows of 2,000 characters a read takes about 50 ms, and 5 ms with an index on `injection_attempts (severity, seen_at
+  desc, id desc)`. The shared pool runs with JIT off (`server/transcript/pg.ts`): with a production-sized `feed_events`
+  the planner's estimates cross `jit_above_cost`, and JIT compiling cost about 240 ms per read. Until bazaar creates
+  the table, the file creates nothing and succeeds: re-run it after. Apply it after the other show files, each time:
   `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
 - **The server.** `server/injections/` reads both views every 10 s on the shared pool. A `proof` keeps only the
   characters of an endpoint and its ids.
@@ -378,10 +379,15 @@ a url or money words only, often a venue's own format notice.
   - A stack of combining marks becomes one marker (`⟨+238 marks⟩`), and the boxes clip their content, so nothing
     paints over the page.
 - **No voice ever reads it.**
-  - `shared/injections.ts` ports the recorder's own `injection_flags`, checked against its Python output.
-  - It agrees with the recorder on every code point: `server/injections/unicode-parity.test.ts` checks it against
-    `server/injections/recorder-unicode.json`, which `scripts/recorder-unicode.py` writes from bazaar's Python. Re-run
-    the script after a change to `chooser.py` or a Python upgrade.
+  - `shared/injections.ts` ports the recorder's own `injection_flags`, checked against its Python output. Python and
+    Node ship different Unicode versions, so the port reads a text both ways: with every mark dropped (words joined)
+    and with every other non-ASCII character as a break (words split). It also refuses a text that reads differently
+    than it looks: a mark other than a plain accent, or a compatibility character beyond `… º ª µ ½ ¼ ¾` and the
+    no-break space.
+  - It flags whatever the recorder flags, on every code point: `server/injections/unicode-parity.test.ts` checks it
+    against `server/injections/recorder-unicode.json`, which `scripts/recorder-unicode.py` writes from bazaar's Python.
+    That covers what the recorder drops, what it calls odd, its look-alike letters, its case folds, and any character
+    between two words of a keyword phrase. Re-run the script after a change to `chooser.py` or a Python upgrade.
   - The transcript mutes a dealer's quote when its RAW words have any of those shapes, or reach the view's
     1,000-character cap (`server/transcript/rows.ts`, `muted`). The server then never vouches it to the TTS proxy, and
     the page keeps it a caption, even with `?quotes=speak`. An item without the flag counts as muted.

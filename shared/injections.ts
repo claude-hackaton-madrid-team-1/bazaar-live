@@ -156,6 +156,10 @@ const HIDING_MARKS = new Set([0x034f, 0x115f, 0x1160, 0x3164, 0xffa0, 0x2800])
  * U+1171E, must still go, or it splits a keyword).
  */
 const FOLD_DROP = /[\p{Cf}\p{M}]/u
+/** What bazaar's fold drops, under this runtime's categories: it keeps spacing marks, and its patterns read one as a break. */
+const RECORDER_DROP = /[\p{Cf}\p{Mn}\p{Me}]/u
+/** Everything outside ASCII: in the "split" readings, a break between words. */
+const NON_ASCII = /[\u0080-\u{10ffff}]/gu
 /** The dotless i matches "i" in the recorder's case-insensitive patterns (Python's re); JavaScript's /i does not. */
 const DOTLESS_I = String.fromCodePoint(0x0131)
 /** IPA letters and Latin small capitals ("ɪ", "ɡ", "ᴀ"): look-alikes of Latin letters. */
@@ -171,10 +175,32 @@ const LATIN_FRIENDS = new Set([0x00b5, 0x02bc])
  * characters, combining marks and hiding blanks (nothing invisible splits a word), spaces collapsed.
  */
 export function folded(text: string): string {
-  return Array.from(text.normalize('NFKD').replaceAll(DOTLESS_I, 'i'))
-    .filter((ch) => !FOLD_DROP.test(ch) && !HIDING_MARKS.has(ch.codePointAt(0) ?? 0))
+  return squeeze(decomposed(text), FOLD_DROP)
+}
+
+const decomposed = (text: string): string => text.normalize('NFKD').replaceAll(DOTLESS_I, 'i')
+
+/** The text without the characters `drop` matches and without hiding blanks, spaces collapsed. */
+function squeeze(text: string, drop: RegExp): string {
+  return Array.from(text)
+    .filter((ch) => !drop.test(ch) && !HIDING_MARKS.has(ch.codePointAt(0) ?? 0))
     .join('')
     .replace(/\s+/g, ' ')
+}
+
+const split = (text: string): string => text.replace(NON_ASCII, ' ').replace(/\s+/g, ' ')
+
+/**
+ * Every way the recorder could read the words of a text. Its fold drops format characters and non-spacing marks (the
+ * words around them join), and its patterns then read any other character that is not a letter or a digit as a break.
+ * Python and this runtime ship different Unicode versions (a mark Python drops is a spacing mark here; a character
+ * new here is unassigned there), so the port reads the text both ways: with every mark dropped (joined), and with every
+ * remaining non-ASCII character as a break (split), on the folded text, on the recorder's own fold and on the raw text.
+ */
+function readings(text: string): string[] {
+  const nfkd = decomposed(text)
+  const joined = squeeze(nfkd, FOLD_DROP)
+  return [joined, split(joined), split(squeeze(nfkd, RECORDER_DROP)), split(text)]
 }
 
 /** A word with a Latin letter and a letter of another script (a Cyrillic "а" in "аccept", a Greek numeral sign). */
@@ -212,9 +238,30 @@ export function oddUnicode(text: string): boolean {
 /** The names of the injection shapes in a text, as bazaar's recorder (`injection_flags`) would tag it. */
 export function injectionFlags(text: string | null | undefined): string[] {
   if (!text) return []
-  const plain = folded(text)
-  const found = Object.entries(PATTERNS).filter(([, re]) => re.test(plain)).map(([name]) => name)
+  const plains = readings(text)
+  const found = Object.entries(PATTERNS).filter(([, re]) => plains.some((plain) => re.test(plain))).map(([name]) => name)
   return oddUnicode(text) ? [...found, 'odd_unicode'] : found
+}
+
+/** Compatibility characters a dealer may well type, which read the same to a pattern: … º ª µ, a no-break space, ½ ¼ ¾. */
+const PLAIN_COMPAT = new Set([0x2026, 0x00ba, 0x00aa, 0x00b5, 0x00a0, 0x00bd, 0x00bc, 0x00be])
+const NON_SPACING = /\p{Mn}/u
+const INHERITED = /\p{Script=Inherited}/u
+
+/**
+ * A text that reads differently to a pattern than it looks: a mark other than a plain combining accent (a spacing mark,
+ * an enclosing mark, a script's own sign), or a compatibility character (an outlined letter, a fullwidth form, a
+ * ligature) beyond a few a dealer may type. No voice reads such a text, whatever any pattern says about it.
+ */
+export function readsDifferently(text: string): boolean {
+  for (const ch of text) {
+    if (MARK.test(ch)) {
+      if (!(NON_SPACING.test(ch) && INHERITED.test(ch))) return true
+      continue
+    }
+    if (ch.normalize('NFKD') !== ch.normalize('NFD') && !PLAIN_COMPAT.has(ch.codePointAt(0) ?? 0)) return true
+  }
+  return false
 }
 
 /** A few more shapes no voice should read, beyond the recorder's: a broader instruction override, a markup tag. */
@@ -228,9 +275,12 @@ const MORE: readonly RegExp[] = [
 ]
 
 /**
- * A text no voice should read: every shape the recorder tags (so no row's text is ever voiced) and a few more.
- * Deliberately broad: a false positive only keeps a quote a caption (its generated line is voiced instead).
+ * A text no voice should read: every shape the recorder tags, read every way it could read it (so no row's text is ever
+ * voiced), a text that reads differently than it looks, and a few more shapes. Deliberately broad: a false positive
+ * only keeps a quote a caption (its generated line is voiced instead).
  */
 export function looksLikeInjection(text: string): boolean {
-  return injectionFlags(text).length > 0 || MORE.some((re) => re.test(folded(text)))
+  if (injectionFlags(text).length > 0 || readsDifferently(text)) return true
+  const plains = readings(text)
+  return MORE.some((re) => plains.some((plain) => re.test(plain)))
 }

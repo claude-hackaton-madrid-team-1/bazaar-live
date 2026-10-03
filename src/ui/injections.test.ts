@@ -138,6 +138,10 @@ describe('the show keeps a few rows and links to the rest', () => {
     expect(compact({ status: 'error', snapshot: EMPTY_INJECTIONS })).toBe('')
     expect(compact({ status: 'live', snapshot: EMPTY_INJECTIONS })).toBe('')
     expect(compact(live([row('one')]))).toContain('one')
+    // a failed read (a 502 during a redeploy) keeps the rows it had, with no error line on the projected show
+    const failed = compact({ status: 'error', snapshot: live([row('kept')]).snapshot })
+    expect(failed).toContain('kept')
+    expect(failed).not.toContain(en.status.error)
     expect(compact({ status: 'mock', snapshot: MOCK_INJECTIONS })).toContain('Made-up attempts')
     // the full screens still say why they are empty
     expect(render({ status: 'off', snapshot: EMPTY_INJECTIONS })).toContain('No database')
