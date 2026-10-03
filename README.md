@@ -93,6 +93,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | Route | Answers | Shows |
 |---|---|---|
 | `/agent` | What is our agent doing, and why? | The current phase and goal, then a timeline of our events by tick, each tick read as Observe → Decide → Act → Result (thoughts, actions, our offers, their replies, our settlements with their gain). Nothing from other teams. |
+| `/strategy` | What are we aiming for, why do we hold these cards, why do we not buy what is on sale? | The plan: the incomplete album pages our affinity boosts with the cards they lack, the complete ones, how spares are sold, our venue; what we spent this game hour and the price cap per rarity. Then the ONE rule that stops buys now in big type (`Caja 81, suelo 50: solo 31 para comprar`), the refused card it hit last (price, our value, the surplus, how often, and the cash that would fit it), what is on sale now against what we lack, Jev's refusals in one line, and every refused buy by the surplus given up behind a toggle. Last, every card we hold: kept for a page (and why), spares on sale (our ask vs our value vs the cheapest elsewhere and the last fill), spares not on sale grouped by reason, duels on hold. Read from Postgres: see below. |
 | `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. A link to Duels while any is live. |
 | `/duels` | Is their price inside our limit? | One card per live duel: rival, buying or selling, the card at stake, their price → ours, the gap, our limit and how far inside or outside it their price is, the rounds and what their decay costs, the ticks left, the duels agent's last call (offer, blocked by a rule, accept planned by the deadline − 2) and a pill (inside limit / haggling / outside limit / expiring). Then the record per rival and per session with `score.duel_points`, every finished duel in one line (deal at X vs our limit Y, what it kept, rounds), and whether the duels agent is silent or blocked. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
@@ -255,9 +256,33 @@ on the big chart. Changes to the agents' GUARDRAILS.md, STRATEGY.md or flags are
 private, and the server holds no GitHub token. Until `show.score_points` is applied the panel is the cash chart.
 
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/history.sql`. The server reads
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`. The server reads
 the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4) and serves `GET /api/history`,
 behind `GAME_VIEW_TOKEN`. `?mock=1` shows a made-up day of money.
+
+### What we aim for, and why we hold and do not buy (`/strategy`)
+
+`db/strategy.sql` adds five read-only views for the same role, behind `GAME_VIEW_TOKEN` (they carry our values, our caps
+and why our agents refused a buy: never in the public show views):
+
+- `show.strategy_me`: our latest real-world snapshot, field by field: cash, level, venue, the affinity (numbers only), the
+  album pages and each card we hold (ref, set, rarity, `your_value`, its asset id to match our own asks). Never the `me`
+  or `score` objects whole (`luck_private`, `collection_value`).
+- `show.strategy_spend`: what our buys spent in the last game hour (refunds netted), as `guardrails.context_from()` sums it.
+- `show.strategy_decisions`: the taker's and the maker's live decisions (no duels, no dry runs, no starts) with only the
+  card, price, fee, total, our value and surplus, the guardrail's text, Jev's value, verdict and reason, and the agent's
+  own `reason` cut to 240 characters. Never `candidates`, `chosen`, `rag_context` or Jev's digest and probabilities.
+- `show.strategy_asks`: the single-card asks for cash open now on every venue, from the feed (listed in the last game hour,
+  not expired, cancelled or settled since), ours flagged.
+- `show.strategy_cards`: the released catalog with the last price the tape filled for each card.
+
+The caps are read live from the guardrail texts (`cash 81 - 79 < cash_floor 50` names the floor and its value); a cap no
+denial has named yet (the rare's, the pack's) comes from `src/game/guardrailsDoc.ts`, a typed copy of bazaar's
+GUARDRAILS.md and STRATEGY.md that says which commit it was read from; update it when those files change a value no
+denial shows. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`.
+The server reads them every 5 s on the shared pool and serves `GET /api/strategy`; a view not applied yet blanks its part
+and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
 
 ## Real conversations (LIVE-T1)
 

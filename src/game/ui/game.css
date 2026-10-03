@@ -3768,3 +3768,233 @@
 .neg-ended-more .gm-eid {
   margin-right: 4px;
 }
+
+/* ---------------------------------------------------------------- strategy */
+
+.st-plan {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 var(--s-4);
+  padding-left: 1.1em;
+  font-size: 0.9375rem;
+}
+
+.st-missing {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  margin-left: var(--s-2);
+}
+
+.st-levers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s-3) var(--s-4);
+  margin: 0;
+}
+
+.st-levers > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.st-levers dt {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.st-levers dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--s-2);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.st-big {
+  font-size: 1.375rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-caps {
+  gap: 4px var(--s-3);
+}
+
+.st-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.st-num[data-doc] {
+  text-decoration: underline dotted var(--text-2);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.st-headline {
+  margin: 0 0 var(--s-2);
+  font-size: clamp(1.25rem, 4.2vw, 1.875rem);
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: var(--track-display);
+  overflow-wrap: anywhere;
+}
+
+.st-headline[data-rule='cash_floor'],
+.st-headline[data-rule='max_spend_per_game_hour'],
+.st-headline[data-rule='max_price'] {
+  color: var(--gm-bad);
+}
+
+.st-headline[data-rule='none'] {
+  color: var(--gm-good);
+}
+
+.st-line {
+  margin: 0 0 var(--s-2);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.st-hint {
+  color: var(--gm-warn);
+}
+
+.st-sale-missing,
+.st-blocks,
+.st-pages,
+.st-spares {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  list-style: none;
+}
+
+.st-sale-missing li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--s-3);
+  font-size: 0.8125rem;
+}
+
+.st-spares li {
+  display: grid;
+  gap: 2px;
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.8125rem;
+}
+
+.st-spare-why {
+  min-width: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.st-details {
+  margin-top: var(--s-2);
+  font-size: 0.8125rem;
+}
+
+.st-details > summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.st-details ul {
+  margin: 4px 0 0;
+  padding-left: 1.1em;
+}
+
+.st-blocked > summary {
+  font-size: 0.8125rem;
+}
+
+.st-blocks {
+  margin-top: var(--s-2);
+}
+
+.st-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.8125rem;
+}
+
+.st-block[data-held] {
+  opacity: 0.6;
+}
+
+.st-block > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  min-width: 0;
+}
+
+.st-block-money {
+  font-variant-numeric: tabular-nums;
+}
+
+.st-block .st-details {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.st-h3 {
+  margin: var(--s-4) 0 var(--s-2);
+}
+
+.st-h3:first-of-type {
+  margin-top: 0;
+}
+
+.st-page {
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.875rem;
+}
+
+.st-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+}
+
+.st-page .st-missing {
+  margin: 4px 0 0;
+}
+
+.st-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--s-3);
+  margin-top: 4px;
+}
+
+.st-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+@media (max-width: 640px) {
+  .st-block {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
