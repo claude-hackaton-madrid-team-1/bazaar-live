@@ -151,22 +151,37 @@ export const hiddenCount = (text: string): number => revealHidden(text).reduce((
 
 /** Blanks and letters that split a word without being format characters (bazaar's HIDING_MARKS). */
 const HIDING_MARKS = new Set([0x034f, 0x115f, 0x1160, 0x3164, 0xffa0, 0x2800])
-const FOLD_DROP = /[\p{Cf}\p{Mn}\p{Me}]/u
+/**
+ * Format characters and EVERY combining mark (bazaar drops Mn and Me; a mark that a newer Unicode moved to Mc, such as
+ * U+1171E, must still go, or it splits a keyword).
+ */
+const FOLD_DROP = /[\p{Cf}\p{M}]/u
+/** The dotless i matches "i" in the recorder's case-insensitive patterns (Python's re); JavaScript's /i does not. */
+const DOTLESS_I = String.fromCodePoint(0x0131)
 /** IPA letters and Latin small capitals ("ɪ", "ɡ", "ᴀ"): look-alikes of Latin letters. */
 const LOOKALIKE_BLOCKS: readonly (readonly [number, number])[] = [[0x0250, 0x02af], [0x1d00, 0x1d2b]]
 const LATIN = /\p{Script=Latin}/u
-const CONFUSABLE = /[\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Armenian}\p{Script=Cherokee}\p{Script=Coptic}\p{Script=Lisu}\p{Script=Canadian_Aboriginal}]/u
+const LETTER = /\p{L}/u
+/** Letters outside the Latin script that are not tricks in a Latin word: "µ" (micro sign) and "ʼ" (modifier apostrophe). */
+const LATIN_FRIENDS = new Set([0x00b5, 0x02bc])
 
 /**
  * The text the patterns read, as bazaar's recorder reads it (llm/chooser.py `folded`): compatibility-decomposed
- * (fullwidth letters and digits become ASCII, accents split off), without format characters, combining marks and
- * hiding blanks (nothing invisible splits a word), spaces collapsed.
+ * (fullwidth letters and digits become ASCII, accents split off), the dotless i read as "i", without format
+ * characters, combining marks and hiding blanks (nothing invisible splits a word), spaces collapsed.
  */
 export function folded(text: string): string {
-  return Array.from(text.normalize('NFKD'))
+  return Array.from(text.normalize('NFKD').replaceAll(DOTLESS_I, 'i'))
     .filter((ch) => !FOLD_DROP.test(ch) && !HIDING_MARKS.has(ch.codePointAt(0) ?? 0))
     .join('')
     .replace(/\s+/g, ' ')
+}
+
+/** A word with a Latin letter and a letter of another script (a Cyrillic "а" in "аccept", a Greek numeral sign). */
+function mixesScripts(word: string): boolean {
+  if (!LATIN.test(word)) return false
+  for (const ch of word) if (LETTER.test(ch) && !LATIN.test(ch) && !LATIN_FRIENDS.has(ch.codePointAt(0) ?? 0)) return true
+  return false
 }
 
 /** The recorder's shapes (llm/chooser.py INJECTION_PATTERNS), read on the folded text. */
@@ -181,8 +196,9 @@ const PATTERNS: Readonly<Record<string, RegExp>> = {
 }
 
 /**
- * Hiding (bazaar's `odd_unicode`, a little stricter): any character `revealHidden` marks, a look-alike letter, or a word
- * that mixes Latin letters with a look-alike script (a Cyrillic "а" inside "аccept").
+ * Hiding (bazaar's `odd_unicode`, stricter): any character `revealHidden` marks, a look-alike letter, or a word that
+ * mixes Latin letters with letters of any other script (bazaar flags only the look-alike scripts; Unicode versions
+ * and script data differ between Python and JavaScript, so this side takes them all).
  */
 export function oddUnicode(text: string): boolean {
   if (revealHidden(text).some((s) => 'hidden' in s)) return true
@@ -190,7 +206,7 @@ export function oddUnicode(text: string): boolean {
     const cp = ch.codePointAt(0) ?? 0
     if (LOOKALIKE_BLOCKS.some(([lo, hi]) => cp >= lo && cp <= hi)) return true
   }
-  return (text.match(/[\p{L}\p{M}\p{N}_]+/gu) ?? []).some((word) => LATIN.test(word) && CONFUSABLE.test(word))
+  return (text.match(/[\p{L}\p{M}\p{N}_]+/gu) ?? []).some(mixesScripts)
 }
 
 /** The names of the injection shapes in a text, as bazaar's recorder (`injection_flags`) would tag it. */

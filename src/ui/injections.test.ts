@@ -131,6 +131,18 @@ describe('the show keeps a few rows and links to the rest', () => {
     expect(html).toContain('All 7 on the Injections screen')
   })
 
+  it('shows the projected show nothing but rows: no setup note, no loading line, no error', () => {
+    const compact = (state: InjectionsState) => render(state, { max: 5, allHref: '/injections' })
+    expect(compact({ status: 'off', snapshot: EMPTY_INJECTIONS })).toBe('')
+    expect(compact({ status: 'loading', snapshot: EMPTY_INJECTIONS })).toBe('')
+    expect(compact({ status: 'error', snapshot: EMPTY_INJECTIONS })).toBe('')
+    expect(compact({ status: 'live', snapshot: EMPTY_INJECTIONS })).toBe('')
+    expect(compact(live([row('one')]))).toContain('one')
+    expect(compact({ status: 'mock', snapshot: MOCK_INJECTIONS })).toContain('Made-up attempts')
+    // the full screens still say why they are empty
+    expect(render({ status: 'off', snapshot: EMPTY_INJECTIONS })).toContain('No database')
+  })
+
   it('has no link when every row fits, or on the Injections screen itself', () => {
     expect(render(live([row('one')]), { max: 5, allHref: '/injections' })).not.toContain('href=')
     expect(render(live([1, 2, 3, 4, 5, 6].map((id) => row(`a${id}`, { id }))))).not.toContain('href=')

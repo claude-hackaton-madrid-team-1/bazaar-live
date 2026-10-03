@@ -107,6 +107,8 @@ export function InjectionsView({ state, t, className, max, allHref, onAll }: Vie
   const shown = weak ? snapshot.rows : snapshot.rows.filter((r) => r.severity === 'attempt')
   const rows = max === undefined ? shown : shown.slice(0, max)
   const total = snapshot.counts.attempt + (weak ? snapshot.counts.weak : 0)
+  // the show (`max`) is projected: it shows rows (or the mock), never a setup note, a loading line or an error
+  if (max !== undefined && status !== 'mock' && !(status === 'live' && snapshot.ready)) return null
   const notice = status === 'live' ? (snapshot.ready ? null : t.missing) : t.status[status]
   return (
     <section className={`inj material${className ? ` ${className}` : ''}`} aria-labelledby="inj-title">

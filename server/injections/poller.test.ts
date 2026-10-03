@@ -53,6 +53,13 @@ describe('attemptOf', () => {
     expect(attemptOf({ ...ROW, our_response: 'walked: final above our cap' })?.ourResponse).toBe('walked: final above our cap')
   })
 
+  it('lets only an endpoint and its ids through as the proof', () => {
+    expect(attemptOf({ ...ROW, proof: 'GET /api/duels?done=true duel 85 message 3' })?.proof).toBe('GET /api/duels?done=true duel 85 message 3')
+    const marks = String.fromCodePoint(0x0301).repeat(200)
+    expect(attemptOf({ ...ROW, proof: `GET /api/feed event 1${marks} <script>x</script>` })?.proof).toBe('GET /api/feed event 1 script x /script')
+    expect(attemptOf({ ...ROW, proof: marks })).toBeNull()
+  })
+
   it('caps the raw text at 2000 characters without cutting a surrogate pair', () => {
     const long = `${'x'.repeat(1999)}😀tail`
     expect(attemptOf({ ...ROW, raw: long })?.raw).toBe(`${'x'.repeat(1999)}😀`)
@@ -67,16 +74,16 @@ describe('InjectionsPoller', () => {
     ))
     const poller = new InjectionsPoller({ db, log: () => undefined, now })
     await poller.pollOnce()
-    expect(db.calls).toEqual([{ sql: SQL.rows, params: [CAP] }, { sql: SQL.counts, params: undefined }])
+    expect(db.calls).toEqual([{ sql: SQL.rows, params: [2 * CAP] }, { sql: SQL.counts, params: undefined }])
     const s = poller.current()
     expect(s).toMatchObject({ at: '2026-10-03T10:05:00.000Z', ready: true, counts: { attempt: 3, weak: 12 } })
     expect(s.rows.map((r) => r.id)).toEqual([8, 7])
   })
 
-  it('caps each severity with its own top-N query (bounded memory under the role\'s temp_file_limit)', () => {
-    expect(SQL.rows).toMatch(/where severity = 'attempt' order by seen_at desc, id desc limit \$1\)/)
-    expect(SQL.rows).toMatch(/where severity = 'weak' order by seen_at desc, id desc limit \$1\)/)
-    expect(SQL.rows).not.toMatch(/over \(/)
+  it('reads the views as they are: the window and the counts, nothing computed over every row', () => {
+    expect(SQL.rows).toMatch(/from show\.injection_attempts order by seen_at desc, id desc limit \$1$/)
+    expect(SQL.counts).toBe('select severity, n from show.injection_counts')
+    expect(`${SQL.rows} ${SQL.counts}`).not.toMatch(/over \(|count\(/)
   })
 
   it('reads an empty table as ready with no rows', async () => {

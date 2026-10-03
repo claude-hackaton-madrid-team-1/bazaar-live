@@ -320,27 +320,30 @@ report a team. The panel shows each attempt with its proof:
 
 - full page on `/injections`, the judges' view;
 - under the stream on `/debug`;
-- on the show, under the stage: the newest five, with a link to the rest.
+- on the show, under the stage: the newest five, with a link to the rest. The show is projected, so it shows rows or
+  nothing: no setup note, no loading line, no error.
 
 Each row says when (time and tick), who (team, dealer or venue) and through which channel (feed, team thread, duel,
 dealer thread, offer text). It then shows the tags, their exact text, the proof to check it
 (`GET /api/threads/412 message 2210`) and what our agent did. `weak` rows sit behind a toggle with their count: code,
 a url or money words only, often a venue's own format notice.
 
-- **The view.** `db/injections.sql` adds `show.injection_attempts` for the same read-only role. It feeds a public
-  route, so it publishes only:
+- **The views.** `db/injections.sql` adds `show.injection_attempts` (the newest 100 of each severity) and
+  `show.injection_counts` for the same read-only role. They feed a public route, so they publish only:
   - rows of the real world;
   - a duel's row (any row that names a duel) by `show.duel_lines`' own rule: once an admin opens `show.gate`, and only
     for a closed duel with no live sibling;
   - `our_response` as a verb from a closed list (`ignored`, `refused`, `walked`…), plus `: reason` only when the reason
     has no digit, so a price or a limit never leaves. Anything else reads `recorded`.
 
-  It never selects the recorder's `normalised` text or its unique-key ids. Until bazaar creates the table, the file
-  creates nothing and succeeds: re-run it after. Apply it after the other show files, each time:
+  They never select the recorder's `normalised` text or its unique-key ids. The rules live once, in
+  `show.injection_visible`, which is never granted. The window is an `ORDER BY ... LIMIT` inside the view: at 100,000
+  rows of 2,000 characters a read takes 46 ms, and 5 ms with an index on `injection_attempts (severity, seen_at desc,
+  id desc)`. Until bazaar creates the table, the file creates nothing and succeeds: re-run it after. Apply it after
+  the other show files, each time:
   `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/injections.sql`.
-- **The server.** `server/injections/` reads the view every 10 s on the shared pool, in two small queries: the newest
-  100 of each severity, as top-N sorts whose memory stays within the role's `temp_file_limit` on a large table, then
-  the count of each severity.
+- **The server.** `server/injections/` reads both views every 10 s on the shared pool. A `proof` keeps only the
+  characters of an endpoint and its ids.
   - It serves `GET /api/injections`, which is **public** like `/api/transcript` (the show has no token).
   - The body is serialised once per change and carries an ETag, so an unchanged list costs a 304.
   - A view not applied yet shows as "not set up yet", not as "nothing recorded".
@@ -354,10 +357,14 @@ a url or money words only, often a venue's own format notice.
     paints over the page.
 - **No voice ever reads it.**
   - `shared/injections.ts` ports the recorder's own `injection_flags`, checked against its Python output.
-  - The transcript mutes a dealer's quote when its RAW words have any of those shapes (`server/transcript/rows.ts`,
-    `muted`), so the server never vouches it to the TTS proxy and the page keeps it a caption, even with
-    `?quotes=speak`.
-  - The proxy also refuses a quote with that shape, or one equal to a recorded attempt after the same cleaning.
+  - It agrees with the recorder on every code point: `server/injections/unicode-parity.test.ts` checks it against
+    `server/injections/recorder-unicode.json`, which `scripts/recorder-unicode.py` writes from bazaar's Python. Re-run
+    the script after a change to `chooser.py` or a Python upgrade.
+  - The transcript mutes a dealer's quote when its RAW words have any of those shapes, or reach the view's
+    1,000-character cap (`server/transcript/rows.ts`, `muted`). The server then never vouches it to the TTS proxy, and
+    the page keeps it a caption, even with `?quotes=speak`. An item without the flag counts as muted.
+  - The proxy also refuses a quote with that shape, or one equal to a recorded attempt after the same cleaning (or, for a
+    quote the cleaning cut, its beginning).
   - The panel and the voice pipeline never import each other (`server/injections/isolation.test.ts`).
 - `?mock=1` shows made-up attempts, hostile on purpose. Proof on a throwaway local Postgres: `sh scripts/test-sql.sh`
   runs `db/injections.test.ts`.

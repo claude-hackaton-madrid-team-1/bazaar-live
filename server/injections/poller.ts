@@ -1,28 +1,28 @@
 /**
- * Reads db/injections.sql's view every few seconds and keeps the last snapshot in memory for GET /api/injections.
+ * Reads db/injections.sql's views every few seconds and keeps the last snapshot in memory for GET /api/injections.
  *
- * Two small queries per poll on the server's shared pool: the newest CAP rows of each severity (a top-N sort per
- * severity: its memory is bounded by CAP, so a big table never meets the role's temp_file_limit) and the count per
- * severity. A read that finds the same rows keeps the same snapshot object (and its `at`), so the route's cached
- * body and ETag stay valid. The view missing (42P01: db/injections.sql not applied,
- * or bazaar's table not created yet) or not granted (42501) is the empty state, logged once; any other error keeps
- * the last good rows and backs off. No exception ever leaves `pollOnce()`, and error text is redacted against the
- * connection's secrets before it is logged.
+ * Two small queries per poll on the server's shared pool:
+ *   - show.injection_attempts, which holds only the newest CAP rows of each severity (each an ORDER BY ... LIMIT inside
+ *     the view: a top-N sort with bounded memory, or an index scan that stops at CAP rows);
+ *   - show.injection_counts.
+ * A read that finds the same rows keeps the same snapshot object (and its `at`), so the route's cached body and ETag stay
+ * valid. A view missing (42P01: db/injections.sql not applied, or bazaar's table not created yet) or not granted (42501)
+ * is the empty state, logged once; any other error keeps the last good rows and backs off. No exception ever leaves
+ * `pollOnce()`, and error text is redacted against the connection's secrets before it is logged.
  */
 import { EMPTY_INJECTIONS, INJECTION_SOURCES, RAW_MAX, responseOf, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
 import type { Db } from '../transcript/poller.ts'
 
 const COLUMNS = 'id, tick, source, from_team, to_us, tags, severity, raw, our_response, proof, seen_at'
 
-/** The newest `$1` rows of each severity (one top-N sort each), and each severity's total. */
-export const SQL = {
-  rows: `(select ${COLUMNS} from show.injection_attempts where severity = 'attempt' order by seen_at desc, id desc limit $1)
-         union all
-         (select ${COLUMNS} from show.injection_attempts where severity = 'weak' order by seen_at desc, id desc limit $1)`,
-  counts: `select severity, count(*) as n from show.injection_attempts group by severity`,
-} as const
-
+/** The view's own window: the newest CAP rows of each severity (db/injections.sql). */
 export const CAP = 100
+
+/** The window (the limit only guards against a view that holds more), and each severity's total. */
+export const SQL = {
+  rows: `select ${COLUMNS} from show.injection_attempts order by seen_at desc, id desc limit $1`,
+  counts: 'select severity, n from show.injection_counts',
+} as const
 
 type Row = Record<string, unknown>
 
@@ -44,6 +44,15 @@ const label = (raw: unknown, max: number): string | null => {
   return clean ? clean.slice(0, max) : null
 }
 
+/** The proof is an endpoint and its ids ("GET /api/duels?done=true duel 85 message 3"): nothing else gets through. */
+const PROOF_OTHER = /[^A-Za-z0-9 /?=&._:#,()+-]/g
+
+const proofOf = (raw: unknown): string | null => {
+  if (typeof raw !== 'string') return null
+  const proof = raw.replace(PROOF_OTHER, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
+  return proof || null
+}
+
 const isSource = (v: unknown): v is InjectionSource => typeof v === 'string' && (INJECTION_SOURCES as readonly string[]).includes(v)
 
 /** A row of the view → the wire type, or null when it lacks what the panel needs (id, source, severity, raw, proof). */
@@ -52,7 +61,7 @@ export function attemptOf(raw: unknown): InjectionAttempt | null {
   const id = int(r.id)
   const severity = r.severity === 'attempt' || r.severity === 'weak' ? r.severity : null
   const said = text(r.raw, RAW_MAX)
-  const proof = label(r.proof, 200)
+  const proof = proofOf(r.proof)
   if (id === null || !isSource(r.source) || severity === null || said === null || proof === null) return null
   const seen = r.seen_at instanceof Date ? r.seen_at : typeof r.seen_at === 'string' ? new Date(r.seen_at) : null
   return {
@@ -135,7 +144,7 @@ export class InjectionsPoller {
   async pollOnce(): Promise<void> {
     const at = (this.deps.now ?? (() => new Date()))().toISOString()
     try {
-      const { rows } = await this.deps.db.query(SQL.rows, [CAP])
+      const { rows } = await this.deps.db.query(SQL.rows, [2 * CAP])
       const totals = await this.deps.db.query(SQL.counts)
       const parsed = rows.map(attemptOf).filter((r): r is InjectionAttempt => r !== null)
       // newest first across both severities

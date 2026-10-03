@@ -499,6 +499,19 @@ describe('an injection attempt is never voiced, even as a quote the server vouch
     expect(isRecordedInjection([], quote)).toBe(false)
     expect(isRecordedInjection([{ raw: '   ' }], quote)).toBe(false)
     expect(isRecordedInjection([{ raw: quote }], '')).toBe(false)
+    // a quote that ends in "…" on its own (short: cleanQuote did not cut it) must equal a recorded text, not prefix one
+    expect(isRecordedInjection([{ raw: 'Bueno, ya veremos lo que hacemos con esa carta.' }], 'Bueno…')).toBe(false)
+    expect(isRecordedInjection([{ raw: 'Bueno…' }], 'Bueno…')).toBe(true)
+  })
+
+  it('cleans the recorded texts once per snapshot, not once per request', () => {
+    const rows = [{ raw: 'Eso es muy poco para una carta así, hombre.' }]
+    const quote = 'Eso es muy poco para una carta así, hombre.'
+    expect(isRecordedInjection(rows, quote)).toBe(true)
+    // the same rows array again: answered from its index (a mutation the index never sees proves it)
+    ;(rows as { raw: string }[]).push({ raw: 'Otra cosa distinta que no se dijo, mi niño.' })
+    expect(isRecordedInjection(rows, 'Otra cosa distinta que no se dijo, mi niño.')).toBe(false)
+    expect(isRecordedInjection([...rows], 'Otra cosa distinta que no se dijo, mi niño.')).toBe(true)
   })
 
   it('never voices a vouched quote once our agents recorded it (POST /api/tts, end to end)', async () => {

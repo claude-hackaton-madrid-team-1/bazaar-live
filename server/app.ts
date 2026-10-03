@@ -20,7 +20,7 @@
  */
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { cleanQuote } from '../shared/clean.ts'
+import { cleanQuote, MAX_QUOTE } from '../shared/clean.ts'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isLang, LANGS, type Lang } from '../shared/lang.ts'
 import { EMPTY_HISTORY } from '../shared/history.ts'
@@ -203,20 +203,38 @@ export function parseTtsRequest(
   return 'only the show\'s own lines are spoken here'
 }
 
+/** The recorded texts as the proxy compares them: cleaned once per snapshot (the poller keeps its rows while they hold). */
+interface RecordedIndex {
+  readonly exact: ReadonlySet<string>
+  readonly cleaned: readonly string[]
+}
+
+const recordedIndexes = new WeakMap<readonly { readonly raw: string }[], RecordedIndex>()
+
+function recordedIndex(rows: readonly { readonly raw: string }[]): RecordedIndex {
+  let index = recordedIndexes.get(rows)
+  if (!index) {
+    const cleaned = rows.flatMap((r) => cleanQuote(r.raw, Number.POSITIVE_INFINITY) ?? [])
+    index = { exact: new Set(cleaned), cleaned }
+    recordedIndexes.set(rows, index)
+  }
+  return index
+}
+
 /**
  * The TTS proxy's last wall: a quote that IS one of the recorded attempts. The quote is `cleanQuote`'s output (hidden
- * characters, tags and links stripped, cut at 280 with "…"), so the recorded text goes through the same cleaning
- * and must be equal, or, for a cut quote, start with it. Never a loose substring match: one short recorded text
- * must not silence every dealer.
+ * characters, tags and links stripped, cut at 280 with "…"), so the recorded text goes through the same cleaning and
+ * must be equal, or, for a quote cleanQuote cut (longer than half the cap, ending in "…"), start with it. Never a loose
+ * substring match: one short recorded text must not silence every dealer, nor a recorded "Bueno" every "Bueno…".
  */
 export function isRecordedInjection(rows: readonly { readonly raw: string }[], text: string): boolean {
   const said = cleanQuote(text, Number.POSITIVE_INFINITY)
   if (!said) return false
-  const cut = said.endsWith('…') ? said.slice(0, -1).trimEnd() : null
-  return rows.some((r) => {
-    const raw = cleanQuote(r.raw, Number.POSITIVE_INFINITY)
-    return raw !== null && (raw === said || (cut !== null && cut !== '' && raw.startsWith(cut)))
-  })
+  const index = recordedIndex(rows)
+  if (index.exact.has(said)) return true
+  if (!said.endsWith('…') || said.length <= MAX_QUOTE / 2) return false
+  const cut = said.slice(0, -1).trimEnd()
+  return index.cleaned.some((raw) => raw.startsWith(cut))
 }
 
 export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {

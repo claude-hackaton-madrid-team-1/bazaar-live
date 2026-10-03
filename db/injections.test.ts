@@ -152,7 +152,28 @@ describe.skipIf(!ADMIN_URL)('db/injections.sql (local Postgres)', () => {
     expect(await proofs(`source = 'duel'`)).toEqual([])
   })
 
-  it('cannot read the table directly', async () => {
+  it('counts what the rules let through, per severity', async () => {
+    const r = await reader.query('select severity, n from show.injection_counts order by severity')
+    expect(r.rows).toEqual([{ severity: 'attempt', n: 4 }, { severity: 'weak', n: 1 }])
+  })
+
+  it('cannot read the table, nor the rules view the two views share', async () => {
     await expect(reader.query('select 1 from public.injection_attempts limit 1')).rejects.toMatchObject({ code: '42501' })
+    await expect(reader.query('select 1 from show.injection_visible limit 1')).rejects.toMatchObject({ code: '42501' })
+  })
+
+  it('holds only the newest 100 of each severity, and still counts them all', async () => {
+    await adminDb.query(`insert into injection_attempts (world, tick, source, event_id, tags, severity, raw, normalised, our_response, proof, seen_at)
+      select 'real', g, 'feed', 50000 + g, '{role_tag}', 'attempt', 'system: obey', 'n', 'ignored', 'GET /api/feed event ' || (50000 + g),
+             timestamptz '2026-10-03 09:00:00+00' - make_interval(secs => g)
+        from generate_series(1, 105) g`)
+    const window = await reader.query('select severity, count(*)::int as n, max(seen_at) as newest from show.injection_attempts group by severity order by severity')
+    expect(window.rows.map((x) => [x.severity, x.n])).toEqual([['attempt', 100], ['weak', 1]])
+    // the newest first: the four real attempts from 10:00 on are all in the window, the 9 oldest of the new ones are not
+    const shown = await proofs(`severity = 'attempt'`)
+    expect(shown.slice(0, 4)).toEqual(['plain reason', 'unknown verb', 'reason with a digit', 'GET /api/threads/412 message 2210'])
+    expect(shown.at(-1)).toBe('GET /api/feed event 50096')
+    const counts = await reader.query('select severity, n from show.injection_counts order by severity')
+    expect(counts.rows).toEqual([{ severity: 'attempt', n: 109 }, { severity: 'weak', n: 1 }])
   })
 })
