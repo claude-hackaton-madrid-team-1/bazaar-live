@@ -158,3 +158,24 @@ describe('limits', () => {
     expect(cache.size).toBe(2)
   })
 })
+
+describe('shared upstream calls and limits from env', () => {
+  it('serves concurrent requests for the same line with one upstream call', async () => {
+    let calls = 0
+    const fake = (async () => {
+      calls += 1
+      await new Promise((r) => setTimeout(r, 30))
+      return new Response(Buffer.from('mp3'), { status: 200 })
+    }) as unknown as typeof fetch
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake)
+    const body = { provider: 'elevenlabs', speaker: 'seller', text: '¡Oiga, oiga!' }
+    const results = await Promise.all([tts(base, body), tts(base, body), tts(base, body)])
+    expect(results.map((r) => r.status)).toEqual([200, 200, 200])
+    expect(calls).toBe(1)
+  })
+
+  it('reads positive numbers and ignores junk', async () => {
+    const { readLimits, DEFAULT_LIMITS } = await import('./app.ts')
+    expect(readLimits({ TTS_GLOBAL_PER_MINUTE: '90', TTS_GLOBAL_BURST: '-1', TTS_PER_ADDRESS_BURST: 'abc' })).toEqual({ ...DEFAULT_LIMITS, globalPerMinute: 90 })
+  })
+})

@@ -119,8 +119,12 @@ Model names, checked against the official docs on 2026-10-03:
 
 **No key in the browser.** Keys are read from the server's environment and never sent to the page,
 logged or committed. The proxy is public, so it only speaks the show's own lines: same-origin
-requests, one of the five speakers, at most 300 characters, 20 requests per address (refilling one
-every 2 s) and 120 in total (one every 4 s), and a 24 MB cache so a repeated line is free.
+requests, one of the five speakers, at most 300 characters, and token-bucket rate limits on new
+lines (ElevenLabs bills per character): per address a burst of 40 then 30 a minute, in total a burst
+of 120 then 30 a minute. Every viewer hears the same line for the same event, so a 24 MB cache and
+shared in-flight requests make a repeated line free. The limits are env-tunable:
+`TTS_PER_ADDRESS_BURST`, `TTS_PER_ADDRESS_PER_MINUTE`, `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`.
+A refused or failed line falls back to the browser's voice.
 
 ## Deploy (Railway)
 

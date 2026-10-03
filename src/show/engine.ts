@@ -252,7 +252,13 @@ export class ShowEngine {
     }
   }
 
+  private prefetch(beat: Beat | null): void {
+    beat?.lines.forEach((line, i) => this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }))
+  }
+
   private async play(beat: Beat, generation: number): Promise<void> {
+    this.prefetch(beat)
+    this.prefetch(this.director.peek())
     this.set(this.cuePatch(beat))
     for (const [i, line] of beat.lines.entries()) {
       if (!this.running || this.generation !== generation) return

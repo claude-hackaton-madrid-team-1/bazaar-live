@@ -21,8 +21,32 @@ import { createStatic } from './static.ts'
 export const MAX_TEXT = 300
 const MAX_BODY = 2048
 
+/** Rate limits for /api/tts, overridable from the environment (ElevenLabs bills per character). */
+export interface TtsLimits {
+  readonly perAddressBurst: number
+  readonly perAddressPerMinute: number
+  readonly globalBurst: number
+  readonly globalPerMinute: number
+}
+
+export const DEFAULT_LIMITS: TtsLimits = { perAddressBurst: 40, perAddressPerMinute: 30, globalBurst: 120, globalPerMinute: 30 }
+
+export function readLimits(env: Readonly<Record<string, string | undefined>>): TtsLimits {
+  const read = (name: string, fallback: number) => {
+    const n = Number(env[name])
+    return Number.isFinite(n) && n > 0 ? n : fallback
+  }
+  return {
+    perAddressBurst: read('TTS_PER_ADDRESS_BURST', DEFAULT_LIMITS.perAddressBurst),
+    perAddressPerMinute: read('TTS_PER_ADDRESS_PER_MINUTE', DEFAULT_LIMITS.perAddressPerMinute),
+    globalBurst: read('TTS_GLOBAL_BURST', DEFAULT_LIMITS.globalBurst),
+    globalPerMinute: read('TTS_GLOBAL_PER_MINUTE', DEFAULT_LIMITS.globalPerMinute),
+  }
+}
+
 export interface AppDeps {
   readonly config: ProviderConfig
+  readonly limits?: TtsLimits
   readonly distDir: string
   readonly fetchImpl?: typeof fetch
   readonly perClient?: RateLimiter
@@ -125,9 +149,12 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[]): 
 export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const log = deps.log ?? defaultLog
   const fetchImpl = deps.fetchImpl ?? fetch
-  const perClient = deps.perClient ?? new RateLimiter({ capacity: 20, refillPerSecond: 0.5 })
-  const global = deps.global ?? new RateLimiter({ capacity: 120, refillPerSecond: 0.25 })
+  const limits = deps.limits ?? DEFAULT_LIMITS
+  const perClient = deps.perClient ?? new RateLimiter({ capacity: limits.perAddressBurst, refillPerSecond: limits.perAddressPerMinute / 60 })
+  const global = deps.global ?? new RateLimiter({ capacity: limits.globalBurst, refillPerSecond: limits.globalPerMinute / 60 })
   const cache = deps.cache ?? new LruCache<Audio>(24 * 1024 * 1024)
+  // Every viewer hears the same line for the same event: one upstream call serves them all.
+  const inFlight = new Map<string, Promise<Audio>>()
   const available = availableProviders(deps.config)
   const serveStatic = createStatic(deps.distDir)
 
@@ -148,15 +175,18 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     const key = `${parsed.provider}|${parsed.speaker}|${parsed.text}`
     const started = Date.now()
     let audio = cache.get(key)
-    const hit = audio !== undefined
+    const shared = inFlight.get(key)
+    const hit = audio !== undefined || shared !== undefined
     if (!audio) {
-      const limited = [perClient.take(clientAddress(req)), global.take('*')].find((r) => !r.ok)
+      const limited = shared ? undefined : [perClient.take(clientAddress(req)), global.take('*')].find((r) => !r.ok)
       if (limited && !limited.ok) {
         log({ route: 'tts', status: 429, provider: parsed.provider })
         return json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(limited.retryAfterSeconds) })
       }
       try {
-        audio = await synthesize(parsed)
+        const pending = shared ?? synthesize(parsed).finally(() => inFlight.delete(key))
+        if (!shared) inFlight.set(key, pending)
+        audio = await pending
         cache.set(key, audio)
       } catch (error: unknown) {
         const status = error instanceof UpstreamError ? error.status : 0

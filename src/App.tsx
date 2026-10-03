@@ -6,6 +6,7 @@ import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
+import { unlockWebSpeech } from './tts/webspeech'
 import { useShow } from './ui/useShow'
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
       {!started && (
         <StartGate
           onStart={(withSound) => {
+            if (withSound) unlockWebSpeech()
             setStarted(true)
             setMuted(!withSound)
           }}

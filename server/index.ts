@@ -6,14 +6,14 @@
 import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createApp } from './app.ts'
+import { createApp, readLimits } from './app.ts'
 import { availableProviders, readProviderConfig } from './providers.ts'
 
 const DEFAULT_PORT = 8080
 const port = Number(process.env.PORT ?? DEFAULT_PORT) || DEFAULT_PORT
 const distDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 const config = readProviderConfig(process.env)
-const server = createServer(createApp({ config, distDir }))
+const server = createServer(createApp({ config, distDir, limits: readLimits(process.env) }))
 
 server.listen(port, '0.0.0.0', () => {
   process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), msg: 'bazaar-live listening', port, tts: availableProviders(config) })}\n`)

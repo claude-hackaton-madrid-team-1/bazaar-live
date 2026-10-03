@@ -70,6 +70,11 @@ export class Director {
     return { beat: null, skipped }
   }
 
+  /** The beat that would play next, without taking it (for prefetching its voices). */
+  peek(): Beat | null {
+    return this.queue[0]?.beat ?? null
+  }
+
   clear(): Beat[] {
     const all = this.queue.map((q) => q.beat)
     this.queue = []

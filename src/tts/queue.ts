@@ -79,6 +79,11 @@ export class SpeechQueue {
     })
   }
 
+  /** Ask the active provider to fetch a line's audio ahead of time (no-op for local voices). */
+  prefetch(u: Utterance): void {
+    if (!this.isMuted) this.active().prefetch?.(u)
+  }
+
   /** Drop everything: the current line stops, waiting lines resolve unspoken. */
   clear(): void {
     this.flush()

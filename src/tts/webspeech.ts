@@ -39,6 +39,14 @@ function pickVoice(voicing: Voicing): SpeechSynthesisVoice | null {
   return pool.length > 0 ? (pool[voicing.slot % pool.length] ?? null) : null
 }
 
+/** Some browsers (Safari) only allow speech that starts inside a click: prime it there. */
+export function unlockWebSpeech(): void {
+  if (!webSpeechAvailable()) return
+  const primer = new SpeechSynthesisUtterance(' ')
+  primer.volume = 0
+  window.speechSynthesis.speak(primer)
+}
+
 export function createWebSpeech(): SpeechProvider {
   return {
     name: 'webspeech',
