@@ -176,6 +176,8 @@ export interface Plan {
   /** Sets whose cards are spares (affinity at most 1), and whether their only copies are protected. */
   readonly spareSets: readonly { readonly set: string; readonly name: string; readonly affinity: number; readonly protected: boolean }[]
   readonly venue: string | null
+  /** Every set of ours is in `protect_page_sets`: no page card's only copy is sold, whatever its affinity. */
+  readonly allProtected: boolean
 }
 
 /** Every page of ours, with the page cards it still lacks. */
@@ -204,7 +206,9 @@ export function planOf(s: StrategySnapshot): Plan {
     .filter(([, a]) => a <= 1)
     .sort((a, b) => a[1] - b[1])
     .map(([set, affinity]) => ({ set, name: names.get(set) ?? SETS[set]?.name ?? set, affinity, protected: GUARDRAILS_DOC.protectPageSets.includes(set) }))
-  return { targets, complete: pages.filter((p) => p.complete), spareSets, venue: s.me?.venue ?? null }
+  const sets = new Set([...pages.map((p) => p.set), ...Object.keys(s.me?.affinity ?? {})])
+  const allProtected = sets.size > 0 && [...sets].every((set) => GUARDRAILS_DOC.protectPageSets.includes(set))
+  return { targets, complete: pages.filter((p) => p.complete), spareSets, venue: s.me?.venue ?? null, allProtected }
 }
 
 export interface Levers extends Money {

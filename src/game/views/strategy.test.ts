@@ -84,8 +84,10 @@ describe('the plan and the levers', () => {
       ['MAL', ['MAL-09', 'MAL-10']],
     ])
     expect(plan.complete.map((p) => p.set)).toEqual(['SAL'])
-    expect(plan.spareSets.map((s) => [s.set, s.protected])).toEqual([['LAT', false], ['RET', true], ['CHA', true]])
+    expect(plan.spareSets.map((s) => [s.set, s.protected])).toEqual([['LAT', true], ['RET', true], ['CHA', true]]) // every set since d3a59037
     expect(plan.spareSets.find((s) => s.set === 'CHA')?.name).toBe('Chamberí')
+    expect(plan.allProtected).toBe(true)
+    expect(STRATEGY_STRINGS.es.sell(5, '', 'La Latina', plan.allProtected)).toBe('Vender solo repetidas, a nuestro valor + 5: la única copia de una carta de página nunca se vende')
   })
 
   it('what we can spend is the smaller of cash above the floor and the hour left', () => {
@@ -189,11 +191,11 @@ describe('why we hold', () => {
   it('keeps one copy of each page card of a boosted or protected set, and says why each spare is or is not on sale', () => {
     const { win } = all(mock)
     const h = holdingsOf(mock, win)
-    expect(h.pages.map((p) => [p.set, p.why, p.cards.length])).toEqual([['LAV', 'boost', 8], ['MAL', 'boost', 8], ['SAL', 'boost', 10], ['RET', 'protected', 1]])
+    expect(h.pages.map((p) => [p.set, p.why, p.cards.length])).toEqual([['LAV', 'boost', 8], ['MAL', 'boost', 8], ['SAL', 'boost', 10], ['LAT', 'protected', 2], ['RET', 'protected', 1]])
     expect(h.onSale.map((s) => [s.ref, s.ask, s.value, s.bestOther])).toEqual([['LAT-03', 12, 5, 6], ['SAL-01', 10, 1.3, 9]])
     expect(h.onSale[0]?.makerWhy).toContain('spare: ours + 5')
     const why = Object.fromEntries(h.notListed.map((s) => [s.ref, [s.copies, s.why?.kind]]))
-    expect(why['LAT-02']).toEqual([2, 'two_copies'])
+    expect(why['LAT-02']).toEqual([1, 'two_copies']) // its only page copy is kept: every set is protected
     expect(why['SAL-01']).toEqual([1, 'other_copy_on_sale'])
     expect(why['SAL-10']).toEqual([1, 'two_copies'])
     expect(h.copies).toBe(mock.me?.cards.length)
@@ -202,7 +204,7 @@ describe('why we hold', () => {
   it('a spare the maker took off sale carries the maker\'s words', () => {
     const s: StrategySnapshot = {
       ...mock,
-      me: mock.me && { ...mock.me, cards: [{ ref: 'LAT-05', set: 'LAT', rarity: 'common', asset: 1, value: 2 }] },
+      me: mock.me && { ...mock.me, cards: [1, 2, 3].map((asset) => ({ ref: 'LAT-05', set: 'LAT', rarity: 'common', asset, value: 2 })) },
       decisions: [d({ id: 1, tick: 620, agent: 'maker', kind: 'cancel_ask', status: 'done', allowed: true, card: 'LAT-05', reason: 'LAT-05 is no longer a sell target' })],
       asks: [],
     }

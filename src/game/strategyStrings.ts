@@ -27,7 +27,8 @@ export interface StrategyStrings {
   readonly target: (name: string, affinity: number | null, have: number, of: number) => string
   readonly lacks: (n: number) => string
   readonly complete: (names: string) => string
-  readonly sell: (surplus: number, sets: string, protectedSets: string) => string
+  /** `all`: every set's only copy is protected (protect_page_sets names them all): only true duplicates are sold. */
+  readonly sell: (surplus: number, sets: string, protectedSets: string, all?: boolean) => string
   readonly venue: (v: string) => string
   readonly caps: string
   readonly docValue: (source: string) => string
@@ -100,7 +101,7 @@ const EN: StrategyStrings = {
   target: (name, a, have, of) => `${name}${aff(a)} · ${have}/${of}`,
   lacks: (n) => `lacks ${n}:`,
   complete: (names) => `${names} complete`,
-  sell: (surplus, sets, prot) => `Sell spares at our value + ${surplus}: duplicates${sets ? ` and ${sets}` : ''}${prot ? `; ${prot} keep their only copy` : ''}`,
+  sell: (surplus, sets, prot, all) => (all ? `Sell only duplicates, at our value + ${surplus}: no page card's only copy is ever sold` : `Sell spares at our value + ${surplus}: duplicates${sets ? ` and ${sets}` : ''}${prot ? `; ${prot} keep their only copy` : ''}`),
   venue: (v) => `Our own market: ${v}`,
   caps: 'Price caps',
   docValue: (source) => `not hit by any buy yet: from ${source}`,
@@ -153,7 +154,7 @@ const EN: StrategyStrings = {
   holdSub: (copies, album, onSale, notListed) => `${copies} cards · ${album} for the album · ${onSale} on sale · ${notListed} spare, not listed`,
   album: 'Kept for the album',
   pageState: (complete, missing) => (complete ? 'complete' : `lacks ${missing}`),
-  keptWhy: { boost: 'page bonus', protected: 'new page: only copy never sold' },
+  keptWhy: { boost: 'page bonus', protected: 'only copy never sold' },
   keptCards: (n) => plural(n, 'card', 'cards'),
   pageValue: 'what the cards we keep for this page are worth to us',
   onSale: 'Spares on sale',
@@ -203,7 +204,7 @@ const ES: StrategyStrings = {
   target: (name, a, have, of) => `${name}${aff(a)} · ${have}/${of}`,
   lacks: (n) => `faltan ${n}:`,
   complete: (names) => `${names} completa`,
-  sell: (surplus, sets, prot) => `Vender sobrantes a nuestro valor + ${surplus}: repetidas${sets ? ` y ${sets}` : ''}${prot ? `; de ${prot} no se vende la única copia` : ''}`,
+  sell: (surplus, sets, prot, all) => (all ? `Vender solo repetidas, a nuestro valor + ${surplus}: la única copia de una carta de página nunca se vende` : `Vender sobrantes a nuestro valor + ${surplus}: repetidas${sets ? ` y ${sets}` : ''}${prot ? `; de ${prot} no se vende la única copia` : ''}`),
   venue: (v) => `Mercado propio: ${v}`,
   caps: 'Topes de precio',
   docValue: (source) => `ninguna compra lo ha tocado aún: de ${source}`,
@@ -256,7 +257,7 @@ const ES: StrategyStrings = {
   holdSub: (copies, album, onSale, notListed) => `${copies} cartas · ${album} para el álbum · ${onSale} en venta · ${notListed} sobrantes sin anunciar`,
   album: 'Guardadas para el álbum',
   pageState: (complete, missing) => (complete ? 'completa' : `faltan ${missing}`),
-  keptWhy: { boost: 'bonus de página', protected: 'página nueva: su única copia no se vende' },
+  keptWhy: { boost: 'bonus de página', protected: 'su única copia no se vende' },
   keptCards: (n) => plural(n, 'carta', 'cartas'),
   pageValue: 'lo que nos valen las cartas que guardamos para esta página',
   onSale: 'Sobrantes en venta',

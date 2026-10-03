@@ -3,7 +3,8 @@
  * /health and /events leave limits out on purpose, and the database only keeps a denial's text), so this file is the
  * fallback: the server's defaults (server/game/decisions.ts, under the GUARDRAIL_* variables) and the page's, under the
  * newest denial text (src/game/limits.ts). Copied from bazaar origin/main after bazaar#216 (2026-10-03 ~16:35 Madrid:
- * floor 50 → 20, hourly cap 150 → 250) and bazaar#219 (~17:20 Madrid, tick 838: floor 20 → 5):
+ * floor 50 → 20, hourly cap 150 → 250), bazaar#219 (ee19c617, ~17:20 Madrid, tick 838: floor 20 → 5) and d3a59037
+ * (~18:14 Madrid: `protect_page_sets` RET,CHA → every set, after SAL-07, Salamanca's only copy, sold at tick 947):
  *   GUARDRAILS.md  `cash_floor`, `max_spend_per_game_hour`, `max_accepts_per_tick`, `allow_venue_open`,
  *                  `venue_bond_reserve`, `max_price_*`, `protect_page_sets`, `team_threads_enabled`
  *   STRATEGY.md    `sell_min_surplus`, complete_pages / sell_spares
@@ -12,7 +13,7 @@
  */
 export const GUARDRAILS_DOC = {
   /**
-   * From when these values hold: `tick` is what src/game/limits.ts compares a denial's tick with; `day` only says which
+   * From when the values a denial can name (the floor, the hour's cap, the price caps) hold: `tick` is what src/game/limits.ts compares a denial's tick with; `day` only says which
    * game day that tick belongs to (no code reads it). bazaar#219 set the floor at tick 838: the agents' last denial with
    * `cash_floor 20` is tick 813, the first with `cash_floor 5` tick 858. (bazaar#216 before it: the last denial with
    * `cash_floor 50` / `max_spend_per_game_hour 150` is tick 765, the first with `cash_floor 20` tick 773.)
@@ -30,8 +31,8 @@ export const GUARDRAILS_DOC = {
   venueBondReserve: 270,
   /** Never pay more for a card of this rarity (a sealed pack: `pack`). */
   maxPrice: { common: 12, uncommon: 26, rare: 95, pack: 20 } as Readonly<Record<string, number>>,
-  /** Our only copy of a page card of these sets is never sold (the new pages). */
-  protectPageSets: ['RET', 'CHA'] as readonly string[],
+  /** Our only copy of a page card of these sets is never sold: every set since d3a59037 (was RET,CHA, the new pages). */
+  protectPageSets: ['LAV', 'SAL', 'MAL', 'RET', 'LAT', 'CHA'] as readonly string[],
   /** While team threads are on, the maker never lists a duplicate held in exactly two copies (the swap desk's). */
   teamThreads: true,
   /** The Jev bar for a team swap (`team_swap_jev_min_confidence`). */
@@ -41,4 +42,4 @@ export const GUARDRAILS_DOC = {
 } as const
 
 /** Where the doc values come from, for a tooltip. */
-export const GUARDRAILS_DOC_SOURCE = 'bazaar GUARDRAILS.md · bazaar#216, #219 · 2026-10-03'
+export const GUARDRAILS_DOC_SOURCE = 'bazaar GUARDRAILS.md · bazaar#216, #219, d3a59037 · 2026-10-03'

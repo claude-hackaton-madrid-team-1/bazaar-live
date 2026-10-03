@@ -59,7 +59,7 @@ function Aim({ plan, levers, release }: { plan: Plan; levers: Levers; release: R
             <span className="gm-good">✓ {t.complete(plan.complete.map((c) => c.name).join(', '))}</span>
           </li>
         )}
-        <li>{t.sell(GUARDRAILS_DOC.sellMinSurplus, spareSets.join(', '), protectedSets.join(', '))}</li>
+        <li>{t.sell(GUARDRAILS_DOC.sellMinSurplus, spareSets.join(', '), protectedSets.join(', '), plan.allProtected)}</li>
         {plan.venue && <li>{t.venue(plan.venue)}</li>}
       </ul>
       <MoneyLevers money={levers} release={release} />
