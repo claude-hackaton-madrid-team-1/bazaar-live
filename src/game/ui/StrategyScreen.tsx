@@ -6,6 +6,7 @@ import { useMemo, type MouseEvent } from 'react'
 import { hrefOf, navigate } from '../../ui/route'
 import { GUARDRAILS_DOC, GUARDRAILS_DOC_SOURCE } from '../guardrailsDoc.ts'
 import { useGame } from '../store.ts'
+import { pagePush } from '../fresh.ts'
 import { useStrategy } from '../strategy.ts'
 import { p, useStrategyStrings } from '../strategyStrings.ts'
 import { liveDuels } from '../views/duels.ts'
@@ -13,7 +14,7 @@ import {
   bindingOf, blockedBuys, boardOf, holdingsOf, jevVetoOf, leversOf, nowTickOf, planOf, rulesOf, unblockOf, windowOf, WINDOW_TICKS,
   type BlockedBuy, type Binding, type KeptPage, type Levers, type Plan, type RuleValue, type Spare, type SpareWhy,
 } from '../views/strategy.ts'
-import { Badge, CardRef, Empty, Panel } from './bits.tsx'
+import { Badge, CardRef, Empty, Fresh, Panel } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 
 /** A value read from GUARDRAILS.md rather than live carries the source as its tooltip. */
@@ -229,7 +230,8 @@ export function StrategyScreen() {
   const store = useGame()
   const t = useStrategyStrings()
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token'), [])
-  const { status, snapshot } = useStrategy(store.status === 'mock', token, store.state.tick)
+  const push = pagePush(store.status, store.state, 'strategy')
+  const { status, snapshot } = useStrategy(store.status === 'mock', token, store.state.tick, push)
   const v = useMemo(() => {
     const now = nowTickOf(snapshot)
     const win = windowOf(snapshot.decisions, now)
@@ -255,7 +257,16 @@ export function StrategyScreen() {
       {status !== 'live' && status !== 'mock' && <NoticeBar>{t.notice[status]}</NoticeBar>}
       {status === 'live' && missingParts.length > 0 && <NoticeBar>{`${missingParts.join(', ')}: ${t.missingView}`}</NoticeBar>}
       <Aim plan={plan} levers={levers} binding={binding.rule} />
-      <Panel title={t.why} sub={t.whySub(WINDOW_TICKS)} className="st-why">
+      <Panel
+        title={t.why}
+        sub={
+          <>
+            {t.whySub(WINDOW_TICKS)}
+            <Fresh page="strategy" status={status} at={snapshot.at} push={push} />
+          </>
+        }
+        className="st-why"
+      >
         <p className="st-headline" data-rule={binding.rule}>
           {t.headline(binding, levers.cash, levers.room, levers.spent)}
         </p>

@@ -46,6 +46,8 @@ export interface GameStrings {
   readonly brandTag: string
   readonly status: Readonly<Record<GameStatus, string>>
   readonly source: { readonly db: string; readonly api: string; readonly dbTitle: string; readonly apiTitle: string }
+  /** How fresh a screen that reads its own API is (./fresh.ts): current, or its last good read and how long ago. */
+  readonly fresh: { readonly live: string; readonly ago: (s: number) => string; readonly readAt: (time: string) => string; readonly stale: string }
   readonly notice: { readonly off: string; readonly locked: string; readonly mock: string; readonly noTeam: string; readonly tryMock: string }
   readonly day: string
   readonly tick: string
@@ -408,7 +410,6 @@ export interface GameStrings {
   readonly learn: {
     readonly notice: Readonly<Record<'loading' | 'off' | 'locked' | 'error' | 'mock', string>>
     readonly missing: string
-    readonly asOf: (time: string) => string
     readonly search: string
     readonly searchLabel: string
     readonly inForce: string
@@ -451,7 +452,6 @@ export interface GameStrings {
   readonly history: {
     readonly notice: Readonly<Record<'loading' | 'off' | 'locked' | 'error' | 'mock', string>>
     readonly missing: string
-    readonly asOf: (time: string) => string
     readonly now: string
     readonly nowSub: (tick: number | null) => string
     readonly stats: Readonly<Record<'open' | 'low' | 'high' | 'in' | 'out' | 'fees' | 'trades', string>>
@@ -528,6 +528,12 @@ const EN: GameStrings = {
   navLabel: 'Screens',
   brandTag: 'our agent, tick by tick',
   status: { connecting: 'CONNECTING', live: 'LIVE', reconnecting: 'RECONNECTING', off: 'NO FEED', locked: 'LOCKED', mock: 'MOCK GAME' },
+  fresh: {
+    live: 'live',
+    ago: (s) => `updated ${span(s)} ago`,
+    readAt: (time) => `last read of our database at ${time}`,
+    stale: 'not updated for a while: the server could not read our database, or this page lost the stream',
+  },
   source: { db: 'DB', api: 'GAME API', dbTitle: 'Read from our database, where our agents record the game', apiTitle: 'Read from the game\'s API with the team key' },
   notice: {
     off: 'The server has no team key (BAZAAR_KEY), so the game screens have no feed. Want a preview? Try',
@@ -940,7 +946,6 @@ const EN: GameStrings = {
       mock: 'Made-up learnings around the mock game. Remove ?mock=1 for our agents\' real memory.',
     },
     missing: 'not applied yet (db/learn.sql)',
-    asOf: (time) => `read at ${time}`,
     search: 'dealer, team, claim…',
     searchLabel: 'Filter learnings',
     inForce: 'Blocking us now',
@@ -997,7 +1002,6 @@ const EN: GameStrings = {
       mock: 'A made-up day of money around the mock game. Remove ?mock=1 for our real cash.',
     },
     missing: 'not applied yet (db/history.sql)',
-    asOf: (time) => `read at ${time}`,
     now: 'Cash now',
     nowSub: (tick) => (tick === null ? 'no reading yet' : `at tick ${tick}`),
     stats: { open: 'first today', low: 'lowest', high: 'highest', in: 'money in', out: 'money out', fees: 'fees paid', trades: 'trades' },
@@ -1074,6 +1078,12 @@ const ES: GameStrings = {
   navLabel: 'Pantallas',
   brandTag: 'nuestro agente, turno a turno',
   status: { connecting: 'CONECTANDO', live: 'EN VIVO', reconnecting: 'RECONECTANDO', off: 'SIN FEED', locked: 'BLOQUEADO', mock: 'PARTIDA FALSA' },
+  fresh: {
+    live: 'en vivo',
+    ago: (s) => `actualizado hace ${span(s)}`,
+    readAt: (time) => `última lectura de nuestra base de datos a las ${time}`,
+    stale: 'lleva rato sin actualizarse: el servidor no pudo leer nuestra base de datos, o esta página perdió el stream',
+  },
   source: { db: 'BD', api: 'API DEL JUEGO', dbTitle: 'Leído de nuestra base de datos, donde nuestros agentes registran la partida', apiTitle: 'Leído de la API del juego con la clave del equipo' },
   notice: {
     off: 'El servidor no tiene la clave del equipo (BAZAAR_KEY), así que las pantallas del juego no tienen feed. ¿Una vista previa? Prueba',
@@ -1486,7 +1496,6 @@ const ES: GameStrings = {
       mock: 'Aprendizajes inventados alrededor de la partida falsa. Quita ?mock=1 para ver la memoria real de nuestros agentes.',
     },
     missing: 'aún sin aplicar (db/learn.sql)',
-    asOf: (time) => `leído a las ${time}`,
     search: 'tratante, equipo, texto…',
     searchLabel: 'Filtrar aprendizajes',
     inForce: 'Lo que nos bloquea ahora',
@@ -1543,7 +1552,6 @@ const ES: GameStrings = {
       mock: 'Un día de dinero inventado alrededor de la partida falsa. Quita ?mock=1 para ver nuestra caja real.',
     },
     missing: 'aún sin aplicar (db/history.sql)',
-    asOf: (time) => `leído a las ${time}`,
     now: 'Caja ahora',
     nowSub: (tick) => (tick === null ? 'aún sin lectura' : `en el turno ${tick}`),
     stats: { open: 'primera de hoy', low: 'mínima', high: 'máxima', in: 'entra', out: 'sale', fees: 'comisiones', trades: 'tratos' },

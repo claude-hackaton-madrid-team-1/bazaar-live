@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { fmtP } from '../game.ts'
+import { pagePush } from '../fresh.ts'
 import { useLearn } from '../learn.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { learningGroups, moveTone, pct, recentMoves, rivalRows, traderProfiles, type LearningRow, type MoveFilter, type TraderProfile } from '../views/learn.ts'
 import { useParam } from '../../ui/route'
 import type { LearnParts, RivalProfile, TraderMove } from '../../../shared/learn.ts'
-import { Badge, Empty, Panel, Seg } from './bits.tsx'
+import { Badge, Empty, Fresh, Panel, Seg } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 
 /** Header cells; the indexes in `right` are numbers, aligned right. */
@@ -179,7 +180,8 @@ export function LearnScreen() {
   const t = useGameStrings()
   const token = useParam('token')
   const tick = state.tick > 0 ? state.tick : null
-  const learn = useLearn(gameStatus === 'mock', token, tick ?? 0)
+  const push = pagePush(gameStatus, state, 'learn')
+  const learn = useLearn(gameStatus === 'mock', token, tick ?? 0, push)
   const [query, setQuery] = useState('')
   const [include, setInclude] = useState<MoveFilter>('ours')
   const { snapshot } = learn
@@ -192,7 +194,6 @@ export function LearnScreen() {
   )
   // the mock game's own notice already says the screens are made up
   const notice = learn.status === 'live' || learn.status === 'mock' ? null : t.learn.notice[learn.status]
-  const at = snapshot.at && learn.status !== 'mock' ? new Date(snapshot.at).toLocaleTimeString() : null
   const search = <input type="search" className="gm-search" placeholder={t.learn.search} aria-label={t.learn.searchLabel} value={query} onChange={(e) => setQuery(e.target.value)} />
   return (
     <>
@@ -202,7 +203,7 @@ export function LearnScreen() {
         sub={
           <>
             {t.learn.inForceSub(view.groups.inForce.length, view.groups.lifted)}
-            {at && ` · ${t.learn.asOf(at)}`}
+            <Fresh page="learn" status={learn.status} at={snapshot.at} push={push} />
             <Missing part="learnings" parts={snapshot.parts} live={live} />
           </>
         }

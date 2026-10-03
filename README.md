@@ -153,9 +153,9 @@ Apply it with the admin url, after `show.sql` (a re-run of `show.sql` revokes ev
 both, in this order, each time): `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql`.
 `sh scripts/test-sql.sh` proves both files on a throwaway local Postgres.
 
-The server reads the four views every 10 s on its own one-connection pool and serves the last read at
-`GET /api/learn`, behind the same `GAME_VIEW_TOKEN` as the game stream (the page carries `?token=`). Without
-`SHOW_DATABASE_URL` it answers `{enabled: false}`; a view not applied yet only blanks its panel. `?mock=1` shows a
+The server reads the four views every 10 s, and as soon as our agents' sockets say a negotiation moved (see
+[Live refresh](#live-refresh-history-learn-and-strategy)), and serves the last read at `GET /api/learn`, behind the same
+`GAME_VIEW_TOKEN` as the game stream (the page carries `?token=`). Without `SHOW_DATABASE_URL` it answers `{enabled: false}`; a view not applied yet only blanks its panel. `?mock=1` shows a
 made-up memory around the mock game.
 
 ### Our agents' decisions (`/agent`)
@@ -257,8 +257,23 @@ private, and the server holds no GitHub token. Until `show.score_points` is appl
 
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`. The server reads
-the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4) and serves `GET /api/history`,
-behind `GAME_VIEW_TOKEN`. `?mock=1` shows a made-up day of money.
+the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4), and as soon as our
+agents' sockets say something moved (below), and serves `GET /api/history`, behind `GAME_VIEW_TOKEN`. `?mock=1` shows a
+made-up day of money.
+
+### Live refresh (`/history`, `/learn` and `/strategy`)
+
+These three screens read their own API rather than the game stream, so the server keeps them close to real time itself
+(`server/game/pages.ts`). Our agents' `/events` sockets (`server/game/agentsws.ts`, `onEvent`) only say "read now":
+history reads 250 ms and 2.5 s after any execution and 250 ms and 5 s after the taker's tick (our orders land right
+after the execution; our cash before the tick; trades and learnings at the end of the taker's tick), learn 1.5 s and
+5 s after a thread's execution and 5 s after the taker's tick, strategy 250 ms, 2.5 s and 5 s after the taker's tick
+(its refusals are decided early in the tick and never reach a socket) and 250 ms and 2.5 s after any decision or
+execution. Postgres stays the only source of rows. When a read
+finds new rows the server sends one sticky `pages.changed` on the game stream (when each screen last changed, times
+only), and the page refetches; its own timer drops to 30 s (history, strategy) and 60 s (learn) while those notices
+come, and back to 5 s / 10 s without them. Each screen says `live`, or in amber when it was last updated. `PAGES_WAKE=off`
+keeps the notices but never reads early.
 
 ### What we aim for, and why we hold and do not buy (`/strategy`)
 
@@ -281,7 +296,7 @@ denial has named yet (the rare's, the pack's) comes from `src/game/guardrailsDoc
 GUARDRAILS.md and STRATEGY.md that says which commit it was read from; update it when those files change a value no
 denial shows. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`.
-The server reads them every 5 s on the shared pool and serves `GET /api/strategy`; a view not applied yet blanks its part
+The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
 
 ## Real conversations (LIVE-T1)

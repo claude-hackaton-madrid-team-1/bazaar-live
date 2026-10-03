@@ -84,4 +84,56 @@ describe('LearnPoller', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(db.calls).toHaveLength(4)
   })
+
+  it('a poke reads now, one more follows a poke during a read, and a backoff holds', async () => {
+    const timers: { fn: () => void; ms: number }[] = []
+    const cleared: unknown[] = []
+    let release: (() => void) | null = null
+    let fail = false
+    const db: Db & { calls: number } = {
+      calls: 0,
+      query: () => {
+        db.calls += 1
+        if (fail) return Promise.reject(Object.assign(new Error('down'), { code: '08006' }))
+        return db.calls === 5 ? new Promise((resolve) => (release = () => resolve({ rows: [] }))) : Promise.resolve({ rows: [] })
+      },
+    }
+    const poller = new LearnPoller({ db, log: () => undefined, intervalMs: 10_000, setTimer: (fn, ms) => (timers.push({ fn, ms }), timers.length), clearTimer: (h) => cleared.push(h) })
+    expect(poller.poke()).toBe(false)
+    poller.start()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(db.calls).toBe(4)
+    expect(poller.poke()).toBe(true)
+    expect(cleared).toEqual([1])
+    expect(poller.poke()).toBe(true)
+    ;(release as (() => void) | null)?.()
+    await new Promise((r) => setTimeout(r, 0))
+    // the poke during the read cost one more read, not two, then the timer again
+    expect(db.calls).toBe(12)
+    expect(timers.at(-1)?.ms).toBe(10_000)
+    fail = true
+    poller.poke()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(poller.poke()).toBe(false)
+    poller.stop()
+  })
+
+  it('says when a read found new rows, never for the same rows, and survives a listener that throws', async () => {
+    const logs: Record<string, unknown>[] = []
+    let claim = 'abuela folds at 60% of her opening'
+    const db: Db = { query: (sql) => Promise.resolve({ rows: sql === SQL.learnings ? [{ ...ROWS[SQL.learnings]?.[0] as object, claim }] : (ROWS[sql] ?? []) }) }
+    let t = 0
+    const poller = new LearnPoller({ db, log: (e) => logs.push(e), now: () => new Date(Date.UTC(2026, 9, 3, 10, 0, t++)) })
+    const seen: string[] = []
+    poller.onChange((at) => seen.push(at))
+    poller.onChange(() => {
+      throw new Error('boom')
+    })
+    await poller.pollOnce()
+    await poller.pollOnce()
+    claim = 'abuela folds at 55%'
+    await poller.pollOnce()
+    expect(seen).toEqual(['2026-10-03T10:00:00.000Z', '2026-10-03T10:00:02.000Z'])
+    expect(logs.filter((l) => l.event === 'listener_failed')).toHaveLength(2)
+  })
 })

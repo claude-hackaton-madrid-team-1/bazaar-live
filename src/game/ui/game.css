@@ -63,6 +63,25 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent);
 }
 
+/* How fresh a screen that reads its own API is: a quiet dot and a word, amber once its copy is old. */
+.gm-fresh {
+  --c: var(--ok);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-left: 0.6em;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.gm-fresh[data-tone='stale'] {
+  --c: var(--dry);
+  color: var(--c);
+}
+
 /* Where the feed comes from: a quiet label, not a state (the status chip carries that). */
 .gm-source {
   font-size: 0.6875rem;

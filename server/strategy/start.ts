@@ -12,6 +12,8 @@ export interface Strategy {
   readonly enabled: () => boolean
   readonly snapshot: () => StrategySnapshot
   readonly token: string | null
+  /** The poller, to wake it and hear when its rows change (server/game/pages.ts); null while off. */
+  readonly poller: StrategyPoller | null
   readonly stop: () => void
 }
 
@@ -24,10 +26,10 @@ export function startStrategy(
   const token = env.GAME_VIEW_TOKEN?.trim() || null
   if (!shared) {
     log({ route: 'strategy', event: 'off', reason: 'no database' })
-    return { enabled: () => false, snapshot: () => EMPTY_STRATEGY, token, stop: () => undefined }
+    return { enabled: () => false, snapshot: () => EMPTY_STRATEGY, token, poller: null, stop: () => undefined }
   }
   const poller = new StrategyPoller({ db: shared.pool, log, secrets: shared.secrets })
   poller.start()
   log({ route: 'strategy', event: 'on' })
-  return { enabled: () => true, snapshot: () => poller.current(), token, stop: () => poller.stop() }
+  return { enabled: () => true, snapshot: () => poller.current(), token, poller, stop: () => poller.stop() }
 }

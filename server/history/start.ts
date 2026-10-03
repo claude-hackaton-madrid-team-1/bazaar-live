@@ -12,6 +12,8 @@ export interface History {
   readonly enabled: () => boolean
   readonly snapshot: () => HistorySnapshot
   readonly token: string | null
+  /** The poller, to wake it and hear when its rows change (server/game/pages.ts); null while off. */
+  readonly poller: HistoryPoller | null
   readonly stop: () => void
 }
 
@@ -24,10 +26,10 @@ export function startHistory(
   const token = env.GAME_VIEW_TOKEN?.trim() || null
   if (!shared) {
     log({ route: 'history', event: 'off', reason: 'no database' })
-    return { enabled: () => false, snapshot: () => EMPTY_HISTORY, token, stop: () => undefined }
+    return { enabled: () => false, snapshot: () => EMPTY_HISTORY, token, poller: null, stop: () => undefined }
   }
   const poller = new HistoryPoller({ db: shared.pool, log, secrets: shared.secrets })
   poller.start()
   log({ route: 'history', event: 'on' })
-  return { enabled: () => true, snapshot: () => poller.current(), token, stop: () => poller.stop() }
+  return { enabled: () => true, snapshot: () => poller.current(), token, poller, stop: () => poller.stop() }
 }

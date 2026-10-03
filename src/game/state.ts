@@ -193,6 +193,11 @@ export type State = {
   agents: DecisionLog
   /** The taker's and the maker's latest /health, as the server relays it (agent.health); empty until the first. */
   health: HealthReport[]
+  /**
+   * When the server last found new rows for the screens that read their own API (/history, /learn), by screen,
+   * ISO (pages.changed); null until the server says it sends these, and then the screens refetch on each.
+   */
+  changes: Readonly<Record<string, string>> | null
 }
 
 export const KNOWN_TYPES = new Set([
@@ -200,7 +205,7 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
-  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health',
+  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed',
 ])
 
 export const LIMITS = {
@@ -214,7 +219,7 @@ export function createState(): State {
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
     log: [], threads: {}, duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
-    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [],
+    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null,
   }
 }
 
@@ -574,6 +579,11 @@ export function apply(s: State, e: GameEvent): State {
   // A status every 10 s: only the latest counts, so it never fills the event lists (nor the Debug screen's).
   if (e.type === 'agent.health') {
     health(s, p)
+    return s
+  }
+  // The same kind of status: only the latest says when each screen's rows last changed.
+  if (e.type === 'pages.changed') {
+    s.changes = Object.fromEntries(Object.entries(p).filter((kv): kv is [string, string] => typeof kv[1] === 'string'))
     return s
   }
   const tick = e.tick ?? s.tick

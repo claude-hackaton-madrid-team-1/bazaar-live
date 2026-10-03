@@ -1,8 +1,10 @@
 /**
- * The Movements screen's source: GET /api/history every few seconds (with `?token=` when the page has one),
- * or a made-up day with `?mock=1`. Keeps the last good snapshot through an error, like ./learn.ts.
+ * The Movements screen's source: GET /api/history as soon as the server says its rows changed, and on a timer
+ * as the fallback (with `?token=` when the page has one), or a made-up day with `?mock=1`. Keeps the last good
+ * snapshot through an error, like ./learn.ts.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { pollEvery, type PagePush } from './fresh.ts'
 import { EMPTY_HISTORY, type CashPoint, type HistorySnapshot, type Order, type ScoreMark, type ScorePoint, type TeamEvent, type Trade } from '../../shared/history.ts'
 
 export type HistoryStatus = 'loading' | 'live' | 'off' | 'locked' | 'error' | 'mock'
@@ -43,7 +45,13 @@ export function historyStateOf(httpStatus: number, body: unknown, prev: HistoryS
   }
 }
 
-export function useHistory(mock: boolean, token: string | null, tick: number, intervalMs = 5_000): HistoryState {
+/**
+ * `push`: the server's notices for this screen (./fresh.ts): a new `at` refetches now, and while they come the
+ * timer only backs them up.
+ */
+export function useHistory(mock: boolean, token: string | null, tick: number, push: PagePush | null = null): HistoryState {
+  const intervalMs = pollEvery('history', push)
+  const wake = push?.at ?? null
   const [state, setState] = useState<HistoryState>({ status: 'loading', snapshot: EMPTY_HISTORY })
   const mocked = useMemo<HistoryState | null>(() => (mock ? { status: 'mock', snapshot: mockHistory(tick) } : null), [mock, tick])
   useEffect(() => {
@@ -68,7 +76,8 @@ export function useHistory(mock: boolean, token: string | null, tick: number, in
       clearInterval(timer)
       controller?.abort()
     }
-  }, [mock, token, intervalMs])
+    // a new `wake` reads now and starts the timer again from there
+  }, [mock, token, intervalMs, wake])
   return mocked ?? state
 }
 
