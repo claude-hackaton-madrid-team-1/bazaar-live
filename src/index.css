@@ -860,7 +860,8 @@ select {
   color: var(--chrome-dim);
 }
 
-.transcript .empty {
+.transcript li.empty {
+  display: block;
   color: var(--chrome-dim);
   font-style: italic;
   padding: 12px 4px;
