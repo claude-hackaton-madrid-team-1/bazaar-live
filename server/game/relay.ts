@@ -178,7 +178,7 @@ export class GameRelay {
 
   private async get(path: string): Promise<unknown> {
     const res = await this.o.fetchImpl(`${this.deps.url}${path}`, {
-      headers: { Authorization: `Bearer ${this.deps.key}`, Accept: 'application/json' },
+      headers: { 'X-Team-Key': this.deps.key, Accept: 'application/json' },
       signal: AbortSignal.timeout(this.o.timeoutMs),
     })
     if (!res.ok) {

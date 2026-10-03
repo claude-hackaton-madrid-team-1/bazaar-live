@@ -26,7 +26,7 @@ function fakeFetch(w: World): typeof fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input))
     w.calls.push(url.pathname)
-    w.auth.push(String((init?.headers as Record<string, string> | undefined)?.Authorization))
+    w.auth.push(String((init?.headers as Record<string, string> | undefined)?.['X-Team-Key']))
     const status = Object.entries(w.fail).find(([p]) => url.pathname.startsWith(p))?.[1]
     if (status) return new Response('{}', { status, headers: status === 429 ? { 'Retry-After': '30' } : {} })
     const body = url.pathname === '/api/clock' ? w.clock : url.pathname === '/api/feed' ? { events: w.feed } : w.me
@@ -55,7 +55,7 @@ describe('GameRelay', () => {
     expect(batches[0]![0]).toMatchObject({ tick: 7, t: 0.12, scope: 'team', actor: '', payload: { day: 'Friday · El Rastro', tick_seconds: 60, next_tick_in: 41 } })
     expect(batches[0]![1]?.payload).toEqual({ team: 't01', name: 'Team 1' })
     expect(batches[0]![2]?.payload).toEqual(w.me)
-    expect(new Set(w.auth)).toEqual(new Set(['Bearer secret-key']))
+    expect(new Set(w.auth)).toEqual(new Set(['secret-key']))
   })
 
   it('a second poll in the same tick with nothing new publishes nothing and skips /me', async () => {
