@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ScoreMark, ScorePoint } from '../../../shared/history.ts'
 import { mockHistory } from '../history.ts'
-import { defaultMark, deltas, markGroups, minutesBetween, scoreDay, seriesChart, spanOf, valueAt, xScale } from './score.ts'
+import { atTick, defaultMark, deltas, markGroups, minutesBetween, scoreDay, seriesChart, spanOf, valueAt, xScale } from './score.ts'
 
 const D = '2026-10-03'
 const P = (tick: number, score: number, extra: Partial<ScorePoint> = {}): ScorePoint => ({
@@ -51,6 +51,14 @@ describe('score over the day', () => {
     const toNext = spanOf(g, g[0]!, 'next', points)
     expect([toNext.end, toNext.to?.key, toNext.before]).toEqual([130, 'game2', { start: 110, end: 120 }])
     expect(minutesBetween(points, 120, 140)).toBe(10)
+  })
+
+  it("times a tick between the readings around it, not at the next change", () => {
+    const two = [P(411, 1), P(425, 2)]
+    expect(atTick(two, 420)).toBe(P(420, 0).at)
+    expect(atTick(two, 400)).toBe(P(411, 0).at)
+    expect(markGroups([M(1, 420)], two)[0]?.at).toBe(P(420, 0).at)
+    expect(minutesBetween(two, 415, 425)).toBe(5)
   })
 
   it("has no before when the day's readings do not reach back that far", () => {

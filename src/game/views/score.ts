@@ -48,9 +48,18 @@ export interface MarkGroup {
   readonly at: string | null
 }
 
-/** When we read the score at or just after a tick (a start carries a tick and no time). */
-function timeAt(points: readonly ScorePoint[], tick: number): string | null {
-  return points.find((p) => p.tick >= tick)?.at ?? points.filter((p) => p.tick <= tick).at(-1)?.at ?? null
+/**
+ * When a tick happened (ISO): between the readings around it, in proportion (a tick is a fixed length; the
+ * points are only the ticks where something moved, so the next one may be many ticks later). Null without times.
+ */
+export function atTick(points: readonly ScorePoint[], tick: number): string | null {
+  const a = points.filter((p) => p.tick <= tick && p.at).at(-1)
+  const b = points.find((p) => p.tick >= tick && p.at)
+  if (!a?.at || !b?.at) return (a ?? b)?.at ?? null
+  if (b.tick === a.tick) return a.at
+  const ta = Date.parse(a.at)
+  const tb = Date.parse(b.at)
+  return new Date(ta + ((tb - ta) * (tick - a.tick)) / (b.tick - a.tick)).toISOString()
 }
 
 /** The latest day's marks in tick order, an agent's starts within FOLD_TICKS of each other folded into one. */
@@ -78,7 +87,7 @@ export function markGroups(marks: readonly ScoreMark[], points: readonly ScorePo
       tick: m.tick,
       last: m.tick,
       count: 1,
-      at: m.at ?? timeAt(points, m.tick),
+      at: m.at ?? atTick(points, m.tick),
     })
   }
   return out.sort((a, b) => a.tick - b.tick)
@@ -133,8 +142,8 @@ export function deltas(points: readonly ScorePoint[], span: Span): SeriesDelta[]
 
 /** Minutes between our readings at two ticks, or null without their times. */
 export function minutesBetween(points: readonly ScorePoint[], a: number, b: number): number | null {
-  const ta = points.find((p) => p.tick >= a)?.at
-  const tb = points.filter((p) => p.tick <= b).at(-1)?.at
+  const ta = atTick(points, a)
+  const tb = atTick(points, b)
   if (!ta || !tb) return null
   const ms = Date.parse(tb) - Date.parse(ta)
   return Number.isFinite(ms) ? Math.max(0, Math.round(ms / 60_000)) : null

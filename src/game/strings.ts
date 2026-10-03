@@ -1424,7 +1424,7 @@ const ES: GameStrings = {
     score: {
       title: 'Puntos de hoy',
       sub: (marks) => `${plural(marks, 'marca', 'marcas')} donde algo cambió · toca una para comparar`,
-      series: { score: 'Puntos', duel: 'Duelos', ladder: 'Escalera', neg: 'Negociación', mm: 'Hacer mercado', bench: 'Banco', cash: 'Caja' },
+      series: { score: 'Puntos', duel: 'Duelos', ladder: 'Escalera', neg: 'Negociación', mm: 'Creación de mercado', bench: 'Banco de pruebas', cash: 'Caja' },
       until: 'Comparar hasta',
       untilNow: 'hasta ahora',
       untilNext: 'hasta la siguiente',

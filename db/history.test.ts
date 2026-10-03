@@ -75,9 +75,11 @@ describe.skipIf(!ADMIN_URL)('db/history.sql score views (local Postgres)', () =>
         (1, 300, 'taker', 'accept_ask', 'done', false, null, null),
         (2, 307, 'taker', 'process_started', 'done', false, $1, $2),
         (3, -1, 'mcp', 'note', 'done', false, null, null),
-        (4, 5, 'maker', 'post_ask', 'done', false, null, null),
-        (5, 999, 'taker', 'process_started', 'done', true, null, null),
-        (6, 6, 'maker', 'process_started', 'done', false, $1, $2)`,
+        (30, 12, 'duels', 'duel_hold', 'done', false, null, null),
+        (31, 308, 'taker', 'process_started', 'done', false, null, null),
+        (40, 5, 'maker', 'post_ask', 'done', false, null, null),
+        (50, 999, 'taker', 'process_started', 'done', true, null, null),
+        (60, 6, 'maker', 'process_started', 'done', false, $1, $2)`,
       [JSON.stringify({ owner: SECRET }), SECRET],
     )
     await adminDb.query(
@@ -126,7 +128,9 @@ describe.skipIf(!ADMIN_URL)('db/history.sql score views (local Postgres)', () =>
       { kind: 'game', id: 10907, day: '2026-10-03', tick: 159, agent: null, action: 'day', note: 'Saturday' },
       { kind: 'game', id: 10941, day: '2026-10-03', tick: 160, agent: null, action: 'round', note: 'Round 2 starts' },
       { kind: 'start', id: 2, day: '2026-10-03', tick: 307, agent: 'taker', action: null, note: null },
-      { kind: 'start', id: 6, day: '2026-10-04', tick: 6, agent: 'maker', action: null, note: null },
+      // one decision written with a stale tick (12) is not a new day
+      { kind: 'start', id: 31, day: '2026-10-03', tick: 308, agent: 'taker', action: null, note: null },
+      { kind: 'start', id: 60, day: '2026-10-04', tick: 6, agent: 'maker', action: null, note: null },
     ])
     const all = await reader.query('select * from show.score_marks')
     expect(JSON.stringify(all.rows)).not.toContain(SECRET)

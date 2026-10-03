@@ -119,7 +119,7 @@ select day, tick, read_at, cash, score, duel, ladder, neg, mm, bench
 
 -- A decision row has a tick and no time, and the game's tick may start again on a new day. So a start is put
 -- on its day by order, not by tick alone: a decision whose tick is far (over 100) below the one written just
--- before it opens a new run of the clock, and so does a day whose first tick is far below the last day's
+-- before it opens a new run of the clock (when the one after it is too: a single stale tick does not), and so does a day whose first tick is far below the last day's
 -- last; the start goes to the latest day of its own run that had reached its tick. Only the agent and the
 -- tick leave the row (in a decision `owner` is the process's writer token; its reason is never read).
 -- The game's own turns are public feed events, with the time we received them.
@@ -134,8 +134,8 @@ with days as (
                    group by 1) x) d
 ), decided as (
   select r.id, r.tick, r.agent, r.kind,
-         count(*) filter (where r.prev_tick - r.tick > 100) over (order by r.id) as run
-    from (select d.id, d.tick, d.agent, d.kind, lag(d.tick) over (order by d.id) as prev_tick
+         count(*) filter (where r.prev_tick - r.tick > 100 and coalesce(r.prev_tick - r.next_tick > 100, true)) over (order by r.id) as run
+    from (select d.id, d.tick, d.agent, d.kind, lag(d.tick) over (order by d.id) as prev_tick, lead(d.tick) over (order by d.id) as next_tick
             from public.decisions d
            where d.tick >= 0 and d.dry_run is not true) r
 )
