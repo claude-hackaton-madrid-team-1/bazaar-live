@@ -1,6 +1,7 @@
 /** Small helpers that turn refs, items and numbers into words the characters can say, per language. */
 import type { Lang } from '../../shared/lang.ts'
 import { ERROR_CODES, HOODS, KIND_CODES, RARITY_CODES, VERDICT_CODES, VOCAB } from '../../shared/vocab.ts'
+import { knownDealer } from '../../shared/tags.ts'
 import type { DealerId } from './beat'
 
 const REF = /^([A-Z]{3})-(\d{1,3})$/
@@ -57,10 +58,7 @@ export function verdictWords(verdict: string | null | undefined, lang: Lang): st
 }
 
 export function dealerId(name: string | undefined): DealerId {
-  const id = (name ?? '').toLowerCase()
-  if (id.includes('abuela') || id.includes('carmen')) return 'abuela'
-  if (id.includes('chato')) return 'chato'
-  return 'other'
+  return knownDealer(name) ?? 'other'
 }
 
 export function dealerName(id: DealerId, lang: Lang): string {

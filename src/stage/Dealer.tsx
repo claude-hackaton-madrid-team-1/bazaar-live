@@ -3,7 +3,10 @@ import type { DealerId } from '../show/beat'
 import { useStrings } from '../ui/lang'
 import { appear } from './calm'
 import { DEALER_POSE } from './poses'
-import { Bars, Voice } from './Voice'
+import { Bars, type Role, Voice } from './Voice'
+
+/** The orb's colour: each known dealer its own; a dealer we do not know yet borrows Abuela's light. */
+const roleOf = (id: DealerId): Role => (id === 'other' ? 'abuela' : id)
 
 /**
  * A dealer joins the room for dealer_* moves as a third, smaller orb that glides up from the floor:
@@ -19,7 +22,7 @@ export function Dealer({ dealer, speaking }: { readonly dealer: { readonly id: D
         <motion.div
           key={dealer.id}
           className="dealer"
-          data-voice={dealer.id === 'chato' ? 'chato' : 'abuela'}
+          data-voice={roleOf(dealer.id)}
           {...appear(reduce, {
             initial: { y: '60%', opacity: 0 },
             animate: { y: '0%', opacity: 1 },
@@ -31,7 +34,7 @@ export function Dealer({ dealer, speaking }: { readonly dealer: { readonly id: D
           })}
           aria-label={`${t.dealers[dealer.id]}: ${t.moves[dealer.move] ?? dealer.move}`}
         >
-          <Voice role={dealer.id === 'chato' ? 'chato' : 'abuela'} className="small" pose={DEALER_POSE[dealer.move] ?? 'idle'} talking={speaking} label={t.dealers[dealer.id]} />
+          <Voice role={roleOf(dealer.id)} className="small" pose={DEALER_POSE[dealer.move] ?? 'idle'} talking={speaking} label={t.dealers[dealer.id]} />
           <div className="dealer-plaque">
             <Bars talking={speaking} />
             <span className="dealer-name">{t.dealers[dealer.id]}</span>

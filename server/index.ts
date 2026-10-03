@@ -20,6 +20,7 @@ import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.ts'
+import { createDealerNames, dealersUrl } from './dealers.ts'
 import { startAgentsWs } from './game/agentsws.ts'
 import { startDecisions } from './game/decisions.ts'
 import { startHealth } from './game/health.ts'
@@ -73,6 +74,7 @@ const server = createServer(
     learn,
     history,
     strategy,
+    dealerNames: createDealerNames({ url: dealersUrl(process.env) }),
   }),
 )
 

@@ -7,7 +7,7 @@
  */
 import type { ReactNode } from 'react'
 
-export type Role = 'seller' | 'buyer' | 'abuela' | 'chato'
+export type Role = 'seller' | 'buyer' | 'abuela' | 'chato' | 'pilar'
 export type Pose = 'idle' | 'greet' | 'haggle' | 'reach' | 'triumph' | 'grumble'
 
 /** The bar visualizer: five capsules that rest as dots and move while the voice speaks. */

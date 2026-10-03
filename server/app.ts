@@ -28,6 +28,7 @@ import { isShowLine } from '../shared/lines.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { isRealLine } from '../shared/real-lines.ts'
 import { isSpeaker, type Speaker } from '../shared/tags.ts'
+import type { DealerNames } from './dealers.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
 import { createGameRoutes, type GameRouteDeps } from './game/routes.ts'
@@ -64,6 +65,8 @@ export interface AppDeps {
   readonly history?: Pick<HistoryRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<HistoryRouteDeps, 'limiter'>>
   /** What we aim for and why we hold or do not buy (server/strategy); absent → /api/strategy answers `enabled: false`. */
   readonly strategy?: Pick<StrategyRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<StrategyRouteDeps, 'limiter'>>
+  /** The dealers' display names (server/dealers.ts); absent → /api/dealers answers an empty list. */
+  readonly dealerNames?: () => Promise<DealerNames>
 }
 
 const CSP = [
@@ -303,6 +306,10 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       if (path === '/health') return json(res, 200, { ok: true, service: 'bazaar-live', tts: available })
       if (path === '/api/tts/providers') return json(res, 200, { providers: available })
       if (path === '/api/tts') return await tts(req, res)
+      if (path === '/api/dealers') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'GET' })
+        return json(res, 200, { names: deps.dealerNames ? await deps.dealerNames() : {} })
+      }
       if (transcript(req, res, path)) return
       if (game(req, res, path)) return
       if (learn(req, res, path)) return

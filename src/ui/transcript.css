@@ -180,6 +180,26 @@
   --dot: var(--chato-1);
 }
 
+.transcript .pilar {
+  --ink: var(--pilar-ink);
+  --dot: var(--pilar-1);
+}
+
+.transcript .guest1 {
+  --ink: var(--guest1-ink);
+  --dot: var(--guest1-1);
+}
+
+.transcript .guest2 {
+  --ink: var(--guest2-ink);
+  --dot: var(--guest2-1);
+}
+
+.transcript .guest3 {
+  --ink: var(--guest3-ink);
+  --dot: var(--guest3-1);
+}
+
 .transcript .tick {
   grid-column: 2;
   grid-row: 1;

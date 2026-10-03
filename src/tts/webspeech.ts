@@ -25,6 +25,10 @@ const VOICING: Readonly<Record<Speaker, Voicing>> = {
   seller: { pitch: 0.88, rate: 1.0 },
   abuela: { pitch: 1.22, rate: 0.9 },
   chato: { pitch: 0.7, rate: 0.94 },
+  pilar: { pitch: 1.05, rate: 0.86 },
+  guest1: { pitch: 0.8, rate: 0.98 },
+  guest2: { pitch: 1.32, rate: 1.12 },
+  guest3: { pitch: 0.94, rate: 0.84 },
   narrator: { pitch: 1.0, rate: 1.0 },
 }
 

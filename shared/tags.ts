@@ -9,8 +9,60 @@
  * Imported by the browser bundle and by the Node proxy (server/), so it has no imports of its own.
  */
 
-export const SPEAKERS = ['buyer', 'seller', 'abuela', 'chato', 'narrator'] as const
+export const SPEAKERS = ['buyer', 'seller', 'abuela', 'chato', 'pilar', 'guest1', 'guest2', 'guest3', 'narrator'] as const
 export type Speaker = (typeof SPEAKERS)[number]
+
+/** The dealers we know by id: each has its own voice and caption. */
+export const KNOWN_DEALERS = ['abuela', 'chato', 'pilar'] as const
+export type KnownDealer = (typeof KNOWN_DEALERS)[number]
+
+/**
+ * The voices kept for dealers that arrive later (L4, L5): a dealer we do not know by id speaks with one
+ * of them, picked by a hash of its id, so it is never the narrator's voice nor a known dealer's.
+ */
+export const GUEST_SPEAKERS = ['guest1', 'guest2', 'guest3'] as const
+export type GuestSpeaker = (typeof GUEST_SPEAKERS)[number]
+
+const TEAM_ID = /^t\d{1,3}$/i
+const DEALER_HANDLE = /^[a-z][a-z0-9_-]{0,39}$/
+
+/** FNV-1a over the id: the same dealer always gets the same guest voice, on every page and the server. */
+function hashOf(id: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < id.length; i += 1) {
+    h ^= id.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
+}
+
+/** The guest voice a dealer id we do not know gets. */
+export function guestSpeaker(id: string): GuestSpeaker {
+  return GUEST_SPEAKERS[hashOf(id.toLowerCase()) % GUEST_SPEAKERS.length] ?? 'guest1'
+}
+
+/** A known dealer's id from a handle or a name (`chato`, `Abuela Carmen`, `Doña Pilar`), or null. */
+export function knownDealer(counterpart: string | null | undefined): KnownDealer | null {
+  const id = (counterpart ?? '').toLowerCase()
+  if (id.includes('abuela') || id.includes('carmen')) return 'abuela'
+  if (id.includes('chato')) return 'chato'
+  if (id.includes('pilar')) return 'pilar'
+  return null
+}
+
+/**
+ * Who speaks a dealer thread's words: a known dealer, else a guest voice for any other dealer handle;
+ * null for a team (`t05`) or anything that is not a handle (the narrator reads those).
+ */
+export function dealerSpeaker(counterpart: string | null | undefined): Speaker | null {
+  const known = knownDealer(counterpart)
+  if (known) return known
+  const id = (counterpart ?? '').trim().toLowerCase()
+  if (!DEALER_HANDLE.test(id) || TEAM_ID.test(id)) return null
+  return guestSpeaker(id)
+}
+
+export const isGuest = (speaker: Speaker): speaker is GuestSpeaker => (GUEST_SPEAKERS as readonly string[]).includes(speaker)
 
 export function isSpeaker(value: unknown): value is Speaker {
   return typeof value === 'string' && (SPEAKERS as readonly string[]).includes(value)

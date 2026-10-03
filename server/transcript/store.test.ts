@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { guestSpeaker } from '../../shared/tags.ts'
 import { EMPTY_ITEM, type Draft } from '../../shared/transcript.ts'
 import { TranscriptStore } from './store.ts'
 
@@ -61,13 +62,16 @@ describe('TranscriptStore', () => {
       draft('c', { kind: 'thread_line', who: 'them', counterpart: 'chato', text: 'ok' }),
       draft('d', { kind: 'duel_replay', lines: [{ n: 1, speaker: 'them', tick: 1, price: 5, days: null, text: 'Eso es muy poco para una carta así.' }] }),
       draft('e', { kind: 'thread_line', who: 'them', counterpart: 'tendero', text: 'Eso lo dejo en veinte primas, no se hable más.' }),
+      draft('g', { kind: 'thread_line', who: 'them', counterpart: 't05', text: 'Te lo cambio por dos repetidas, ni una más.' }),
       draft('f', { kind: 'thread_line', who: 'us', counterpart: 'chato', text: 'We never carry a quote of ours here, but if one came it is not indexed.' }),
     ])
     expect(store.quote(en)).toEqual({ lang: 'en', speaker: 'chato' })
     expect(store.quote(es)).toEqual({ lang: 'es', speaker: 'abuela' })
     expect(store.quote('ok')).toBeUndefined()
     expect(store.quote('Eso es muy poco para una carta así.')).toBeUndefined() // a rival's duel words: never
-    expect(store.quote('Eso lo dejo en veinte primas, no se hable más.')).toBeUndefined() // a dealer with no voice of its own
+    // a dealer we do not know yet speaks with its guest voice, bound to it
+    expect(store.quote('Eso lo dejo en veinte primas, no se hable más.')).toEqual({ lang: 'es', speaker: guestSpeaker('tendero') })
+    expect(store.quote('Te lo cambio por dos repetidas, ni una más.')).toBeUndefined() // a team: never a dealer voice
     expect(store.quote('We never carry a quote of ours here, but if one came it is not indexed.')).toBeUndefined()
     expect(store.quote('anything somebody types into the proxy')).toBeUndefined()
   })

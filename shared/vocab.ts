@@ -46,7 +46,7 @@ export interface Vocab {
   readonly thisCard: string
   readonly items: Readonly<Record<(typeof RARITY_CODES)[number], string>>
   readonly someItem: string
-  readonly dealers: { readonly abuela: string; readonly chato: string; readonly other: string }
+  readonly dealers: { readonly abuela: string; readonly chato: string; readonly pilar: string; readonly other: string }
   readonly verdicts: Readonly<Record<(typeof VERDICT_CODES)[number], string>>
   readonly errors: Readonly<Record<(typeof ERROR_CODES)[number], string>>
   readonly unknownError: string
@@ -76,7 +76,7 @@ export const VOCAB: Readonly<Record<Lang, Vocab>> = {
       legendary: 'una legendaria',
     },
     someItem: 'algo especial',
-    dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', other: 'el tratante' },
+    dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar', other: 'el tratante' },
     verdicts: {
       aggressive: 'agresivo', fair: 'justo', quick_sale: 'venta rápida', hold: 'mantener', reprice: 'cambiar el precio',
       yes: 'sí', no: 'no', accept: 'aceptar', reject: 'rechazar', walk: 'irse', bid: 'pujar', undecided: 'indeciso',
@@ -127,7 +127,7 @@ export const VOCAB: Readonly<Record<Lang, Vocab>> = {
       legendary: 'a legendary',
     },
     someItem: 'a little something',
-    dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', other: 'the dealer' },
+    dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar', other: 'the dealer' },
     verdicts: {
       aggressive: 'aggressive', fair: 'fair', quick_sale: 'quick sale', hold: 'hold', reprice: 'reprice',
       yes: 'yes', no: 'no', accept: 'accept', reject: 'reject', walk: 'walk', bid: 'bid', undecided: 'undecided',
