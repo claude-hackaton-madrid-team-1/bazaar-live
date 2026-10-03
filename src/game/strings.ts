@@ -7,6 +7,7 @@ import type { Route } from '../ui/route'
 import { useLang } from '../ui/lang'
 import type { GameStatus } from './store.ts'
 import type { Lane } from './views/agent.ts'
+import type { DecisionStatus } from '../../shared/decisions.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -51,6 +52,37 @@ export interface GameStrings {
     readonly nothingKind: string
     readonly now_: string
     readonly deals: (n: number) => string
+  }
+  /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agent names and rule ids stay as the agents write them. */
+  readonly decide: {
+    readonly idle: (agent: string, last: number | null) => string
+    readonly status: Readonly<Record<DecisionStatus, string>>
+    readonly allowed: string
+    readonly noCheck: string
+    readonly blockedBy: string
+    readonly jev: string
+    readonly error: (code: string) => string
+    readonly blocks: string
+    readonly blocksSub: (fromTick: number) => string
+    readonly noBlocks: string
+    readonly times: (n: number) => string
+    readonly ledger: string
+    readonly ledgerSub: string
+    readonly spent: string
+    readonly cashFloor: string
+    readonly accepts: string
+    readonly headroom: (p: string) => string
+    readonly noLedger: string
+    readonly deals: string
+    readonly dealsSub: string
+    readonly noDeals: string
+    readonly beat: string
+    readonly even: string
+    readonly below: string
+    readonly unscored: string
+    readonly jevRight: string
+    readonly jevWrong: string
+    readonly target: Readonly<Record<'trade' | 'dealer' | 'duel', string>>
   }
   readonly badge: {
     readonly final: string
@@ -277,6 +309,36 @@ const EN: GameStrings = {
     nothingKind: 'Nothing of this kind yet',
     now_: 'now',
     deals: (n) => plural(n, 'deal', 'deals'),
+  },
+  decide: {
+    idle: (agent, last) => `${agent}: no decision this tick${last != null ? ` (last at tick ${last})` : ''}`,
+    status: { proposed: 'proposed', approved: 'approved', rejected: 'rejected', claimed: 'claimed', done: 'done', failed: 'failed', expired: 'expired' },
+    allowed: 'guardrails ok',
+    noCheck: 'no guardrail check',
+    blockedBy: 'blocked by',
+    jev: 'Jev',
+    error: (code) => `error ${code}`,
+    blocks: 'Blocks by rule',
+    blocksSub: (fromTick) => `last game hour, since tick ${fromTick}`,
+    noBlocks: 'No guardrail blocked anything in the last game hour.',
+    times: (n) => `${n}×`,
+    ledger: 'Ledger',
+    ledgerSub: 'against GUARDRAILS.md',
+    spent: 'Spent this game hour',
+    cashFloor: 'Cash / floor',
+    accepts: 'Accepts this tick',
+    headroom: (p) => `the next purchase may cost up to ${p}`,
+    noLedger: 'No ledger yet. It comes from db/agent_decisions.sql.',
+    deals: 'Deals vs our value',
+    dealsSub: 'settled and scored, newest first',
+    noDeals: 'No settled deal scored yet.',
+    beat: 'beat our value',
+    even: 'at our value',
+    below: 'below our value',
+    unscored: 'not scored yet',
+    jevRight: 'Jev right',
+    jevWrong: 'Jev wrong',
+    target: { trade: 'trade', dealer: 'dealer', duel: 'duel' },
   },
   badge: {
     final: 'FINAL',
@@ -517,6 +579,36 @@ const ES: GameStrings = {
     nothingKind: 'Aún nada de este tipo',
     now_: 'ahora',
     deals: (n) => plural(n, 'trato', 'tratos'),
+  },
+  decide: {
+    idle: (agent, last) => `${agent}: sin decisión este turno${last != null ? ` (la última en el turno ${last})` : ''}`,
+    status: { proposed: 'propuesta', approved: 'aprobada', rejected: 'rechazada', claimed: 'reservada', done: 'hecha', failed: 'fallida', expired: 'caducada' },
+    allowed: 'límites ok',
+    noCheck: 'sin control de límites',
+    blockedBy: 'bloqueada por',
+    jev: 'Jev',
+    error: (code) => `error ${code}`,
+    blocks: 'Bloqueos por regla',
+    blocksSub: (fromTick) => `última hora de juego, desde el turno ${fromTick}`,
+    noBlocks: 'Ningún límite ha bloqueado nada en la última hora de juego.',
+    times: (n) => `${n}×`,
+    ledger: 'Libro de gastos',
+    ledgerSub: 'frente a GUARDRAILS.md',
+    spent: 'Gastado esta hora de juego',
+    cashFloor: 'Caja / suelo',
+    accepts: 'Aceptaciones este turno',
+    headroom: (p) => `la próxima compra puede costar hasta ${p}`,
+    noLedger: 'Aún no hay libro. Llega de db/agent_decisions.sql.',
+    deals: 'Tratos frente a nuestro valor',
+    dealsSub: 'cerrados y puntuados, los últimos primero',
+    noDeals: 'Aún no hay ningún trato puntuado.',
+    beat: 'mejor que nuestro valor',
+    even: 'igual que nuestro valor',
+    below: 'por debajo de nuestro valor',
+    unscored: 'sin puntuar',
+    jevRight: 'Jev acertó',
+    jevWrong: 'Jev falló',
+    target: { trade: 'compraventa', dealer: 'tratante', duel: 'duelo' },
   },
   badge: {
     final: 'FINAL',

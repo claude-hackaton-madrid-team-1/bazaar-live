@@ -2,7 +2,7 @@
  * Brings the transcript up from the environment. Everything that can go wrong here is caught: the
  * show must run exactly as before without SHOW_DATABASE_URL, and with a broken one.
  */
-import { Poller } from './poller.ts'
+import { Poller, type Db } from './poller.ts'
 import { createShowPool, readShowDatabase, secretsOf, type ShowPool } from './pg.ts'
 import { TranscriptStore } from './store.ts'
 
@@ -10,11 +10,15 @@ export interface Transcript {
   readonly store: TranscriptStore
   readonly enabled: () => boolean
   readonly stop: () => Promise<void>
+  /** The read-only pool, for the other readers of the show schema (server/game/decisions.ts); null while off. */
+  readonly db: Db | null
+  /** What their logged errors must never contain (the url, its host, user and password). */
+  readonly secrets: readonly string[]
 }
 
 export function startTranscript(env: Readonly<Record<string, string | undefined>>, log: (entry: Record<string, unknown>) => void): Transcript {
   const store = new TranscriptStore()
-  const off: Transcript = { store, enabled: () => false, stop: () => Promise.resolve() }
+  const off: Transcript = { store, enabled: () => false, stop: () => Promise.resolve(), db: null, secrets: [] }
   const config = readShowDatabase(env)
   if (!config.enabled) {
     log({ route: 'transcript', event: 'off', reason: config.reason })
@@ -32,6 +36,8 @@ export function startTranscript(env: Readonly<Record<string, string | undefined>
     const live = pool
     return {
       store,
+      db: live,
+      secrets,
       enabled: () => true,
       stop: async () => {
         poller.stop()

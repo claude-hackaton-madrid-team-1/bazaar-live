@@ -1,3 +1,5 @@
+import { applyDecision, applyLedger, applyOutcome, createDecisionLog, type DecisionLog } from './decisions.ts'
+
 // The game's JSON, read defensively: every field is optional and falls back with `??`.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Payload = Record<string, any>
@@ -152,6 +154,8 @@ export type State = {
   mine: GameEvent[]
   byId: Map<number, GameEvent>
   meEventId?: number
+  /** Our agents' decisions, outcomes and ledger (agent.decision / agent.outcome / agent.ledger). */
+  agents: DecisionLog
 }
 
 export const KNOWN_TYPES = new Set([
@@ -159,6 +163,7 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
+  'agent.decision', 'agent.outcome', 'agent.ledger',
 ])
 
 export const LIMITS = {
@@ -172,7 +177,7 @@ export function createState(): State {
     cash: 0, score: {}, pages: [], owned: {}, values: {}, packs: [],
     log: [], threads: {}, duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
-    events: [], mine: [], byId: new Map(),
+    events: [], mine: [], byId: new Map(), agents: createDecisionLog(),
   }
 }
 
@@ -552,6 +557,15 @@ export function apply(s: State, e: GameEvent): State {
       break
     case 'duel.result':
       if (ours) duelResult(s, e)
+      break
+    case 'agent.decision':
+      applyDecision(s.agents, e)
+      break
+    case 'agent.outcome':
+      applyOutcome(s.agents, e)
+      break
+    case 'agent.ledger':
+      applyLedger(s.agents, e)
       break
   }
   return s
