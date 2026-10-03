@@ -389,6 +389,8 @@ a {
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: var(--s-4);
   align-items: stretch;
+  /* the row is as tall as the stage (the transcript fills it), not the rest of the viewport */
+  align-content: start;
 }
 
 @media (max-width: 960px) {
