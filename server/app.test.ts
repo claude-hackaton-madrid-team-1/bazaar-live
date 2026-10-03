@@ -111,7 +111,7 @@ describe('the TTS proxy', () => {
       calls += 1
       return new Response(Buffer.from('mp3'), { status: 200 })
     }) as unknown as typeof fetch
-    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget: new DailyBudget(70) })
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget: new DailyBudget(70, 70) })
     expect((await tts(base, holdLine(1))).status).toBe(200)
     expect((await tts(base, holdLine(2))).status).toBe(200)
     const over = await tts(base, holdLine(3))
@@ -241,9 +241,9 @@ describe('shared upstream calls and limits from env', () => {
     expect(rl.peek('a').ok).toBe(true)
     expect(rl.take('a').ok).toBe(true)
     expect(rl.peek('a').ok).toBe(false)
-    const budget = new DailyBudget(10, () => now)
-    budget.spend(10)
-    expect(budget.allows(1)).toBe(false)
+    const budget = new DailyBudget(10, 10, () => now)
+    budget.spend('a', 10)
+    expect(budget.allows('a', 1)).toBe('total')
     now += 2 * 60_000
     expect(budget.remaining).toBe(10)
   })
@@ -281,5 +281,30 @@ describe('audit follow-ups', () => {
     const page = await fetch(`${base}/`)
     expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
     expect(page.headers.get('strict-transport-security')).toBe('max-age=31536000')
+  })
+})
+
+describe('budget shares and the edge host (review P2 #3, P3 #5, P3 #6)', () => {
+  it('caps each address at its share of the day, and refunds a failed call', async () => {
+    let fail = true
+    const fake = (async () => (fail ? new Response('{}', { status: 500 }) : new Response(Buffer.from('mp3')))) as unknown as typeof fetch
+    const budget = new DailyBudget(1000, 70)
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget })
+    expect((await tts(base, holdLine(1), { 'X-Real-IP': '6.6.6.6' })).status).toBe(502)
+    expect(budget.remaining).toBe(1000) // the failed call was refunded
+    fail = false
+    expect((await tts(base, holdLine(2), { 'X-Real-IP': '6.6.6.6' })).status).toBe(200)
+    expect((await tts(base, holdLine(3), { 'X-Real-IP': '6.6.6.6' })).status).toBe(200)
+    const capped = await tts(base, holdLine(4), { 'X-Real-IP': '6.6.6.6' })
+    expect(capped.status).toBe(429)
+    expect(await capped.json()).toEqual({ error: 'daily_budget' })
+    expect((await tts(base, holdLine(5), { 'X-Real-IP': '1.1.1.1' })).status).toBe(200)
+  })
+
+  it('accepts the page when the edge reports the original host in X-Forwarded-Host', async () => {
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, (async () => new Response(Buffer.from('mp3'))) as unknown as typeof fetch)
+    const viaEdge = await tts(base, holdLine(9), { Origin: 'https://bazaar-live.example', 'X-Forwarded-Host': 'bazaar-live.example' })
+    expect(viaEdge.status).toBe(200)
+    expect((await tts(base, holdLine(10), { Origin: 'https://evil.example', 'X-Forwarded-Host': 'bazaar-live.example' })).status).toBe(403)
   })
 })

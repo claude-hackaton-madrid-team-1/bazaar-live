@@ -97,12 +97,18 @@ export function clientAddress(req: IncomingMessage, header = DEFAULT_LIMITS.clie
   return first || req.socket.remoteAddress || 'unknown'
 }
 
-/** Browsers send Origin on every POST; ours must name this host (a missing one is refused too). */
+/**
+ * Browsers send Origin on every POST; ours must name this host (a missing one is refused too). The
+ * host is `Host`, or `X-Forwarded-Host` when Railway's edge reports the original one there.
+ */
 function sameOrigin(req: IncomingMessage): boolean {
   const origin = req.headers.origin
   if (!origin) return false
+  const forwarded = req.headers['x-forwarded-host']
+  const hosts = [req.headers.host, (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim()]
   try {
-    return new URL(origin).host === req.headers.host
+    const host = new URL(origin).host
+    return hosts.some((h) => h !== undefined && h !== '' && h === host)
   } catch {
     return false
   }
@@ -140,7 +146,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
   const perClient = deps.perClient ?? new RateLimiter({ capacity: limits.perAddressBurst, refillPerSecond: limits.perAddressPerMinute / 60 })
   const global = deps.global ?? new RateLimiter({ capacity: limits.globalBurst, refillPerSecond: limits.globalPerMinute / 60 })
   const cache = deps.cache ?? new LruCache<Audio>(24 * 1024 * 1024)
-  const budget = deps.budget ?? new DailyBudget(limits.dailyChars)
+  const budget = deps.budget ?? new DailyBudget(limits.dailyChars, limits.dailyCharsPerAddress)
   // Every viewer hears the same line for the same event: one upstream call serves them all.
   const inFlight = new Map<string, Promise<Audio>>()
   const available = availableProviders(deps.config)
@@ -170,22 +176,23 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     const shared = inFlight.get(key)
     const hit = audio !== undefined || shared !== undefined
     if (!audio) {
+      const address = clientAddress(req, limits.clientIpHeader)
       if (!shared) {
         // The address is checked before the global bucket, and nothing is spent unless both allow it:
         // a caller over its own limit cannot drain the tokens everyone else shares.
-        const address = clientAddress(req, limits.clientIpHeader)
         const limited = [perClient.peek(address), global.peek('*')].find((r) => !r.ok)
         if (limited && !limited.ok) {
           log({ route: 'tts', status: 429, provider: parsed.provider })
           return json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(limited.retryAfterSeconds) })
         }
-        if (!budget.allows(parsed.text.length)) {
-          log({ route: 'tts', status: 429, provider: parsed.provider, budget: 'daily_chars' })
+        const allowed = budget.allows(address, parsed.text.length)
+        if (allowed !== 'ok') {
+          log({ route: 'tts', status: 429, provider: parsed.provider, budget: allowed })
           return json(res, 429, { error: 'daily_budget' }, { 'Retry-After': '3600' })
         }
         perClient.take(address)
         global.take('*')
-        budget.spend(parsed.text.length)
+        budget.spend(address, parsed.text.length)
       }
       try {
         const pending = shared ?? synthesize(parsed).finally(() => inFlight.delete(key))
@@ -193,6 +200,8 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
         audio = await pending
         cache.set(key, audio)
       } catch (error: unknown) {
+        // A failed call produced no audio: its characters go back (only the caller that spent them).
+        if (!shared) budget.refund(address, parsed.text.length)
         const status = error instanceof UpstreamError ? error.status : 0
         log({ route: 'tts', status: 502, provider: parsed.provider, upstream: status, error: error instanceof Error ? error.message : String(error) })
         return json(res, 502, { error: 'tts_failed', provider: parsed.provider })

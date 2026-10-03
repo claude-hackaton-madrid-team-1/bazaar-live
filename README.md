@@ -122,17 +122,21 @@ logged or committed. The proxy is public, so it guards what it speaks and what i
 
 - **Only the show's own lines.** The dialogue templates live in `shared/lines.ts`; the page fills
   their `{slots}` from public event fields, and the proxy accepts a line only when it matches one of
-  those templates for that speaker, with every slot restricted to the words the show can produce (card
-  names, primas, dealer names, short labels). Anything else is a `400`; a test checks that every line
-  the show can produce passes and arbitrary text does not.
+  those templates for that speaker, with every slot restricted to the words the show can produce: card
+  names, primas, dealer names, and closed lists for the game's error codes, the documented decision
+  kinds and Jev's verdicts. Anything else is a `400`; a test checks that every line the show can produce
+  passes and arbitrary text (or a phrase smuggled into a slot) does not.
 - **Only this page.** A request must carry an `Origin` naming this host (browsers always send it on a
   `POST`); others get `403`. Text is capped at 300 characters.
 - **Limits.** Per address (Railway's `X-Real-IP`; `X-Forwarded-For` is never trusted) a burst of 40
   then 24 lines a minute; all callers together a burst of 160 then 72 a minute. The address is checked
   before the shared bucket, so one caller over its limit cannot drain it for everyone. A daily budget of
-  40,000 characters sent to a provider (UTC day) caps the cost. Env: `TTS_PER_ADDRESS_BURST`,
-  `TTS_PER_ADDRESS_PER_MINUTE`, `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`, `TTS_DAILY_CHARS`,
-  `TTS_CLIENT_IP_HEADER`. Also set a credit limit on the provider key itself.
+  40,000 characters sent to a provider (UTC day) caps the cost, at most 12,000 of them per address, and
+  a failed call gives its characters back. Env: `TTS_PER_ADDRESS_BURST`, `TTS_PER_ADDRESS_PER_MINUTE`,
+  `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`, `TTS_DAILY_CHARS`, `TTS_DAILY_CHARS_PER_ADDRESS`,
+  `TTS_CLIENT_IP_HEADER` (each must be declared in bazaar's `.railway/railway.py` before it is set, or
+  the next apply deletes it). For the pitch, size `TTS_DAILY_CHARS` to the window (the mock scene talks
+  about 850 characters a minute) and set a credit limit on the provider key itself.
 - **Cache.** Every viewer hears the same line for the same event: a 24 MB cache and shared in-flight
   requests make a repeated line free.
 
@@ -151,6 +155,16 @@ railway variable set GEMINI_API_KEY --stdin --service bazaar-live
 ```
 
 With neither key set, the show still speaks with the browser's voice.
+
+After the first deploy, check the edge from outside (the proxy trusts what Railway's edge reports):
+
+```sh
+URL=https://<the bazaar-live domain>
+curl -s $URL/health                                   # {"ok":true,"service":"bazaar-live","tts":[...]}
+# The page's own POSTs must pass: the Origin check compares with Host (or X-Forwarded-Host).
+# The per-address limit must hold even when a caller sends its own X-Real-IP: with a key set,
+# 45 POSTs of a show line with a rotating X-Real-IP should start answering 429 by the 41st.
+```
 
 ## Layout
 

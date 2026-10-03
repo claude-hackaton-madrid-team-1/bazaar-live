@@ -51,15 +51,21 @@ export class RateLimiter {
   }
 }
 
-/** Characters sent upstream per UTC day: the hard ceiling on what the paid voices can cost. */
+/**
+ * Characters sent upstream per UTC day: the hard ceiling on what the paid voices can cost, with a
+ * share per address so a few callers cannot spend the whole day before the pitch.
+ */
 export class DailyBudget {
   private day = ''
   private used = 0
+  private byKey = new Map<string, number>()
   private readonly limit: number
+  private readonly perKeyLimit: number
   private readonly now: () => number
 
-  constructor(limit: number, now: () => number = () => Date.now()) {
+  constructor(limit: number, perKeyLimit: number = limit, now: () => number = () => Date.now()) {
     this.limit = limit
+    this.perKeyLimit = perKeyLimit
     this.now = now
   }
 
@@ -68,17 +74,28 @@ export class DailyBudget {
     if (today !== this.day) {
       this.day = today
       this.used = 0
+      this.byKey = new Map()
     }
   }
 
-  allows(chars: number): boolean {
+  /** `ok`, or which ceiling `chars` more would cross: the day's total or this address's share. */
+  allows(key: string, chars: number): 'ok' | 'total' | 'address' {
     this.roll()
-    return this.used + chars <= this.limit
+    if (this.used + chars > this.limit) return 'total'
+    return (this.byKey.get(key) ?? 0) + chars > this.perKeyLimit ? 'address' : 'ok'
   }
 
-  spend(chars: number): void {
+  spend(key: string, chars: number): void {
     this.roll()
     this.used += chars
+    this.byKey = new Map(this.byKey).set(key, (this.byKey.get(key) ?? 0) + chars)
+  }
+
+  /** Give back what a failed upstream call did not use. */
+  refund(key: string, chars: number): void {
+    this.roll()
+    this.used = Math.max(0, this.used - chars)
+    this.byKey = new Map(this.byKey).set(key, Math.max(0, (this.byKey.get(key) ?? 0) - chars))
   }
 
   get remaining(): number {
@@ -93,8 +110,10 @@ export interface TtsLimits {
   readonly perAddressPerMinute: number
   readonly globalBurst: number
   readonly globalPerMinute: number
-  /** Characters sent to a provider per UTC day, all callers together. */
+  /** Characters sent to a provider per UTC day, all callers together... */
   readonly dailyChars: number
+  /** ...and the share of it one address may use. */
+  readonly dailyCharsPerAddress: number
   /** The header Railway's edge sets to the caller's address. */
   readonly clientIpHeader: string
 }
@@ -106,6 +125,7 @@ export const DEFAULT_LIMITS: TtsLimits = {
   globalBurst: 160,
   globalPerMinute: 72,
   dailyChars: 40_000,
+  dailyCharsPerAddress: 12_000,
   clientIpHeader: 'x-real-ip',
 }
 
@@ -121,6 +141,7 @@ export function readLimits(env: Readonly<Record<string, string | undefined>>): T
     globalBurst: read('TTS_GLOBAL_BURST', DEFAULT_LIMITS.globalBurst),
     globalPerMinute: read('TTS_GLOBAL_PER_MINUTE', DEFAULT_LIMITS.globalPerMinute),
     dailyChars: read('TTS_DAILY_CHARS', DEFAULT_LIMITS.dailyChars),
+    dailyCharsPerAddress: read('TTS_DAILY_CHARS_PER_ADDRESS', DEFAULT_LIMITS.dailyCharsPerAddress),
     clientIpHeader: header && /^[a-z0-9-]{1,40}$/.test(header) ? header : DEFAULT_LIMITS.clientIpHeader,
   }
 }
