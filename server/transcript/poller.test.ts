@@ -32,16 +32,30 @@ const deps = (db: Db, store: TranscriptStore, logs: Record<string, unknown>[] = 
 })
 
 describe('Poller', () => {
-  it('backfills the latest lines once, then asks only for ids past its watermark', async () => {
-    const { db, calls } = fakeDb((c) => (c.sql.includes('show.thread_lines') ? (c.params.length === 1 ? [threadRow(5), threadRow(6)] : [threadRow(7)]) : []))
+  /** A fake view of thread lines that honours the three query shapes (backfill, after the mark, the look-back window). */
+  const threadDb = (rows: () => Record<string, unknown>[]) =>
+    fakeDb((c) => {
+      if (!c.sql.includes('show.thread_lines')) return []
+      const all = rows().sort((x, y) => Number(x.event_id) - Number(y.event_id))
+      const id = (r: Record<string, unknown>) => Number(r.event_id)
+      if (c.sql.includes('order by event_id desc')) return all.slice(-(c.params[0] as number))
+      if (c.sql.includes('event_id <= $2')) return all.filter((r) => id(r) > (c.params[0] as number) && id(r) <= (c.params[1] as number)).slice(0, c.params[2] as number)
+      return all.filter((r) => id(r) > (c.params[0] as number)).slice(0, c.params[1] as number)
+    })
+
+  it('backfills the latest lines once (as history), then asks only for ids past its watermark', async () => {
+    const rows = [threadRow(5), threadRow(6)]
+    const { db, calls } = threadDb(() => rows)
     const store = new TranscriptStore()
     const poller = new Poller(deps(db, store))
     await poller.pollOnce()
+    rows.push(threadRow(7))
     await poller.pollOnce()
     const threadCalls = calls.filter((c) => c.sql.includes('show.thread_lines'))
     expect(threadCalls[0]?.params).toEqual([40])
-    expect(threadCalls[1]?.params).toEqual([0, 100]) // the mark (6) minus the trailing window, floored at 0
-    expect(store.since(null).map((i) => i.id)).toEqual(['f5', 'f6', 'f7'])
+    expect(threadCalls[1]?.params).toEqual([6, 100]) // new rows: past the mark, capped
+    expect(threadCalls[2]?.params).toEqual([0, 6, 100]) // the look-back: the window under the mark, floored at 0
+    expect(store.since(null).map((i) => [i.id, i.history])).toEqual([['f5', true], ['f6', true], ['f7', false]])
   })
 
   it('reads only from the two views, never a table', async () => {
@@ -140,19 +154,31 @@ describe('Poller', () => {
     expect(store.since(0, 1000).some((i) => i.id === 'dc:1150')).toBe(true)
   })
 
-  it('re-reads a trailing id window, so a gap-fill inserted after a newer id is not lost', async () => {
+  it('re-reads a trailing id window in a second query, so a gap-fill inserted after a newer id is not lost', async () => {
     const rows = [threadRow(9_000_002)]
-    const { db } = fakeDb((c) => {
-      if (!c.sql.includes('thread_lines')) return []
-      if (c.params.length === 1) return rows
-      const from = c.params[0] as number
-      return [...rows, threadRow(9_000_001)].filter((r) => Number(r.event_id) > from)
-    })
+    const { db } = threadDb(() => rows)
     const store = new TranscriptStore()
     const poller = new Poller(deps(db, store))
     await poller.pollOnce() // backfill sees only the newer streamed event
-    await poller.pollOnce() // the monitor's gap-fill (older id) landed later: the window still catches it
+    rows.push(threadRow(9_000_001)) // the monitor's gap-fill (an older id) lands later
+    await poller.pollOnce()
     expect(store.since(null).map((i) => i.id).sort()).toEqual(['f9000001', 'f9000002'])
+  })
+
+  it('drains a burst bigger than the cap, and the look-back cannot starve the new rows', async () => {
+    const rows = [threadRow(1)]
+    const { db } = threadDb(() => rows)
+    const store = new TranscriptStore({ ring: 1000 })
+    const poller = new Poller({ ...deps(db, store), cap: 200 })
+    await poller.pollOnce()
+    for (let id = 2; id <= 251; id++) rows.push(threadRow(id)) // 250 of ours in one tick
+    await poller.pollOnce()
+    await poller.pollOnce()
+    rows.push(threadRow(252)) // a later row, after the burst
+    await poller.pollOnce()
+    const ids = store.since(0, 1000).map((i) => i.id)
+    expect(ids).toHaveLength(252)
+    expect(ids).toContain('f252')
   })
 
   it('never throws: an error is logged without the url, and the next delay grows with a ceiling', async () => {

@@ -24,6 +24,15 @@ describe('readShowDatabase', () => {
     }
   })
 
+  it('refuses a url that redirects the connection with a query parameter, or lists several hosts', () => {
+    const base = 'postgresql://u:topsecret@postgres.railway.internal:5432/db'
+    for (const extra of ['?host=evil.example.com', '?hostaddr=203.0.113.9', '?port=1', '?host=/tmp', '?service=x', '?options=-c%20x=1']) {
+      expect(readShowDatabase({ SHOW_DATABASE_URL: base + extra }), extra).toEqual({ enabled: false, reason: 'host_not_allowed' })
+    }
+    expect(readShowDatabase({ SHOW_DATABASE_URL: 'postgresql://u:p@postgres.railway.internal,evil.example.com:5432/db' }).enabled).toBe(false)
+    expect(readShowDatabase({ SHOW_DATABASE_URL: `${base}?sslmode=disable` }).enabled).toBe(true)
+  })
+
   it('accepts postgres:// and postgresql://', () => {
     expect(readShowDatabase({ SHOW_DATABASE_URL: URL_OK })).toMatchObject({ enabled: true, url: URL_OK })
     expect(readShowDatabase({ SHOW_DATABASE_URL: URL_OK.replace('postgresql', 'postgres') }).enabled).toBe(true)

@@ -81,12 +81,11 @@ select e.id as event_id,
 
 -- The gate: when may a closed duel's conversation be public? (security audit P1)
 -- Our duel prices are a fixed function of our private limit and every team plays the same scenarios, so a
--- finished transcript lets a rival still negotiating with us compute our walk-away price. So a closed duel
--- is shown only when ALL of these hold:
---   * no duel of its session is live, and no duel over the same item is live (the sibling case);
---   * its session is over: a later session exists, or show.gate.open_all was switched on by an admin
---     (after the last session: `update show.gate set open_all = true`).
--- The server also keeps duels off the page entirely unless SHOW_DUELS is set; this is the second wall.
+-- finished transcript lets a rival still negotiating with us compute our walk-away price. So NO duel is
+-- visible, in any session, until an admin switches the gate on after the last session (Duels III):
+--     update show.gate set open_all = true;
+-- Then every CLOSED duel shows (a duel still marked live, a stale practice row, hides nothing else).
+-- The server keeps duels off the page too unless SHOW_DUELS is set; this is the second wall.
 create table if not exists show.gate (
   only_row boolean primary key default true check (only_row),
   open_all boolean not null default false
@@ -97,10 +96,7 @@ revoke all on show.gate from public;
 create or replace view show.duel_lines with (security_barrier = true) as
 with shown as (
   select d.* from public.duels d
-   where d.status in ('deal', 'no_deal')
-     and not exists (select 1 from public.duels l
-                      where l.status = 'live' and (l.session is not distinct from d.session or l.item is not distinct from d.item))
-     and (d.session < (select max(x.session) from public.duels x) or (select g.open_all from show.gate g))
+   where d.status in ('deal', 'no_deal') and (select g.open_all from show.gate g)
 )
 -- The outcome.
 select 'closed'::text as kind, d.duel, 0 as n, d.session, d.status, d.role, d.item, d.rival,

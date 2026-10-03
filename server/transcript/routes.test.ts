@@ -143,9 +143,9 @@ describe('GET /api/transcript/stream', () => {
     await d.body?.cancel()
   })
 
-  it('lets a room share one address: the default per-address cap is 24', async () => {
+  it('lets a room share one address: the default per-address cap is 12', async () => {
     const { base } = await start()
-    const streams = await Promise.all(Array.from({ length: 24 }, () => fetch(`${base}/api/transcript/stream`)))
+    const streams = await Promise.all(Array.from({ length: 12 }, () => fetch(`${base}/api/transcript/stream`)))
     expect(streams.every((r) => r.status === 200)).toBe(true)
     expect((await fetch(`${base}/api/transcript/stream`)).status).toBe(429)
     await Promise.all(streams.map((r) => r.body?.cancel()))

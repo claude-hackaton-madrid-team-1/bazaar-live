@@ -121,6 +121,8 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     await adminDb?.end().catch(() => undefined)
     await admin?.query(`drop database if exists ${dbName} with (force)`).catch(() => undefined)
     await admin?.query('drop role if exists bazaar_live_reader').catch(() => undefined)
+    // show.sql revoked CONNECT on these from PUBLIC: put it back, this cluster is not ours alone.
+    await admin?.query('grant connect on database postgres to public').catch(() => undefined)
     await admin?.end().catch(() => undefined)
   })
 
@@ -133,7 +135,7 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     const t = await reader.query('select * from show.thread_lines order by event_id')
     const d = await reader.query('select * from show.duel_lines')
     expect(t.rowCount).toBeGreaterThan(0)
-    expect(d.rowCount).toBeGreaterThan(0)
+    expect(d.rowCount).toBe(0) // readable, and empty while the gate is closed
   })
 
   it.each(['public.feed_events', 'feed_events', 'public.duels', 'duels'])('cannot read %s directly', async (table) => {
@@ -199,40 +201,39 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     expect(rows.find((r) => r.event_id === '7')).toMatchObject({ thread: null, give_cash: null, want_cash: null })
   })
 
-  it('shows the conversation of CLOSED duels only, and nothing of a live one', async () => {
-    const { rows } = await reader.query('select * from show.duel_lines order by duel, kind, n')
-    const messages = rows.filter((r) => r.kind === 'message')
-    expect(messages.map((r) => r.duel).sort()).toEqual([61, 61, 62])
-    expect(messages.find((r) => r.duel === 61 && r.n === 1)).toMatchObject({ speaker: 'them', text: 'Sesenta y no se hable más.', price: 60, days: 3, tick: 40, role: 'seller' })
-    expect(messages.find((r) => r.duel === 61 && r.n === 2)).toMatchObject({ speaker: 'us', price: 50 })
-    expect(rows.filter((r) => r.duel === 63 || r.duel === 72)).toEqual([])
-    expect(rows.filter((r) => r.kind === 'live')).toEqual([])
-    expect(rows.filter((r) => r.kind === 'closed').map((r) => [r.duel, r.status, r.final_price]).sort()).toEqual([[61, 'deal', 55], [62, 'no_deal', null], [64, 'deal', 20]])
-  })
-
-  it('holds a closed duel back while another duel over the same item is live, and releases it after', async () => {
-    const held = await reader.query('select 1 from show.duel_lines where duel = 71')
-    expect(held.rowCount).toBe(0)
-    await adminDb.query("update duels set status = 'no_deal' where duel = 72")
-    const released = await reader.query("select item, text from show.duel_lines where duel = 71 and kind = 'message'")
-    expect(released.rows).toEqual([{ item: 'Taxi Blanco', text: 'SIBLING-MUST-WAIT' }])
-    await adminDb.query("update duels set status = 'live' where duel = 72")
-  })
-
-  it('hides a closed duel while its session has a live duel, and while it is the last session', async () => {
-    const rows = (await reader.query('select * from show.duel_lines where duel in (81, 82)')).rows
+  it('shows NO duel while the gate is closed, whatever its session or state', async () => {
+    const rows = (await reader.query('select * from show.duel_lines')).rows
     expect(rows).toEqual([])
+    expect((await reader.query('select count(*)::int as n from show.thread_lines')).rows[0]?.n).toBeGreaterThan(0)
   })
 
-  it('opens the last session only when an admin flips show.gate, and the role cannot', async () => {
+  describe('with the gate open (an admin ran: update show.gate set open_all = true)', () => {
+    beforeAll(async () => void (await adminDb.query('update show.gate set open_all = true')))
+    afterAll(async () => void (await adminDb.query('update show.gate set open_all = false')))
+
+    it('shows the conversation of CLOSED duels only, in every session, and nothing of a live one', async () => {
+      const { rows } = await reader.query('select * from show.duel_lines order by duel, kind, n')
+      const messages = rows.filter((r) => r.kind === 'message')
+      expect(messages.map((r) => r.duel).sort((a, b) => a - b)).toEqual([61, 61, 62, 71, 81, 82])
+      expect(messages.find((r) => r.duel === 61 && r.n === 1)).toMatchObject({ speaker: 'them', text: 'Sesenta y no se hable más.', price: 60, days: 3, tick: 40, role: 'seller' })
+      expect(messages.find((r) => r.duel === 61 && r.n === 2)).toMatchObject({ speaker: 'us', price: 50 })
+      expect(rows.filter((r) => [63, 72, 83].includes(r.duel))).toEqual([]) // the live ones: no row at all
+      expect(rows.filter((r) => r.kind === 'live')).toEqual([])
+      expect(rows.filter((r) => r.kind === 'closed').map((r) => r.duel).sort((a, b) => a - b)).toEqual([61, 62, 64, 71, 81, 82])
+    })
+
+    it('still never leaks a private value or a live duel text', async () => {
+      const d = await reader.query('select * from show.duel_lines')
+      const dump = JSON.stringify([d.rows, d.fields.map((f) => f.name)])
+      for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol', 'Rival Rojo', 'Rival Rosa']) {
+        expect(dump).not.toContain(secret)
+      }
+    })
+  })
+
+  it('the role cannot flip the gate or even read it', async () => {
     expect(await refusedWhenWritable(reader, 'update show.gate set open_all = true')).toMatchObject({ code: '42501' })
     await expect(reader.query('select * from show.gate')).rejects.toMatchObject({ code: '42501' })
-    await adminDb.query("update duels set status = 'no_deal' where duel in (63, 72)")
-    expect((await reader.query('select 1 from show.duel_lines where duel = 81')).rowCount).toBe(0) // still the last session
-    await adminDb.query('update show.gate set open_all = true')
-    expect((await reader.query("select text from show.duel_lines where duel = 81 and kind = 'message'")).rows).toEqual([{ text: 'LAST-SESSION-HIDDEN' }])
-    await adminDb.query('update show.gate set open_all = false')
-    await adminDb.query("update duels set status = 'live' where duel in (63, 72)")
   })
 
   it('cannot lift its limits or create temp objects, and reaches no other database', async () => {
@@ -252,7 +253,7 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     const t = await reader.query('select * from show.thread_lines')
     const d = await reader.query('select * from show.duel_lines')
     const dump = JSON.stringify([t.rows, d.rows, t.fields.map((f) => f.name), d.fields.map((f) => f.name)])
-    for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol', 'LAST-SESSION-HIDDEN', 'SESSION-HAS-LIVE']) {
+    for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol']) {
       expect(dump).not.toContain(secret)
     }
     const columns = [...t.fields, ...d.fields].map((f) => f.name)

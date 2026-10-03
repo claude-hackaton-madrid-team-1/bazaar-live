@@ -51,6 +51,8 @@ export interface TranscriptItem {
   /** In a duel, which side we played. */
   readonly role: 'buyer' | 'seller' | null
   readonly lines: readonly DuelLine[]
+  /** Read while catching up (a backfill, a rescan): captions for the page, never a scene. */
+  readonly history: boolean
 }
 
 /** An item before the store gives it a cursor. */
@@ -70,5 +72,5 @@ export interface TranscriptBatch {
 
 export const EMPTY_ITEM: Draft = {
   id: '', kind: 'thread_line', tick: null, counterpart: null, who: null, thread: null, item: null, text: null,
-  offer: null, price: null, status: null, role: null, lines: [],
+  offer: null, price: null, status: null, role: null, lines: [], history: false,
 }

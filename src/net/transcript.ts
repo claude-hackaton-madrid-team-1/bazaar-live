@@ -202,7 +202,11 @@ export class TranscriptFeed {
       this.remember(i.id)
       return true
     })
-    if (fresh.length > 0) this.o.onItems(fresh, batch.replay)
+    // Items the server read while catching up are captions, never scenes, even in a live batch.
+    const history = fresh.filter((i) => i.history)
+    const live = fresh.filter((i) => !i.history)
+    if (history.length > 0) this.o.onItems(history, true)
+    if (live.length > 0) this.o.onItems(live, batch.replay)
   }
 
   private remember(id: string): void {

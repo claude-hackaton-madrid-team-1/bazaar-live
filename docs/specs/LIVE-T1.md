@@ -13,10 +13,9 @@ Duel visibility (Jev undecided, closed_only 0.51 vs live 0.44) → safe default:
 conversation is shown **only after it closes** (`deal` or `no_deal`). Review decisions: a live duel shows
 NOTHING from the database (pr-reviewer P1-2); and, because our duel prices are a fixed function of our
 private limit and every team plays the same scenarios (security audit P1), duels are OFF the public show
-during the game: server flag `SHOW_DUELS` (default off, the duel view is never queried). When on, the view
-still shows a closed duel only when no duel of its session or item is live and its session is over (a later
-session exists, or an admin ran `update show.gate set open_all = true` after the last session). Our limits
-are never public.
+during the game: server flag `SHOW_DUELS` (default off, the duel view is never queried). The view
+shows no duel in any session until an admin runs `update show.gate set open_all = true` after the last
+session (Duels III); then every CLOSED duel shows. Our limits are never public.
 
 ## Hard limits
 
@@ -40,7 +39,7 @@ The coordinator applies `db/show.sql` and sets `SHOW_DATABASE_URL`.
 | AC1 | `db/show.sql` is idempotent; creates schema `show`, views `show.thread_lines` and `show.duel_lines`, role `bazaar_live_reader` (NOLOGIN) with USAGE on the schema and SELECT on those two views only. |
 | AC2 | On a local Postgres 17 with synthetic rows, the role cannot read `feed_events` or `duels`, cannot write, and no private key or value appears in any view row. |
 | AC3 | `show.thread_lines` exposes only our dealer threads (opened / message / settlement where `t01` is a party); our own text is null. |
-| AC4 | `show.duel_lines` exposes only CLOSED duels of a finished session with no live duel in the session or over the same item; a live duel yields no row. `SHOW_DUELS` (default off) keeps duels off the page. |
+| AC4 | `show.duel_lines` is empty until `show.gate.open_all` is set, then exposes only CLOSED duels; a live duel yields no row. `SHOW_DUELS` (default off) keeps duels off the page. |
 | AC5 | Server: `SHOW_DATABASE_URL` absent, or a host that is not `*.railway.internal`/loopback → feature off, show unchanged; present → pool max 2, `statement_timeout` 2 s, poll every 3 s by watermark, row cap per poll, backoff on errors, never crashes the server, errors logged without the URL. |
 | AC6 | Every text is sanitized (length cap, control / invisible / bidi characters, markup, expressive `[tags]`, URLs); ref / counterpart / numbers come from closed vocabularies. |
 | AC7 | `GET /api/transcript?since=<cursor>` and SSE `/api/transcript/stream`; the CSP and existing limits stay; the stream is capped. |

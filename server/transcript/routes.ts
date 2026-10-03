@@ -47,11 +47,11 @@ function parseCursor(raw: string | null | undefined): number | null {
 export function createTranscriptRoutes(deps: TranscriptRouteDeps): (req: IncomingMessage, res: ServerResponse, path: string) => boolean {
   const { store } = deps
   const limiter = deps.limiter ?? new RateLimiter({ capacity: 30, refillPerSecond: 1 })
-  const maxStreams = deps.maxStreams ?? 100
-  const maxPerAddress = deps.maxPerAddress ?? 24
+  const maxStreams = deps.maxStreams ?? 200
+  const maxPerAddress = deps.maxPerAddress ?? 12
   const heartbeatMs = deps.heartbeatMs ?? 15_000
   const maxLifetimeMs = deps.maxLifetimeMs ?? 30 * 60_000
-  const openLimiter = deps.openLimiter ?? new RateLimiter({ capacity: 24, refillPerSecond: 0.2 })
+  const openLimiter = deps.openLimiter ?? new RateLimiter({ capacity: 12, refillPerSecond: 0.2 })
   const maxQueued = deps.maxQueuedBytes ?? 256 * 1024
   const perAddress = new Map<string, number>()
   let open = 0

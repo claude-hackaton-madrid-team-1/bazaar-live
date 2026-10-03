@@ -108,6 +108,15 @@ describe('TranscriptFeed', () => {
     t.feed.stop()
   })
 
+  it('hands items the server read while catching up (history) over as replay even in a live batch', async () => {
+    const t = setup()
+    t.feed.start()
+    await flush()
+    t.sources[0]?.emit('items', batch([{ ...item('h', 1), history: true }, item('l', 2)]))
+    expect(t.got).toEqual([{ ids: ['h'], replay: true }, { ids: ['l'], replay: false }])
+    t.feed.stop()
+  })
+
   it('drops duplicates by id, also across a reconnect', async () => {
     const t = setup()
     t.feed.start()

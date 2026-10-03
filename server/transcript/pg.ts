@@ -6,6 +6,7 @@
  * text is redacted against `secretsOf(url)` before it leaves the process.
  */
 import pg from 'pg'
+import { parse as parseConnection } from 'pg-connection-string'
 import type { Db } from './poller.ts'
 
 export type ShowDatabase =
@@ -15,13 +16,21 @@ export type ShowDatabase =
 /** Railway's private network (no TLS, never leaves the project) or this machine. Nothing else. */
 const ALLOWED_HOST = /^(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*\.railway\.internal|localhost|127\.0\.0\.1|\[::1\])$/i
 
+/** Parameters that would send the connection somewhere other than the url's host. */
+const REDIRECTING = ['host', 'hostaddr', 'port', 'service', 'options', 'dbname', 'user', 'password']
+
 export function readShowDatabase(env: Readonly<Record<string, string | undefined>>): ShowDatabase {
   const url = env.SHOW_DATABASE_URL?.trim()
   if (!url) return { enabled: false, reason: 'absent' }
   if (!/^postgres(?:ql)?:\/\//i.test(url)) return { enabled: false, reason: 'not_postgres' }
   try {
+    const parsed = new URL(url)
     // The url carries a password: it must only ever be sent over the private network (or to this machine).
-    return ALLOWED_HOST.test(new URL(url).hostname) ? { enabled: true, url } : { enabled: false, reason: 'host_not_allowed' }
+    // Check the host pg itself will use, and refuse any query parameter that could change it.
+    const redirected = REDIRECTING.some((name) => parsed.searchParams.has(name))
+    const host = parseConnection(url).host ?? ''
+    const allowed = !redirected && !host.includes(',') && ALLOWED_HOST.test(host.startsWith('::1') ? '[::1]' : host) && ALLOWED_HOST.test(parsed.hostname)
+    return allowed ? { enabled: true, url } : { enabled: false, reason: 'host_not_allowed' }
   } catch {
     return { enabled: false, reason: 'not_postgres' }
   }

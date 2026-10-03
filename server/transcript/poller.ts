@@ -5,6 +5,7 @@
  * backoff that grows when the database is away, and no exception ever leaves `pollOnce()`. Errors are
  * logged with their code and a redacted message, never with the connection string.
  */
+import type { Draft } from '../../shared/transcript.ts'
 import { duelItems, threadItem } from './rows.ts'
 import type { TranscriptStore } from './store.ts'
 
@@ -21,6 +22,9 @@ const STAMP = `to_char(updated_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.U
 export const SQL = {
   threadBackfill: `select * from (select ${COLUMNS_THREAD} from show.thread_lines order by event_id desc limit $1) t order by event_id asc`,
   threadAfter: `select ${COLUMNS_THREAD} from show.thread_lines where event_id > $1 order by event_id asc limit $2`,
+  // The monitor writes streamed events at once and polled gap-fills later, so an id below the mark can show up
+  // after it. A SECOND query looks back over the window (the store dedupes), so a burst never starves it.
+  threadGap: `select ${COLUMNS_THREAD} from show.thread_lines where event_id > $1 and event_id <= $2 order by event_id asc limit $3`,
   duelHeadersFirst: `select * from (select ${COLUMNS_DUEL}, ${STAMP}, updated_at from show.duel_lines where kind = 'closed' order by updated_at desc, duel desc limit $1) t order by updated_at, duel`,
   // Keyset on (updated_at, duel): bazaar re-upserts every finished duel with one now(), so many rows share a stamp.
   duelHeadersAfter: `select ${COLUMNS_DUEL}, ${STAMP} from show.duel_lines where kind = 'closed' and (updated_at, duel) > ($1::timestamptz, $2::int) order by updated_at, duel limit $3`,
@@ -71,6 +75,8 @@ interface DuelMark {
   readonly duel: number
 }
 
+const asHistory = (d: Draft): Draft => ({ ...d, history: true })
+
 export class Poller {
   private readonly o: Required<Omit<PollerDeps, 'db' | 'store' | 'log'>>
   private readonly db: Db
@@ -80,6 +86,8 @@ export class Poller {
   private duelMark: DuelMark | null = null
   private fails = 0
   private polls = 0
+  /** True until a duel page comes back short: what it reads is history. */
+  private catchingUp = true
   private timer: unknown = null
   private stopped = true
 
@@ -127,7 +135,10 @@ export class Poller {
   async pollOnce(): Promise<void> {
     this.polls += 1
     // The gate in the view can open a duel without touching its row (a later session starts): look again from the top.
-    if (this.o.duels && this.polls % this.o.rescanEvery === 0) this.duelMark = { stamp: '1970-01-01T00:00:00.000000Z', duel: 0 }
+    if (this.o.duels && this.polls % this.o.rescanEvery === 0) {
+      this.duelMark = { stamp: '1970-01-01T00:00:00.000000Z', duel: 0 }
+      this.catchingUp = true // whatever the look finds that was not already shown is history
+    }
     const results = await Promise.allSettled([this.readThreads(), this.o.duels ? this.readDuels() : Promise.resolve()])
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (!failed) {
@@ -142,16 +153,25 @@ export class Poller {
   }
 
   private async readThreads(): Promise<void> {
-    const { rows } = this.threadMark === null
-      ? await this.db.query(SQL.threadBackfill, [this.o.backfill])
-      : await this.db.query(SQL.threadAfter, [Math.max(0, this.threadMark - this.o.idWindow), this.o.cap])
-    const ids = rows.map(idOf).filter((n): n is number => n !== null)
-    if (ids.length > 0) this.threadMark = Math.max(this.threadMark ?? 0, ...ids)
-    else if (this.threadMark === null) this.threadMark = 0
-    this.store.add(rows.flatMap((r) => threadItem(r) ?? []))
+    if (this.threadMark === null) {
+      const { rows } = await this.db.query(SQL.threadBackfill, [this.o.backfill])
+      this.threadMark = Math.max(0, ...rows.map(idOf).filter((n): n is number => n !== null))
+      this.store.add(rows.flatMap((r) => threadItem(r) ?? []).map(asHistory))
+      return
+    }
+    // New rows first: the mark only moves with these, so a burst of any size drains over successive polls.
+    const fresh = await this.db.query(SQL.threadAfter, [this.threadMark, this.o.cap])
+    const ids = fresh.rows.map(idOf).filter((n): n is number => n !== null)
+    const lowMark = this.threadMark
+    if (ids.length > 0) this.threadMark = Math.max(lowMark, ...ids)
+    this.store.add(fresh.rows.flatMap((r) => threadItem(r) ?? []))
+    // Then the look-back, over what was already passed.
+    const gap = await this.db.query(SQL.threadGap, [Math.max(0, lowMark - this.o.idWindow), lowMark, this.o.cap])
+    this.store.add(gap.rows.flatMap((r) => threadItem(r) ?? []))
   }
 
   private async readDuels(): Promise<void> {
+    const first = this.duelMark === null
     const headers = this.duelMark === null
       ? await this.db.query(SQL.duelHeadersFirst, [this.o.duelBackfill])
       : await this.db.query(SQL.duelHeadersAfter, [this.duelMark.stamp, this.duelMark.duel, this.o.cap])
@@ -166,7 +186,11 @@ export class Poller {
     })
     const ids = fresh.map((r) => (r as Record<string, unknown>).duel as number)
     const messages = ids.length > 0 ? (await this.db.query(SQL.duelMessages, [ids])).rows : []
-    this.store.add(duelItems(fresh, messages))
+    // Duels found while catching up (the first read, a rescan, SHOW_DUELS just turned on) are history for the
+    // captions, never a flood of scenes; once a page comes back short we are level with the database.
+    const items = duelItems(fresh, messages)
+    this.store.add(this.catchingUp ? items.map(asHistory) : items)
+    if (headers.rows.length < (first ? this.o.duelBackfill : this.o.cap)) this.catchingUp = false
   }
 
   private describe(reason: unknown): { code: string; message: string } {
