@@ -11,6 +11,7 @@ import type { AgentName, DecisionStatus } from '../../shared/decisions.ts'
 import type { HealthError } from '../../shared/health.ts'
 import type { ChipReason } from './views/health.ts'
 import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
+import { labelOf, rarityOfRule, type Denial, type ItemOf, type Who } from './humanize.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -40,6 +41,24 @@ const TACTICS_ES: Readonly<Record<string, string>> = {
 }
 
 export interface GameStrings {
+  /** One word per agent id, rule, decision kind, dealer and duel, for every screen (`humanize.ts` takes the ids apart). */
+  readonly hum: {
+    readonly agents: Readonly<Record<AgentName, string>>
+    readonly rules: Readonly<Record<string, string>>
+    readonly kinds: Readonly<Record<string, string>>
+    readonly jevVerdicts: Readonly<Record<string, string>>
+    /** A guardrail's denial as one sentence, from its numbers. */
+    readonly denial: (d: Denial) => string
+    /** How long ago: "now", "3 min ago", or ticks when the clock has not said how long a tick lasts. */
+    readonly ago: (ticks: number, seconds: number | null) => string
+    /** How long until: "in ~8 min". */
+    readonly within: (ticks: number, seconds: number | null) => string
+    readonly who: (w: Who) => string
+    readonly item: (i: ItemOf) => string
+    readonly jev: (verdict: string, percent: number | null) => string
+    readonly duelStart: (rival: string | null, role: string | null, card: string | null, ends: string | null) => string
+    readonly duelEnd: (rival: string | null, deal: boolean, price: string | null) => string
+  }
   readonly nav: Readonly<Record<Route, string>>
   readonly navHint: Readonly<Record<Route, string>>
   readonly navLabel: string
@@ -511,7 +530,94 @@ export interface GameStrings {
   }
 }
 
+/** A span as a person says it, rounded: 40 s, 3 min, 1 h 5 min. */
+const roughly = (s: number): string => (s < 90 ? `${Math.max(1, Math.round(s / 10) * 10)} s` : span(s))
+
+const RARITY_PL_EN: Readonly<Record<string, string>> = { common: 'commons', uncommon: 'uncommons', rare: 'rares', epic: 'epics', legendary: 'legendaries' }
+const RARITY_PL_ES: Readonly<Record<string, string>> = { common: 'comunes', uncommon: 'poco comunes', rare: 'raras', epic: 'épicas', legendary: 'legendarias' }
+
+const JEV_EN: Readonly<Record<string, string>> = { yes: 'yes', no: 'no', undecided: 'unsure', aggressive: 'aggressive', counter: 'counter', accept: 'accept', fair: 'fair' }
+
+const HUM_EN: GameStrings['hum'] = {
+  agents: { taker: 'Buyer', maker: 'Seller', duels: 'Duels' },
+  rules: {
+    max_price: 'price cap', max_price_common: 'price cap for commons', max_price_uncommon: 'price cap for uncommons', max_price_rare: 'price cap for rares',
+    max_price_epic: 'price cap for epics', max_price_legendary: 'price cap for legendaries', cash_floor: 'cash floor',
+    max_spend_per_game_hour: 'spend cap per game hour', max_packs_per_game_hour: 'pack cap per game hour', block_buying_held_cards: 'never buy a card we hold',
+    protect_page_sets: 'protect our pages', max_accepts_per_tick: 'accepts per tick', max_counterparty_share: 'too much with one counterparty',
+    allow_flags: 'switched off', open_sealed_packs: 'pack opening off', duel_inside_limit: 'outside our duel limit', allow_venue_open: 'opening a venue off',
+    venue_open_after_game_hours: 'venue out of hours', trading_enabled: 'trading off', inspect_accepts: 'accept check', pause_file: 'paused by hand',
+    sell_min_value_ratio: 'sale under our value', other: 'another rule',
+  },
+  kinds: {
+    accept_ask: 'buy off the board', team_open: 'open a deal with a team', post_ask: 'list for sale', cancel_ask: 'take off sale',
+    dealer_sell: 'sell to a dealer', dealer_bid: 'bid to a dealer', dealer_open: 'open with a dealer', dealer_opened: 'dealer thread opened',
+    dealer_closed: 'dealer thread closed', dealer_accept: "take the dealer's price", dealer_walk: 'walk away from the dealer', pack_open: 'open a pack',
+    duel_offer: 'offer in a duel', duel_hold: 'hold in a duel', duel_accept: 'accept a duel', process_started: 'restart (deploy)',
+  },
+  jevVerdicts: JEV_EN,
+  denial: (d) => {
+    switch (d.shape) {
+      case 'price': {
+        const r = rarityOfRule(d.rule)
+        return `costs ${d.price} P; our cap${r ? ` for ${RARITY_PL_EN[r] ?? r}` : ''} is ${d.cap} P`
+      }
+      case 'cash': return `would leave us ${Math.round((d.cash - d.cost) * 10) / 10} P, under the ${d.floor} P floor`
+      case 'spend': return `we would spend ${Math.round((d.spent + d.cost) * 10) / 10} P this game hour; the cap is ${d.cap} P`
+    }
+  },
+  ago: (ticks, seconds) => (ticks <= 0 ? 'now' : seconds == null ? `${plural(ticks, 'tick', 'ticks')} ago` : `${roughly(seconds)} ago`),
+  within: (ticks, seconds) => (ticks <= 0 ? 'now' : seconds == null ? `in ${plural(ticks, 'tick', 'ticks')}` : `in ~${roughly(seconds)}`),
+  who: (w) => (w.kind === 'team' ? `Team ${w.n}` : w.kind === 'venue' ? `venue ${w.n}` : w.name),
+  item: (i) => (i.kind === 'card' ? i.name ?? i.ref : i.kind === 'duel' ? (i.rival ? `duel with ${i.rival}` : `duel #${i.id}`) : i.kind === 'pack' ? `${i.pack} pack` : i.text),
+  jev: (verdict, pct) => `Jev: ${labelOf(JEV_EN, verdict)}${pct == null ? '' : ` (${pct}%)`}`,
+  duelStart: (rival, role, card, ends) =>
+    `Duel with ${rival ?? 'a rival'} starts${role ? ` · we ${role === 'seller' ? 'sell' : 'buy'}` : ''}${card ? ` ${card}` : ''}${ends ? ` · ends ${ends}` : ''}`,
+  duelEnd: (rival, deal, price) => `Duel with ${rival ?? 'a rival'}: ${deal ? `deal${price ? ` at ${price}` : ''}` : 'no deal'}`,
+}
+
+const JEV_ES: Readonly<Record<string, string>> = { yes: 'sí', no: 'no', undecided: 'no lo ve claro', aggressive: 'agresivo', counter: 'contraoferta', accept: 'aceptar', fair: 'justo' }
+
+const HUM_ES: GameStrings['hum'] = {
+  agents: { taker: 'Comprador', maker: 'Vendedor', duels: 'Duelos' },
+  rules: {
+    max_price: 'tope de precio', max_price_common: 'tope para comunes', max_price_uncommon: 'tope para poco comunes', max_price_rare: 'tope para raras',
+    max_price_epic: 'tope para épicas', max_price_legendary: 'tope para legendarias', cash_floor: 'suelo de caja',
+    max_spend_per_game_hour: 'tope de gasto por hora de juego', max_packs_per_game_hour: 'tope de sobres por hora de juego', block_buying_held_cards: 'no comprar cartas que ya tenemos',
+    protect_page_sets: 'proteger nuestras páginas', max_accepts_per_tick: 'aceptaciones por turno', max_counterparty_share: 'demasiado con una misma contraparte',
+    allow_flags: 'opción apagada', open_sealed_packs: 'abrir sobres apagado', duel_inside_limit: 'fuera de nuestro límite del duelo', allow_venue_open: 'abrir puesto apagado',
+    venue_open_after_game_hours: 'puesto fuera de horario', trading_enabled: 'comercio apagado', inspect_accepts: 'revisión de aceptaciones', pause_file: 'pausa manual',
+    sell_min_value_ratio: 'venta por debajo de nuestro valor', other: 'otra regla',
+  },
+  kinds: {
+    accept_ask: 'comprar del tablón', team_open: 'abrir trato con un equipo', post_ask: 'poner a la venta', cancel_ask: 'retirar de la venta',
+    dealer_sell: 'vender a un tratante', dealer_bid: 'pujar a un tratante', dealer_open: 'abrir trato con un tratante', dealer_opened: 'trato con tratante abierto',
+    dealer_closed: 'trato con tratante cerrado', dealer_accept: 'aceptar el precio del tratante', dealer_walk: 'dejar al tratante', pack_open: 'abrir un sobre',
+    duel_offer: 'ofertar en un duelo', duel_hold: 'esperar en un duelo', duel_accept: 'aceptar un duelo', process_started: 'reinicio (despliegue)',
+  },
+  jevVerdicts: JEV_ES,
+  denial: (d) => {
+    switch (d.shape) {
+      case 'price': {
+        const r = rarityOfRule(d.rule)
+        return `cuesta ${d.price} P; nuestro tope${r ? ` para ${RARITY_PL_ES[r] ?? r}` : ''} es ${d.cap} P`
+      }
+      case 'cash': return `nos dejaría con ${Math.round((d.cash - d.cost) * 10) / 10} P, por debajo del suelo de ${d.floor} P`
+      case 'spend': return `gastaríamos ${Math.round((d.spent + d.cost) * 10) / 10} P esta hora de juego; el tope es ${d.cap} P`
+    }
+  },
+  ago: (ticks, seconds) => (ticks <= 0 ? 'ahora' : seconds == null ? `hace ${plural(ticks, 'turno', 'turnos')}` : `hace ${roughly(seconds)}`),
+  within: (ticks, seconds) => (ticks <= 0 ? 'ya' : seconds == null ? `en ${plural(ticks, 'turno', 'turnos')}` : `en ~${roughly(seconds)}`),
+  who: (w) => (w.kind === 'team' ? `Equipo ${w.n}` : w.kind === 'venue' ? `puesto ${w.n}` : w.name),
+  item: (i) => (i.kind === 'card' ? i.name ?? i.ref : i.kind === 'duel' ? (i.rival ? `duelo con ${i.rival}` : `duelo #${i.id}`) : i.kind === 'pack' ? `sobre de ${i.pack}` : i.text),
+  jev: (verdict, pct) => `Jev: ${labelOf(JEV_ES, verdict)}${pct == null ? '' : ` (${pct} %)`}`,
+  duelStart: (rival, role, card, ends) =>
+    `Empieza un duelo con ${rival ?? 'un rival'}${role ? ` · ${role === 'seller' ? 'vendemos' : 'compramos'}` : ''}${card ? ` ${card}` : ''}${ends ? ` · acaba ${ends}` : ''}`,
+  duelEnd: (rival, deal, price) => `Duelo con ${rival ?? 'un rival'}: ${deal ? `trato${price ? ` a ${price}` : ''}` : 'sin trato'}`,
+}
+
 const EN: GameStrings = {
+  hum: HUM_EN,
   nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
@@ -1062,6 +1168,7 @@ const EN: GameStrings = {
 }
 
 const ES: GameStrings = {
+  hum: HUM_ES,
   nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
