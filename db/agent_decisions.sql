@@ -11,7 +11,8 @@
 --   * show.agent_decisions  one row per live decision of taker / maker / duels, with its last execution's
 --                           method and error code and its trade outcome (bazaar sql/schema.sql: decisions,
 --                           executions, outcomes, written by decisions.DecisionLog and evals.store)
---   * show.agent_outcomes   the scored outcomes (trade, dealer, duel), keyed by scored_at for polling
+--   * show.agent_outcomes   the scored outcomes (trade, dealer, duel), keyed by scored_at for polling; a dealer
+--                           sale's value is the one dealer-sell (bazaar's dealer seller) logged for the copy it sold
 --   * show.agent_ledger     the guardrail ledger per tick: spend, accepts, listings (ledger_pg.PgLedger)
 -- Never selected: decisions.candidates / reason / rag_context / state_digest / chosen whole, jev reason and
 -- digest, executions.request / response, outcomes.explanation / details whole, ledger.item / source, and no
@@ -96,8 +97,20 @@ select o.target,
        case o.target when 'trade' then left(show.as_text(o.details -> 'counterparty'), 24) when 'dealer' then left(show.as_text(o.details -> 'dealer'), 24) end as counterparty,
        case when o.target <> 'duel' then left(show.as_text(o.details -> 'side'), 4) end as side,
        case o.target when 'trade' then show.as_int(o.details -> 'price') when 'dealer' then show.as_int(o.details -> 'fill_price') end as price,
+       -- A dealer sale: the value of the very copy we sold, as dealer-sell logged it up to the sale (by asset id and
+       -- dealer). Not the card's value today: selling a duplicate leaves the page copy, worth far more.
        case when o.target = 'trade' and jsonb_typeof(o.details -> 'card_value') = 'number'
-            then round((o.details ->> 'card_value')::numeric, 1) end as our_value,
+            then round((o.details ->> 'card_value')::numeric, 1)
+            when o.target = 'dealer' and o.details ->> 'side' = 'sell'
+            then (select round((s.candidates ->> 'your_value')::numeric, 1)
+                    from public.decisions s
+                   where s.agent = 'dealer-sell' and s.dry_run is not true
+                     and jsonb_typeof(s.candidates -> 'asset') = 'number' and jsonb_typeof(s.candidates -> 'your_value') = 'number'
+                     and s.candidates ->> 'asset' = substring(o.details ->> 'item' from '^assets:(\d{1,12})$')
+                     and s.candidates ->> 'dealer' = o.details ->> 'dealer'
+                     and s.tick <= o.recorded_tick
+                   order by s.id desc
+                   limit 1) end as our_value,
        left(o.label, 8) as label,
        case when o.target <> 'duel' then round(o.score, 3) end as score,
        case when o.target <> 'duel' then round(o.realized_surplus, 1) end as realized_surplus,
