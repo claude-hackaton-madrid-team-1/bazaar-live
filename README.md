@@ -124,7 +124,8 @@ Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick a
 of ours (a 429 there waits for the next tick, the loop does not slow down). It never opens the game's SSE
 stream: its cap of 6 streams per key is shared with the agents. Events reach the page in the web view's
 envelope (made-up `clock`, `agent.hello`, `agent.me` with negative ids, then the feed unchanged). `agent.me`
-carries only what the screens read (`server/game/me.ts`: id, name, cash, the score and its parts, the album
+carries only what the screens read (`server/game/me.ts`: id, name, cash, the score and its parts (with `market`,
+`bench_efficiency` and `bench_venue` for the Market Test panel), the album
 pages, each asset's id, kind, ref, serial and our value); never the affinity, a key or the rest. Duel
 messages and results are team-only, so the feed never has them: on each new tick (after `/me`, inside the same
 budget, a 429 waiting for the next tick and its Retry-After) the relay reads `/api/duels?done=true` and turns
@@ -301,6 +302,12 @@ the game's turns between the two reads). Only the board's numbers are compared, 
 `bench_points` (the strips above) are our private raw parts in their own units, which the board hides for every team,
 so they are never set beside a rival's number. Pages, deals and level score nothing by themselves: shown as context.
 
+Under it, the **Market Test** panel: every team's `market` part at the board's latest read, teams level on one row
+(ours highlighted), our place and the leader's lead; then our own bench run from `/me` (`bench_points`,
+`bench_efficiency`, `bench_venue`, `mm_points`: private, in their own units, never ranked) and a note that bench
+matches never show up as venue trades, so our venue's 0 trades does not mean the test did not run. The board's half
+comes from `show.team_scores`; ours from `show.game_me` (`db/game.sql`).
+
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql`. The server reads
 the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4), and as soon as our
@@ -358,7 +365,14 @@ can reach them; the page works out what we lack from its own game stream. The ga
   with its maker. A gift or a craft names a card without a copy and counts until that team lists or sells the card.
   `how` (bought, pack, gift, crafted, listed) and `since_tick` belong to the copy held longest; `seen_tick` is the last sighting.
 - `show.rival_teams`: each team's latest real leaderboard read (rank, score, level, complete pages, deals) and its set
-  interest (numbers only).
+  interest (numbers only); `album_filled` / `album_slots` (the board's filled album slots) stay null until the agents'
+  writer stores them in `leaderboard_snapshots`. The view reads them off the whole row, so they fill in from then on
+  with no change or re-apply here.
+
+The album of the picked team says `36 held · 27 known` (filled slots by the leaderboard, page cards public moves show;
+only `27 known` until `album_filled` is stored). When the leaderboard counts more complete pages than we see complete,
+the likeliest of the others are flagged *probably complete*: the most cards known first, as many as we miss; a page
+with no card known is never flagged.
 - `show.rival_wants`: per team and card, its board bids (with the best cash) and its dealer asks.
 - `show.rival_head`: the newest feed tick.
 

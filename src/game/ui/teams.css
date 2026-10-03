@@ -294,3 +294,61 @@
     forced-color-adjust: none;
   }
 }
+
+/* ── The Market Test (/history, ./MarketTestPanel.tsx): every team's market, a level per row, ours highlighted ── */
+
+.mt-levels {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  list-style: none;
+}
+
+.mt-level {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(4rem, 1fr) minmax(0, 1.4fr);
+  gap: var(--s-2);
+  align-items: center;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.mt-value {
+  text-align: right;
+}
+
+.mt-bar {
+  height: 8px;
+  width: var(--w);
+  border-radius: 2px;
+  background: var(--text-3);
+  opacity: 0.55;
+}
+
+.mt-level[data-us] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mt-level[data-us] .mt-bar {
+  background: var(--gm-us);
+  opacity: 1;
+}
+
+.mt-teams {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mt-bench {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.mt-bench b {
+  color: var(--text);
+}

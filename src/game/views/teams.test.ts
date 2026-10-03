@@ -27,7 +27,7 @@ const at = (tick: number) => new Date(Date.UTC(2000, 0, 1, 10, 0, 0) + tick * 30
 
 /** A read: score = negotiating + market, as on the board. */
 const read = (tick: number, team: string, rank: number, negotiating: number, market: number, extra: Partial<TeamScore> = {}): TeamScore => ({
-  day: DAY, tick, team, rank, score: negotiating + market, negotiating, market, level: 3, pages: 1, deals: 10, at: at(tick), ...extra,
+  day: DAY, tick, team, rank, score: negotiating + market, negotiating, market, level: 3, pages: 1, deals: 10, at: at(tick), venue: null, ...extra,
 })
 
 // four teams; t1 is us. At 20 t2 passes us (its market jumps); at 30 we pass t3 (our negotiating climbs).

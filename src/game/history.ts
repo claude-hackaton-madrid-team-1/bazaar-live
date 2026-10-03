@@ -218,6 +218,8 @@ function mockBoard(t: number, ours: readonly ScorePoint[]): TeamScore[] {
         day: DAY, tick, team: r.team, rank: i + 1, score: r.score, negotiating: r.negotiating, market: r.market,
         level: 2 + Math.min(3, Math.floor(n / 12 + wobble(r.team, 3))), pages: Math.floor((n / 20) * wobble(r.team, 4) * 3),
         deals: Math.round(n * (0.4 + wobble(r.team, 5)) + (k % 4)), at: time(tick),
+        // the teams with a market part above the stall's run their own venue
+        venue: k % 3 === 0 ? `v${String(k).padStart(2, '0')}` : null,
       })
     })
   }

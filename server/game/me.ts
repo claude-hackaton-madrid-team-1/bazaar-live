@@ -4,7 +4,8 @@
  * multipliers) reaches the album, behind GAME_VIEW_TOKEN like `your_value` (which already gives it away for every set we
  * hold a card of): without it a missing card of a set we hold nothing of has no value to us. Everything else stays here:
  * `collection_value` (what the game prices our hand at; the album recomputes it), `starter_broker_key` and any other key,
- * `luck_private`, open threads, badges, level, venue.
+ * `luck_private`, open threads, badges, level, venue. Of the score, `market` and the bench run's `bench_efficiency` and
+ * `bench_venue` reach /history's Market Test panel.
  */
 export type Payload = Record<string, unknown>
 
@@ -19,8 +20,11 @@ function pick(from: Payload, keys: readonly string[]): Payload {
 
 const TOP = ['id', 'name', 'cash'] as const
 
-/** The header's score and rank, the album's bars (Bench included: `bench_points`, null until a bench run) and deal count. */
-const SCORE = ['score', 'rank', 'deals', 'duel_points', 'ladder_points', 'neg_points', 'mm_points', 'bench_points'] as const
+/**
+ * The header's score and rank, the album's bars (Bench included: `bench_points`, null until a bench run), the deal count,
+ * and the Market Test panel's board `market` and bench run (`bench_efficiency`, `bench_venue`).
+ */
+const SCORE = ['score', 'rank', 'deals', 'duel_points', 'ladder_points', 'neg_points', 'mm_points', 'bench_points', 'market', 'bench_efficiency', 'bench_venue'] as const
 
 const PAGE = ['set', 'name', 'have', 'of', 'complete', 'master'] as const
 

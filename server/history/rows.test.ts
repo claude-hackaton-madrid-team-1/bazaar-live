@@ -41,9 +41,12 @@ describe('history rows', () => {
   })
 
   it("reads a team's board read, numbers sent as text included; needs a team id, a rank and a score", () => {
-    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: '23.980', negotiating: '16.480', market: '7.500', level: 4, pages: 1, deals: 27, read_at: new Date('2026-10-03T16:40:00Z') })).toEqual({
-      day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: 23.98, negotiating: 16.48, market: 7.5, level: 4, pages: 1, deals: 27, at: '2026-10-03T16:40:00.000Z',
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: '23.980', negotiating: '16.480', market: '7.500', level: 4, pages: 1, deals: 27, read_at: new Date('2026-10-03T16:40:00Z'), venue: 'v19' })).toEqual({
+      day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: 23.98, negotiating: 16.48, market: 7.5, level: 4, pages: 1, deals: 27, at: '2026-10-03T16:40:00.000Z', venue: 'v19',
     })
+    // a view not re-applied yet has no venue; an odd one is dropped
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: 1 })?.venue).toBeNull()
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: 1, venue: '<b>v1</b>' })?.venue).toBeNull()
     expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 'abuela', rank: 1, score: 1 })).toBeNull()
     expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't02', rank: 0, score: 1 })).toBeNull()
     expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't02', rank: 3 })).toBeNull()

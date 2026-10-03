@@ -51,8 +51,15 @@ export interface RivalStrings {
   readonly weHave: (n: number) => string
   readonly weLack: string
   readonly legendOurs: string
-  readonly albumSub: (cards: number) => string
+  /** When the leaderboard counts more complete pages than public moves show. */
+  readonly albumGap: (complete: number, seen: number) => string
   readonly albumHead: (rank: number, score: number, pages: number | null) => string
+  /** "36 held · 27 known": filled slots by the leaderboard (null until stored) beside the page cards public moves show. */
+  readonly heldKnown: (held: number | null, known: number) => string
+  readonly heldKnownTitle: (stored: boolean) => string
+  readonly probable: string
+  readonly probableTitle: (known: number, of: number, complete: number, seen: number) => string
+  readonly unknownProbable: string
   readonly known: (n: number, of: number) => string
   readonly holdsNeed: (n: number) => string
   readonly unknown: string
@@ -109,14 +116,22 @@ const EN: RivalStrings = {
   weHave: (n) => (n > 1 ? `we hold ${n} copies` : 'we hold it'),
   weLack: 'we lack it',
   legendOurs: 'we hold it',
-  albumSub: (cards) => `${plural(cards, 'card', 'cards')} seen in public moves; the rest unknown`,
+  albumGap: (complete, seen) => `The leaderboard counts ${plural(complete, 'complete page', 'complete pages')}, public moves show ${seen}: the likeliest are flagged`,
   albumHead: (rank, score, pages) => `#${rank} · ${score.toFixed(1)} points${pages == null ? '' : ` · ${plural(pages, 'complete page', 'complete pages')}`}`,
   known: (n, of) => `${n}/${of} known`,
+  heldKnown: (held, known) => (held === null ? `${known} known` : `${held} held · ${known} known`),
+  heldKnownTitle: (stored) =>
+    stored
+      ? 'Held: filled album slots, by the leaderboard. Known: page cards seen in public moves.'
+      : 'Page cards seen in public moves. The leaderboard\'s filled slots are not stored yet.',
+  probable: 'probably complete',
+  probableTitle: (known, of, complete, seen) => `${known}/${of} seen. The leaderboard counts ${plural(complete, 'complete page', 'complete pages')}, public moves show ${seen}: this is one of the likeliest.`,
+  unknownProbable: 'not seen: probably held (the page is probably complete)',
   holdsNeed: (n) => `${plural(n, 'card', 'cards')} we need`,
   unknown: 'not seen: it may hold it',
   needed: 'we need it',
   legendKnown: 'seen holding it',
-  legendUnknown: 'unknown',
+  legendUnknown: '? = held or not, never seen in public moves',
   legendNeed: 'a card we need',
   noTeam: 'No leaderboard read yet.',
 }
@@ -164,14 +179,22 @@ const ES: RivalStrings = {
   weHave: (n) => (n > 1 ? `tenemos ${n} copias` : 'la tenemos'),
   weLack: 'nos falta',
   legendOurs: 'la tenemos',
-  albumSub: (cards) => `${plural(cards, 'carta vista', 'cartas vistas')} en movimientos públicos; el resto, desconocido`,
+  albumGap: (complete, seen) => `La clasificación cuenta ${plural(complete, 'página completa', 'páginas completas')}, los movimientos públicos muestran ${seen}: se marcan las más probables`,
   albumHead: (rank, score, pages) => `#${rank} · ${score.toFixed(1).replace('.', ',')} puntos${pages == null ? '' : ` · ${plural(pages, 'página completa', 'páginas completas')}`}`,
   known: (n, of) => `${n}/${of} conocidas`,
+  heldKnown: (held, known) => (held === null ? `${known} conocidas` : `${held} en su álbum · ${known} conocidas`),
+  heldKnownTitle: (stored) =>
+    stored
+      ? 'En su álbum: casillas llenas, según la clasificación. Conocidas: cartas de página vistas en movimientos públicos.'
+      : 'Cartas de página vistas en movimientos públicos. Las casillas llenas de la clasificación aún no se guardan.',
+  probable: 'probablemente completa',
+  probableTitle: (known, of, complete, seen) => `${known}/${of} vistas. La clasificación cuenta ${plural(complete, 'página completa', 'páginas completas')}, los movimientos públicos muestran ${seen}: es una de las más probables.`,
+  unknownProbable: 'sin ver: probablemente la tiene (la página está probablemente completa)',
   holdsNeed: (n) => (n === 1 ? '1 carta que nos falta' : `${n} cartas que nos faltan`),
   unknown: 'sin ver: puede tenerla',
   needed: 'nos falta',
   legendKnown: 'vista en su poder',
-  legendUnknown: 'desconocida',
+  legendUnknown: '? = la tenga o no, nunca vista en movimientos públicos',
   legendNeed: 'una carta que nos falta',
   noTeam: 'Todavía no hay lectura de la clasificación.',
 }

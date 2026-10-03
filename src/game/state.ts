@@ -153,7 +153,12 @@ export type ThreadOpened = { eventId: number; tick: number | undefined; thread: 
 
 export type Page = { set: string; name?: string; have?: number; of?: number; complete?: boolean; master?: boolean; [k: string]: unknown }
 
-export type Score = { score?: number; rank?: number; duel_points?: number; ladder_points?: number; neg_points?: number; mm_points?: number; bench_points?: number | null; [k: string]: unknown }
+export type Score = {
+  score?: number; rank?: number; duel_points?: number; ladder_points?: number; neg_points?: number; mm_points?: number; bench_points?: number | null
+  /** The board's market part, and our bench run (null until one): /history's Market Test panel. */
+  market?: number; bench_efficiency?: number | null; bench_venue?: string | null
+  [k: string]: unknown
+}
 
 export type State = {
   team: string

@@ -12,7 +12,8 @@ import { headOf, holdingOf, teamOf, wantOf } from './rows.ts'
 
 export const SQL = {
   holdings: 'select holder, card, set_code, rarity, name, copies, how, since_tick, seen_tick from show.rival_holdings order by holder, card limit $1',
-  teams: 'select team, rank, score, level, pages, deals, tick, set_interest from show.rival_teams order by rank, team limit $1',
+  // `*`: album_filled / album_slots are new columns of the view; a server deployed before the view is re-applied still reads its teams.
+  teams: 'select t.* from show.rival_teams t order by t.rank, t.team limit $1',
   wants: 'select team, card, via, times, last_tick, top_bid from show.rival_wants order by last_tick desc, team, card limit $1',
   head: 'select tick from show.rival_head limit $1',
 } as const
