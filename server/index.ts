@@ -6,6 +6,8 @@
  * sim-team1); GAME_VIEW_TOKEN to require a token on their stream; GAME_POLL_MS (default 5000). No key = no feed.
  * The Learn screen reads db/learn.sql's views with the same SHOW_DATABASE_URL, behind the same GAME_VIEW_TOKEN;
  * the Movements screen reads db/history.sql's views the same way.
+ * With the game stream on, the taker's and the maker's /health join it every 10 s (AGENT_HEALTH=off turns it off;
+ * RAILWAY_SERVICE_BAZAAR_TAKER_URL / _MAKER_URL override where they are).
  * With SHOW_DATABASE_URL (or a game key and the database), our agents' decisions join that stream (GUARDRAIL_* override the caps shown).
  * With SHOW_DATABASE_URL the game screens read db/game.sql's views instead of the game's API (GAME_SOURCE=api
  * forces the API); views missing → the API relay. One pool for all of them: the role holds four connections.
@@ -15,6 +17,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.ts'
 import { startDecisions } from './game/decisions.ts'
+import { startHealth } from './game/health.ts'
 import { startGame } from './game/start.ts'
 import { startHistory } from './history/start.ts'
 import { startLearn } from './learn/start.ts'
@@ -40,6 +43,8 @@ const game = startGame(process.env, log, undefined, show)
 const learn = startLearn(process.env, log, show)
 // Our agents' decisions (db/agent_decisions.sql) into the game stream: on the shared pool and the game hub, else off.
 const decisions = startDecisions(process.env, { db: transcript.db, hub: game.hub, log, secrets: transcript.secrets })
+// Our agents' /health (taker, maker) every 10 s into the same stream, so the page never calls them itself.
+const health = startHealth(process.env, { hub: game.hub, log })
 // Our cash and what moved it (db/history.sql), on the shared pool: no connection of its own.
 const history = startHistory(process.env, log, show)
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
@@ -63,6 +68,7 @@ server.listen(port, '0.0.0.0', () => {
 
 const shutdown = (): void => {
   decisions.stop()
+  health.stop()
   void transcript.stop()
   game.stop()
   history.stop()

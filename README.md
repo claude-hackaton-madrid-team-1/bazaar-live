@@ -199,9 +199,31 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
   row with `×N, ticks A–B`; "no decision this tick" is one line, on the current tick only. A restart
   (`process_started`) reads "restart (deploy)", and rows that write nothing carry no guardrail badge. Ids shown
   are real ones (decision, settlement, thread): the server's own event ids count down from -1 and are never printed.
-- `?mock=1` plays decisions too: approved ones, blocks by several rules, an expired accept, the maker idle one
-  tick in three, scored deals and a ledger.
+- `?mock=1` plays decisions too: approved ones, blocks by several rules, an expired accept, the maker posting in
+  bursts (quiet in between), the duels every other tick, scored deals and a ledger.
 - Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` runs `db/agent_decisions.test.ts` after `db/show.test.ts`.
+
+### Our agents' health (header)
+
+Every game screen's header has one chip per agent (taker, maker, duels): green, amber or red with the one
+reason that matters (`dry run`, `ledger down`, `tick 14.2/15 s`, `429 ×3`, `Jev slow 9 s`, `no tick for 2 min`,
+`silent 12 ticks`, `quiet 5 ticks`, `closed · opens 09:00`); a click opens the details. On `/agent`, a silent or
+quiet agent carries the same reason: `taker silent for 12 ticks: ledger down since 11:40`.
+
+- The server (`server/game/health.ts`) asks the taker's and the maker's public `/health` every 10 s (4 s
+  timeout, one round at a time) and relays an allow-listed report (`shared/health.ts`) as `agent.health` on the
+  game stream: a sticky status, the latest first in every replay, never in the backlog. The page never calls the
+  agents. Never relayed: the target url or any field not listed. It remembers since when each reason holds.
+  `RAILWAY_SERVICE_BAZAAR_TAKER_URL` / `_MAKER_URL` (bare domains) override shared/endpoints.ts; `AGENT_HEALTH=off`
+  turns it off. It runs whenever the game stream does.
+- `/health` today says mode, target, ledger, tick, last tick, doors, paused and the game's tick. The tick's
+  duration (`tick_ms`, `tick_budget_s`), 429s (`rate_limited`) and Jev (`jev_ms`, `jev_undecided` 0–1) are read
+  as soon as bazaar's `status.py` reports them; until then only the mock shows them.
+- The duels have no HTTP: their chip reads their decisions. Silence thresholds are per agent
+  (`SILENCE` in `src/game/views/decisions.ts`): the taker is silent after 3 ticks; the maker, which posts in
+  bursts, is quiet (amber) after 3 and silent after 24; the duels after 3 and 12. Closed doors or a paused game
+  explain a silence; a report older than 45 s greys the chip.
+- `?mock=1`: the taker's ledger is down (red), the maker's ticks run at 14.2 of 15 s (amber), the duels are fine.
 
 ### Our cash and its movements (`/history`)
 

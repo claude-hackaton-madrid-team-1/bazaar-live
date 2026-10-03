@@ -125,6 +125,148 @@
   background: color-mix(in srgb, var(--dry) 16%, transparent);
 }
 
+/* ---------------------------------------------------------------- agents' health strip */
+
+/* above the panels below it: the details open over them */
+.gm-hdr {
+  z-index: 5;
+}
+
+.gm-health {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gm-health-chip {
+  --c: var(--ok);
+  cursor: pointer;
+  background: color-mix(in srgb, var(--c) 8%, transparent);
+  border-color: color-mix(in srgb, var(--c) 28%, transparent);
+}
+
+.gm-health-chip:hover,
+.gm-health-chip[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+}
+
+.gm-health-chip:focus-visible {
+  outline: 2px solid var(--c);
+  outline-offset: 2px;
+}
+
+.gm-health-chip[data-tone='warn'],
+.gm-health-reason[data-tone='warn'] {
+  --c: var(--dry);
+}
+
+.gm-health-chip[data-tone='bad'],
+.gm-health-reason[data-tone='bad'] {
+  --c: var(--live);
+}
+
+.gm-health-chip[data-tone='neutral'],
+.gm-health-reason[data-tone='neutral'] {
+  --c: var(--idle-dot);
+}
+
+.gm-health-mark {
+  font-size: 0.625rem;
+  color: var(--c);
+}
+
+.gm-health-why {
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gm-health-chip[data-tone='bad'] .gm-health-why {
+  color: var(--gm-bad);
+}
+
+.gm-health-chip[data-tone='warn'] .gm-health-why {
+  color: var(--gm-warn);
+}
+
+.gm-health-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 10;
+  width: min(340px, calc(100vw - 32px));
+  padding: var(--s-3);
+  border-radius: var(--r-lg);
+  background: var(--material-solid);
+  box-shadow: 0 0 0 1px var(--hairline), var(--glass-shadow);
+  font-size: 0.8125rem;
+}
+
+.gm-health-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.gm-health-reason {
+  --c: var(--ok);
+  min-width: 0;
+  font-weight: 600;
+}
+
+.gm-health-reason[data-tone='bad'] {
+  color: var(--gm-bad);
+}
+
+.gm-health-reason[data-tone='warn'] {
+  color: var(--gm-warn);
+}
+
+.gm-health-x {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--gm-well);
+  color: var(--text-2);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gm-health-x:hover {
+  background: var(--gm-well-hover);
+}
+
+.gm-health-all {
+  margin: var(--s-2) 0 0;
+  padding-left: 1.1em;
+}
+
+.gm-health-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px var(--s-3);
+  margin: var(--s-3) 0 0;
+}
+
+.gm-health-facts dt {
+  color: var(--text-2);
+}
+
+.gm-health-facts dd {
+  margin: 0;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.gm-health-note {
+  margin: var(--s-2) 0 0;
+}
+
 /* narrow: the game header keeps language and pause together on the brand's row (no voice controls here) */
 @media (max-width: 680px) {
   .gm-hdr {
@@ -933,8 +1075,14 @@
   background: color-mix(in srgb, var(--gm-bad) 9%, transparent);
 }
 
-.agt-agent[data-state='stuck'] {
+.agt-agent[data-state='stuck'],
+.agt-agent[data-state='quiet'] {
   --c: var(--gm-warn);
+}
+
+.agt-agent[data-state='quiet'] .agt-alive {
+  font-weight: 600;
+  color: var(--gm-warn);
 }
 
 .agt-agent[data-state='none'] {

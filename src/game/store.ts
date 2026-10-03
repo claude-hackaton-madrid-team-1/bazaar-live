@@ -136,3 +136,13 @@ export function useNow(intervalMs = 250): number {
   }, [intervalMs])
   return now
 }
+
+/** Date.now(), refreshed every `intervalMs`: how old a relayed report is. */
+export function useWallNow(intervalMs = 5000): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(id)
+  }, [intervalMs])
+  return now
+}

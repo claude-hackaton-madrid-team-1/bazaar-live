@@ -2,7 +2,7 @@ import { assert, test } from 'vitest'
 import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../../../shared/decisions.ts'
 import { DECISION_LIMITS } from '../decisions.ts'
 import { apply, createState, KNOWN_TYPES, type GameEvent, type State } from '../state.ts'
-import { agentStatuses, blocksByRule, dealTally, deals, ledger, share, SILENT_AFTER, ticksPerHour } from './decisions.ts'
+import { agentStatuses, blocksByRule, dealTally, deals, ledger, share, SILENCE, ticksPerHour } from './decisions.ts'
 
 let nextId = -(2 ** 50)
 const ev = (type: string, payload: object, tick: number | undefined = 10, t = 0.1): GameEvent => ({ id: nextId--, tick, t, type, scope: 'team', actor: '', payload: { ...payload } })
@@ -55,12 +55,22 @@ test('an unknown agent or a decision without an id is dropped', () => {
 
 const statusOf = (s: State) => agentStatuses(s).map((a) => [a.agent, a.state, a.silentFor])
 
-test('silence: an agent with no decision for more than SILENT_AFTER ticks, or never, is silent', () => {
-  assert.equal(SILENT_AFTER, 3)
+test('silence: an agent with no decision for more than its SILENCE ticks, or never, is silent', () => {
+  assert.equal(SILENCE.taker.silent, 3)
   const s = feed(fresh(20), [decision(1, 'taker', 19), decision(2, 'maker', 16), decision(3, 'maker', 17)])
   assert.deepEqual(statusOf(s), [['taker', 'ok', 1], ['maker', 'ok', 3], ['duels', 'silent', null]])
   apply(s, ev('clock', {}, 21, 0.35))
-  assert.deepEqual(statusOf(s), [['taker', 'ok', 2], ['maker', 'silent', 4], ['duels', 'silent', null]])
+  assert.deepEqual(statusOf(s), [['taker', 'ok', 2], ['maker', 'quiet', 4], ['duels', 'silent', null]])
+  apply(s, ev('clock', {}, 23, 0.36))
+  assert.deepEqual(statusOf(s), [['taker', 'silent', 4], ['maker', 'quiet', 6], ['duels', 'silent', null]])
+})
+
+test('the maker decides in bursts: quiet (amber) first, silent (red) only past SILENCE.maker.silent', () => {
+  const s = feed(fresh(20), [decision(1, 'maker', 20)])
+  apply(s, ev('clock', {}, 20 + SILENCE.maker.silent, 0.5))
+  assert.deepEqual(statusOf(s)[1], ['maker', 'quiet', SILENCE.maker.silent])
+  apply(s, ev('clock', {}, 21 + SILENCE.maker.silent, 0.5))
+  assert.deepEqual(statusOf(s)[1], ['maker', 'silent', SILENCE.maker.silent + 1])
 })
 
 test('before any decision log arrives (the game API alone) no agent is called silent', () => {

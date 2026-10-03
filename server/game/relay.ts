@@ -32,7 +32,7 @@ export interface GameEvent {
 }
 
 /** Types a late client always gets first, the latest of each, so its first screen already knows who we are. */
-export const STICKY = ['agent.hello', 'agent.me', 'clock', 'agent.phase', 'agent.ledger'] as const
+export const STICKY = ['agent.hello', 'agent.me', 'clock', 'agent.phase', 'agent.ledger', 'agent.health'] as const
 
 /** What every viewer shares: the latest sticky events, a bounded backlog, and the batches as they come. */
 export class GameHub {
@@ -53,6 +53,15 @@ export class GameHub {
     }
     if (this.backlog.length > this.keep) this.backlog.splice(0, this.backlog.length - this.keep)
     this.listeners.forEach((l) => l(batch))
+  }
+
+  /**
+   * A status that only its latest copy matters for (our agents' health, every 10 s): kept as the sticky of its
+   * type and sent to every viewer, never added to the backlog, where it would push the game's events out.
+   */
+  publishStatus(e: GameEvent): void {
+    this.sticky.set(e.type, e)
+    this.listeners.forEach((l) => l([e]))
   }
 
   /** The sticky events (hello, me, clock, phase), then the backlog without them. */

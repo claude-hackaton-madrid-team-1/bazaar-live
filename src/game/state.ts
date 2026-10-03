@@ -1,3 +1,4 @@
+import { HEALTH_AGENTS, type HealthReport } from '../../shared/health.ts'
 import { applyDecision, applyLedger, applyOutcome, createDecisionLog, type DecisionLog } from './decisions.ts'
 
 // The game's JSON, read defensively: every field is optional and falls back with `??`.
@@ -172,6 +173,8 @@ export type State = {
   meEventId?: number
   /** Our agents' decisions, outcomes and ledger (agent.decision / agent.outcome / agent.ledger). */
   agents: DecisionLog
+  /** The taker's and the maker's latest /health, as the server relays it (agent.health); empty until the first. */
+  health: HealthReport[]
 }
 
 export const KNOWN_TYPES = new Set([
@@ -179,7 +182,7 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
-  'agent.decision', 'agent.outcome', 'agent.ledger',
+  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health',
 ])
 
 export const LIMITS = {
@@ -193,7 +196,7 @@ export function createState(): State {
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
     log: [], threads: {}, duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
-    events: [], mine: [], byId: new Map(), agents: createDecisionLog(),
+    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [],
   }
 }
 
@@ -522,8 +525,22 @@ function me(s: State, e: GameEvent) {
   push(s.history, { tick: e.tick ?? s.tick, score: s.score.score ?? 0, cash: s.cash }, LIMITS.history)
 }
 
+/** The relayed reports, one per agent we know; anything else in the payload is dropped. */
+function health(s: State, p: Payload): void {
+  const agents: unknown[] = Array.isArray(p.agents) ? p.agents : []
+  s.health = HEALTH_AGENTS.flatMap((a) => {
+    const r = agents.find((x): x is HealthReport => typeof x === 'object' && x !== null && (x as HealthReport).agent === a)
+    return r && typeof r.checkedAt === 'string' ? [{ ...r, since: typeof r.since === 'object' && r.since !== null ? r.since : {} }] : []
+  })
+}
+
 export function apply(s: State, e: GameEvent): State {
   const p = (e.payload ??= {})
+  // A status every 10 s: only the latest counts, so it never fills the event lists (nor the Debug screen's).
+  if (e.type === 'agent.health') {
+    health(s, p)
+    return s
+  }
   const tick = e.tick ?? s.tick
   s.events.push(e)
   s.byId.set(e.id, e)

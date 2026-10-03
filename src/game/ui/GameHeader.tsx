@@ -8,6 +8,7 @@ import { fmtP, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame, useNow, type GameStatus } from '../store.ts'
 import { lastCashChange } from '../views/history.ts'
+import { HealthStrip } from './HealthStrip.tsx'
 import '../../ui/header.css'
 
 const LANG_NAME: Readonly<Record<Lang, string>> = { es: 'Castellano', en: 'English' }
@@ -138,6 +139,7 @@ export function GameHeader() {
           <span className="gm-dot" />
           {t.status[store.status]}
         </span>
+        <HealthStrip />
         {store.source && store.status !== 'mock' && (
           <span className="hdr-chip gm-source" data-source={store.source} title={store.source === 'db' ? t.source.dbTitle : t.source.apiTitle}>
             {t.source[store.source]}
