@@ -454,7 +454,8 @@ names are missing, never a value.
 - `GET /api/approver/session` → `{authenticated, csrf?}`.
 - `POST /api/approver/login` `{password}` → `{csrf}` and the cookie `bz_approver` (`HttpOnly; Secure; SameSite=Strict;
   Path=/api/approver; Max-Age=7200`), plus a device cookie `bz_device` (same flags, 30 days; an HMAC keyed from
-  `APPROVER_PASSWORD`, so a new password voids every device). Wrong: `401 {"error":"unauthorized"}`. A login without a
+  `APPROVER_PASSWORD` and the server-only `BAZAAR_APPROVER_TOKEN`, so a new password voids every device and a stolen
+  cookie is no offline password test). Wrong: `401 {"error":"unauthorized"}`. A login without a
   valid device cookie is charged to a per-address request bucket, then 5 failures from one address in 15 minutes lock
   it for 15 minutes, and 20 from all addresses together lock every such login. A login that carries a valid device
   cookie (OWASP "device cookies") is counted only against that device's own 5 failures: strangers behind the venue's
@@ -468,7 +469,7 @@ names are missing, never a value.
 
 Security: writes need the cookie, the `x-csrf-token` header (the token from the login, kept in the page's memory only)
 and a same-origin request (`/session` is limited per address unless it carries a live session, the page's `/approvals`
-polls per session; one `approvals` answer serves every session for 10 s, one call in flight at a time, and any write
+polls per session; a known device's `/session` reads go to its own bucket, never its address; one `approvals` answer serves every session for 10 s, one call in flight at a time, and any write
 drops it, so the page stays inside bazaar-mcp's 30 calls a minute per bearer); every field is checked against the contract's ranges before bazaar-mcp is called (card
 `^[A-Z]{3}-\d{2}$`, side buy/sell, integer price 1-1000, integer `ttl_ticks` 1-480, reason up to 300 characters with
 control characters stripped), and writes are limited to 10 a minute per session and 10 a minute for the whole server.

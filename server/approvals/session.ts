@@ -172,26 +172,35 @@ export function cookieOf(header: string | undefined, cookie: string = COOKIE): s
 
 /**
  * Device cookies (OWASP "device cookies"): a browser that logged in once carries `<id>.<mac>`, the MAC an HMAC of the
- * id keyed from APPROVER_PASSWORD (so a new password voids every device). Its logins are counted per device, never
- * against the address or global locks. HttpOnly, Secure, SameSite=Strict, Path=/api/approver, 30 days.
+ * id keyed from APPROVER_PASSWORD and a server-only secret (BAZAAR_APPROVER_TOKEN): a new password voids every device,
+ * and a stolen cookie is no offline test of a guessed password. Its logins are counted per device, never against the
+ * address or global locks. HttpOnly, Secure, SameSite=Strict, Path=/api/approver, 30 days.
  */
 export const DEVICE_COOKIE = 'bz_device'
 const DEVICE_MAX_AGE_S = 30 * 24 * 60 * 60
 
-const deviceMac = (id: string, password: string): string =>
-  createHmac('sha256', createHash('sha256').update(`bazaar-live approver device|${password}`, 'utf8').digest()).update(id).digest('base64url')
-
-/** A new device's cookie value. */
-export function newDevice(password: string): string {
-  const id = token()
-  return `${id}.${deviceMac(id, password)}`
+/** What a device MAC is keyed from: the password (a change voids every device) and a secret that never leaves the server. */
+export interface DeviceSecrets {
+  readonly password: string
+  readonly approverToken: string
 }
 
-/** The device id a cookie value proves, or null (absent, malformed, forged, or made under another password). */
-export function deviceIdOf(value: string | null, password: string): string | null {
+const deviceMac = (id: string, secrets: DeviceSecrets): string => {
+  const key = createHmac('sha256', secrets.approverToken).update(`bazaar-live device|${secrets.password}`, 'utf8').digest()
+  return createHmac('sha256', key).update(id).digest('base64url')
+}
+
+/** A new device's cookie value. */
+export function newDevice(secrets: DeviceSecrets): string {
+  const id = token()
+  return `${id}.${deviceMac(id, secrets)}`
+}
+
+/** The device id a cookie value proves, or null (absent, malformed, forged, or made under another password or secret). */
+export function deviceIdOf(value: string | null, secrets: DeviceSecrets): string | null {
   const [id, mac, ...rest] = value?.split('.') ?? []
   if (!id || !mac || rest.length > 0 || !ID_PATTERN.test(id)) return null
-  return secretEquals(mac, deviceMac(id, password)) ? id : null
+  return secretEquals(mac, deviceMac(id, secrets)) ? id : null
 }
 
 export function deviceCookie(value: string): string {

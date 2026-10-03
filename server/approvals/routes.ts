@@ -184,7 +184,7 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
   async function login(req: IncomingMessage, res: ServerResponse, reply: Reply): Promise<void> {
     if (!deps.sameOrigin(req)) return reply(403, { error: 'cross_origin' })
     const deviceValue = cookieOf(req.headers.cookie, DEVICE_COOKIE)
-    const device = deviceIdOf(deviceValue, deps.config.password)
+    const device = deviceIdOf(deviceValue, deps.config)
     const caller: Caller = device && deviceValue ? { kind: 'device', key: device, cookie: deviceValue } : { kind: 'address', key: deps.address(req) }
     // a known device is never charged to its address: strangers behind the same NAT cannot spend its room
     if (caller.kind === 'address' && !allowed(logins, caller.key, reply)) return
@@ -207,7 +207,7 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     guardOf(caller).succeed(caller.key)
     const session = sessions.create()
     log({ event: 'approvals.login', ok: true, status: 200 })
-    const deviceSet = deviceCookie(caller.kind === 'device' ? caller.cookie : newDevice(deps.config.password))
+    const deviceSet = deviceCookie(caller.kind === 'device' ? caller.cookie : newDevice(deps.config))
     return reply(200, { csrf: session.csrf }, { 'Set-Cookie': [sessionCookie(session.id), deviceSet] })
   }
 
@@ -275,8 +275,10 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     switch (route) {
       case 'session': {
         const session = sessionOf(req)
-        // a live session is never charged to its address: strangers at the same NAT cannot lock the approver's page
-        if (!session && !allowed(reads, deps.address(req), reply)) return true
+        // A live session is never charged; a known device is charged to its own bucket, never its address: strangers
+        // at the same NAT cannot lock the approver's page out.
+        const device = session ? null : deviceIdOf(cookieOf(req.headers.cookie, DEVICE_COOKIE), deps.config)
+        if (!session && !allowed(reads, device ? `device:${device}` : deps.address(req), reply)) return true
         // a cookie that names no live session (expired, or the server restarted) is cleared
         const stale = !session && cookieOf(req.headers.cookie) !== null ? { 'Set-Cookie': clearedCookie() } : undefined
         reply(200, session ? { authenticated: true, csrf: session.csrf } : { authenticated: false }, stale)

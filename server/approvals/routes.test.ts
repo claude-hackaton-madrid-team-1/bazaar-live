@@ -239,6 +239,15 @@ describe('the approver login', () => {
     expect(logs.filter((l) => l.event === 'approvals.login' && l.status === 429)).toHaveLength(1)
   })
 
+  it('charges a known device\'s /session reads to the device, never its address', async () => {
+    const { base } = await start({ config: CONFIG, readLimiter: new RateLimiter({ capacity: 1, refillPerSecond: 0.0001 }) })
+    const { device } = await login(base, '203.0.113.90')
+    const nat = { 'X-Real-IP': '203.0.113.90' }
+    expect((await fetch(`${base}/api/approver/session`, { headers: nat })).status).toBe(200)
+    expect((await fetch(`${base}/api/approver/session`, { headers: nat })).status).toBe(429)
+    expect((await fetch(`${base}/api/approver/session`, { headers: { ...nat, Cookie: device } })).status).toBe(200)
+  })
+
   it('never charges a live session\'s /session reads to its address', async () => {
     const { base } = await start({ config: CONFIG, readLimiter: new RateLimiter({ capacity: 1, refillPerSecond: 0.0001 }) })
     const { cookie } = await login(base)

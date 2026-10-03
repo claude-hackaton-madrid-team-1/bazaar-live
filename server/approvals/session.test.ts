@@ -40,13 +40,20 @@ describe('SessionStore', () => {
 })
 
 describe('device cookies', () => {
-  it('prove their id only under the password that made them', () => {
-    const value = newDevice('the-approver-password-1')
-    expect(deviceIdOf(value, 'the-approver-password-1')).toBe(value.split('.')[0])
-    expect(deviceIdOf(value, 'another-password-entirely')).toBeNull()
-    expect(deviceIdOf(`${value}.x`, 'the-approver-password-1')).toBeNull()
-    expect(deviceIdOf('nonsense', 'the-approver-password-1')).toBeNull()
-    expect(deviceIdOf(null, 'the-approver-password-1')).toBeNull()
+  const secrets = { password: 'the-approver-password-1', approverToken: 'server-only-secret-1' }
+
+  it('prove their id only under the password and the server secret that made them', () => {
+    const value = newDevice(secrets)
+    expect(deviceIdOf(value, secrets)).toBe(value.split('.')[0])
+    expect(deviceIdOf(value, { ...secrets, password: 'another-password-entirely' })).toBeNull()
+    expect(deviceIdOf(`${value}.x`, secrets)).toBeNull()
+    expect(deviceIdOf('nonsense', secrets)).toBeNull()
+    expect(deviceIdOf(null, secrets)).toBeNull()
+  })
+
+  it('refuse a cookie minted with the right password but another server secret (no offline password test)', () => {
+    const minted = newDevice({ ...secrets, approverToken: 'a-guessed-or-other-secret' })
+    expect(deviceIdOf(minted, secrets)).toBeNull()
   })
 })
 
