@@ -2200,96 +2200,6 @@
   height: 5px;
 }
 
-/* ---------------------------------------------------------------- duels: who we duel */
-
-.gm-rivals-wrap {
-  display: grid;
-  gap: var(--s-2);
-  margin-bottom: var(--s-4);
-}
-
-.gm-rivals-wrap h3 {
-  margin: 0;
-}
-
-.gm-rivals {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
-  gap: var(--s-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.gm-rival {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: var(--gm-well);
-}
-
-.gm-rival[data-live] {
-  border-color: color-mix(in srgb, var(--gm-warn) 30%, transparent);
-}
-
-.gm-rival-name {
-  overflow: hidden;
-  min-width: 0;
-  font-weight: 600;
-  color: var(--gm-them);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gm-rival-name[data-unknown] {
-  font-weight: 500;
-  color: var(--text-2);
-}
-
-.gm-rival-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px var(--s-2);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-2);
-}
-
-.gm-table .gm-rival-cell {
-  max-width: 9rem;
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gm-table tr[data-live] td:first-child {
-  box-shadow: inset 2px 0 0 var(--gm-warn);
-}
-
-/* A duel's card at stake under its id, and the ticks left beside a live duel's status. */
-.gm-table .gm-duel-item {
-  display: block;
-  max-width: 12rem;
-  overflow: hidden;
-  font-size: 0.72rem;
-  color: var(--text-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gm-table .gm-duel-left {
-  margin-left: 0.4rem;
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--gm-warn);
-  white-space: nowrap;
-}
-
 /* ---------------------------------------------------------------- album: value to us (alb-) */
 
 .alb-tiles {
@@ -3363,5 +3273,293 @@
     forced-color-adjust: none;
     background: Highlight;
     color: HighlightText;
+  }
+}
+
+/* ---------------------------------------------------------------- duels: their price against our limit (duel-) */
+
+/* the pill and the card's edge: inside our limit green, outside red, expiring amber, haggling ours */
+.duel-card[data-state='inside'],
+.duel-pill[data-state='inside'],
+.neg-verdict[data-state='inside'] {
+  --c: var(--gm-good);
+}
+
+.duel-card[data-state='outside'],
+.duel-pill[data-state='outside'],
+.neg-verdict[data-state='outside'] {
+  --c: var(--gm-bad);
+}
+
+.duel-card {
+  cursor: default;
+}
+
+.duel-card:hover {
+  background: var(--gm-well);
+}
+
+.duel-rival {
+  color: var(--gm-them);
+}
+
+.duel-stake {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.875rem;
+}
+
+.duel-stake-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-stake-set {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.duel-days {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* our limit: the figure the card is about, boxed, with how far inside or outside their price is */
+.duel-limit {
+  --c: var(--text-2);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  padding: 4px var(--s-3) 6px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--c) 9%, transparent);
+}
+
+.duel-limit[data-inside='true'] {
+  --c: var(--gm-good);
+}
+
+.duel-limit[data-inside='false'] {
+  --c: var(--gm-bad);
+}
+
+.duel-margin {
+  padding-bottom: 4px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--c) 85%, var(--text));
+}
+
+.duel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--s-3);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.duel-tick {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.duel-plan {
+  font-weight: 600;
+  color: var(--gm-good);
+}
+
+.duel-details {
+  padding: 0;
+}
+
+/* the duels agent in one line */
+.duel-health {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  font-size: 0.875rem;
+}
+
+.gm-panel .duel-health + .duel-list {
+  margin-top: var(--s-3);
+}
+
+.duel-health-block {
+  color: var(--text-2);
+}
+
+.duel-split {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+/* the record: three figures, then per rival and per session */
+.duel-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  margin: 0 0 var(--s-3);
+}
+
+.duel-kpis div {
+  display: grid;
+  gap: 2px;
+}
+
+.duel-kpis dt {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.duel-kpis dd {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.duel-rec {
+  margin-bottom: var(--s-3);
+}
+
+.duel-rec caption {
+  padding-bottom: 4px;
+  text-align: left;
+}
+
+.duel-rec tbody th {
+  position: static;
+  background: none;
+  font-family: inherit;
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.duel-rec .duel-rec-name {
+  max-width: 12rem;
+  overflow: hidden;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duel-rec .duel-rec-name[data-rival] {
+  color: var(--gm-them);
+}
+
+.duel-rec tr[data-live] th {
+  box-shadow: inset 2px 0 0 var(--gm-warn);
+}
+
+.duel-rec .duel-rec-name .gm-badge {
+  margin-left: 6px;
+}
+
+.duel-rec .duel-rec-name[data-unknown] {
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* finished duels, one line each */
+.duel-done-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.duel-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+}
+
+.duel-done:hover {
+  background: var(--gm-row-hover);
+}
+
+.duel-done .neg-who {
+  font-size: 0.9375rem;
+}
+
+.duel-done-text {
+  order: 10;
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.duel-done-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--s-2);
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.duel-done-meta b {
+  font-weight: 700;
+}
+
+/* the one line on the Negotiations screen that points here */
+.neg-duels-link {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.neg-duels-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 960px) {
+  .duel-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .duel-stake-set {
+    display: none;
+  }
+
+  .duel-rec .duel-rec-name .gm-badge {
+    display: none;
+  }
+
+  .duel-rec th,
+  .duel-rec td {
+    padding-inline: 6px;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .duel-limit {
+    border-color: var(--text);
   }
 }

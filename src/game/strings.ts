@@ -245,18 +245,6 @@ export interface GameStrings {
     readonly detailsLine: (b: { round: number; tick: number | null; offerId: number | null; messageId: number | null; expiresTick: number | null }) => string
     readonly we: string
     readonly convoLabel: (id: number) => string
-    readonly duels: string
-    readonly duelsSub: (live: number) => string
-    readonly noDuels: string
-    readonly duelCol: Readonly<Record<'duel' | 'rival' | 'role' | 'us' | 'them' | 'gap' | 'rounds' | 'status' | 'deal' | 'points', string>>
-    readonly duelStatus: Readonly<Record<'open' | 'deal' | 'no deal', string>>
-    readonly against: string
-    readonly unknownRival: string
-    readonly rivalDuels: (duels: number, finished: number) => string
-    readonly ticksLeft: (ticks: number) => string
-    readonly rivalDeals: (deals: number, noDeals: number) => string
-    readonly rivalPoints: (points: number | null) => string
-    readonly rivalPointsNone: string
     readonly tactic: (id: string) => string
     readonly tacticTitle: string
     readonly worked: string
@@ -497,11 +485,12 @@ export interface GameStrings {
 }
 
 const EN: GameStrings = {
-  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
-    negotiations: 'our threads and duels',
+    negotiations: 'our dealer threads',
+    duels: 'our duels: is their price inside our limit?',
     album: 'pages and score',
     market: 'everyone else',
     history: 'our cash and every movement of it',
@@ -752,18 +741,6 @@ const EN: GameStrings = {
     detailsLine: (b) => `round ${b.round} · tick ${b.tick ?? '—'} · offer ${b.offerId ?? '—'} · message ${b.messageId ?? '—'} · expires t${b.expiresTick ?? '—'}`,
     we: 'we',
     convoLabel: (id) => `Conversation in thread ${id}`,
-    duels: 'Duels',
-    duelsSub: (live) => `${live} live`,
-    noDuels: 'No duels yet.',
-    duelCol: { duel: 'duel', rival: 'rival', role: 'role', us: 'us', them: 'them', gap: 'gap', rounds: 'rounds', status: 'status', deal: 'deal', points: 'points' },
-    duelStatus: { open: 'open', deal: 'deal', 'no deal': 'no deal' },
-    against: 'Dueling against',
-    unknownRival: 'unknown rival',
-    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duel' : 'duels'} · ${done} finished`,
-    ticksLeft: (n) => (n === 0 ? 'ends this tick' : `${n} ${n === 1 ? 'tick' : 'ticks'} left`),
-    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'deal' : 'deals'} · ${none} no deal`,
-    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
-    rivalPointsNone: 'No points recorded for these duels (our database does not keep them)',
     tactic: (id) => TACTICS_EN[id] ?? id.replace(/_/g, ' '),
     tacticTitle: 'The tactic our agent picked for these words',
     worked: 'What worked',
@@ -1027,11 +1004,12 @@ const EN: GameStrings = {
 }
 
 const ES: GameStrings = {
-  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
-    negotiations: 'nuestros hilos y duelos',
+    negotiations: 'nuestros hilos con tratantes',
+    duels: 'nuestros duelos: ¿su precio está dentro de nuestro límite?',
     album: 'páginas y puntuación',
     market: 'todos los demás',
     history: 'nuestra caja y cada movimiento',
@@ -1282,18 +1260,6 @@ const ES: GameStrings = {
     detailsLine: (b) => `ronda ${b.round} · turno ${b.tick ?? '—'} · oferta ${b.offerId ?? '—'} · mensaje ${b.messageId ?? '—'} · caduca t${b.expiresTick ?? '—'}`,
     we: 'nosotros',
     convoLabel: (id) => `Conversación del hilo ${id}`,
-    duels: 'Duelos',
-    duelsSub: (live) => `${live} en curso`,
-    noDuels: 'Aún no hay duelos.',
-    duelCol: { duel: 'duelo', rival: 'rival', role: 'papel', us: 'nosotros', them: 'ellos', gap: 'distancia', rounds: 'rondas', status: 'estado', deal: 'trato', points: 'puntos' },
-    duelStatus: { open: 'abierto', deal: 'trato', 'no deal': 'sin trato' },
-    against: 'En duelo contra',
-    unknownRival: 'rival desconocido',
-    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duelo' : 'duelos'} · ${done} ${done === 1 ? 'terminado' : 'terminados'}`,
-    ticksLeft: (n) => (n === 0 ? 'acaba este turno' : `quedan ${n} ${n === 1 ? 'turno' : 'turnos'}`),
-    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'trato' : 'tratos'} · ${none} sin trato`,
-    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
-    rivalPointsNone: 'Sin puntos registrados para estos duelos (nuestra base de datos no los guarda)',
     tactic: (id) => TACTICS_ES[id] ?? id.replace(/_/g, ' '),
     tacticTitle: 'La táctica que eligió nuestro agente para estas palabras',
     worked: 'Qué funcionó',

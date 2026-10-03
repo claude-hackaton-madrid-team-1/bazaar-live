@@ -30,7 +30,8 @@ The coordinator applies `db/show.sql` and sets `SHOW_DATABASE_URL`.
 - `duels(duel, session, tick, status live|deal|no_deal, role, item, your_limit PRIVATE, rival, price,
   days, result PRIVATE, payload jsonb{messages[]}, updated_at)`.
 - PRIVATE keys never leave the DB: `your_limit`, `your_days_weight`, `limit_meaning`, `result`,
-  and any `reason` / `limit` field.
+  and any `reason` / `limit` field. (The public show only. Later, db/game.sql's `show.game_duels` hands
+  `your_limit` and `result` to the token-gated game stream for the Duels screen; never to `show.duel_lines`.)
 
 ## Acceptance criteria
 

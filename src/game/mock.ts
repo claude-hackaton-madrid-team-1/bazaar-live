@@ -119,6 +119,21 @@ interface Neg {
   tactic?: string
 }
 
+/** A duel the mock plays from a script, not from its random stream: our priced messages and theirs are counted for the rounds. */
+interface ScriptedDuel {
+  id: number
+  session: number
+  role: 'seller' | 'buyer'
+  rival: string
+  item: string
+  limit: number
+  deadline: number
+  ours: number
+  theirs: number
+  lastTheirs?: number
+  lastOurs?: number
+}
+
 interface MockDuel {
   id: number
   role: 'seller' | 'buyer'
@@ -136,8 +151,11 @@ const RIVALS = ['Rival Oro', 'Rival Noche', 'Rival Azul'] as const
 /** The cards a duel is fought over, as the game names them; a duel's item is `DUEL_ITEMS[id % 3]`. */
 const DUEL_ITEMS = ['El Mesón de la Cava', 'Palacio de Cristal', 'Mercado de la Paz'] as const
 
-/** How long a mock duel may run before its deadline. */
-const DUEL_TICKS = 12
+/** How long a mock duel may run before its deadline: ten moves, one every other tick. */
+const DUEL_TICKS = 20
+
+/** The share of a duel's value lost per round of talk, as the game's sessions set it. */
+const DUEL_DECAY = 0.06
 
 /** GUARDRAILS.md's caps, as the server sends them with the ledger (server/game/decisions.ts). */
 const MOCK_LIMITS = { spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 }
@@ -163,7 +181,7 @@ export class MockGame {
   private readonly settlementIds = counter(1)
   private readonly threadIds = counter(60)
   private readonly offerIds = counter(330)
-  private readonly duelIds = counter(3)
+  private readonly duelIds = counter(8)
   private n = 0
   private tick = 0
   private cash = 400
@@ -174,6 +192,7 @@ export class MockGame {
   private readonly negs = new Map<number, Neg>()
   private pending: [number, Neg, number][] = []
   private duel: MockDuel | null = null
+  private liveScript: ScriptedDuel[] = []
   private readonly board = new Map<number, Listing>()
   /** The opening board's two offers: no other team fills or cancels them, they expire. */
   private readonly pinned = new Set<number>()
@@ -716,29 +735,94 @@ export class MockGame {
     })]
   }
 
-  /** Two duels already over when we start (one deal, one no deal), so the duel screens open with history. */
+  /** A duel's started event, its messages and, when it is over, its result, as our database relays them. */
+  private duelEvents(d: ScriptedDuel, messages: readonly (readonly [boolean, number])[]): GameEvent[] {
+    const started = { duel: d.id, session: d.session, role: d.role, rival: d.rival, item: d.item, deadline_tick: d.deadline, limit: d.limit, decay: DUEL_DECAY }
+    return [this.ev('duel.started', started), ...messages.map(([ours, price]) => this.duelSay(d, ours, price))]
+  }
+
+  private duelSay(d: ScriptedDuel, ours: boolean, price: number): GameEvent {
+    if (ours) d.ours += 1
+    else d.theirs += 1
+    return this.ev('duel.message', { duel: d.id, role: d.role, rival: d.rival, sender: ours ? this.team : d.rival, price, days: null }, ours ? '' : d.rival)
+  }
+
+  /** The result as the real game has it: our gain (the price against our limit after the decay of its rounds), no points. */
+  private duelEnd(d: ScriptedDuel, price: number | null): GameEvent {
+    const rounds = Math.min(d.ours, d.theirs)
+    const margin = price == null ? null : d.role === 'buyer' ? d.limit - price : price - d.limit
+    const gain = margin == null ? 0 : Math.round(margin * (1 - DUEL_DECAY) ** rounds * 10) / 10
+    return this.ev('duel.result', { duel: d.id, rival: d.rival, deal: price != null, price, points: null, gain, rounds, limit: d.limit })
+  }
+
+  /**
+   * Five duels already over when we start (three deals, two no deal, over two sessions), so the duel screens open
+   * with a record; each drawn from no random stream.
+   */
   private pastDuels(): GameEvent[] {
-    const start = (duel: number, role: string) =>
-      this.ev('duel.started', { duel, session: 1, role, rival: RIVALS[duel % RIVALS.length], item: DUEL_ITEMS[duel % DUEL_ITEMS.length], deadline_tick: this.tick + DUEL_TICKS })
-    const msg = (duel: number, role: string, ours: boolean, price: number, days: number) => {
-      const rival = RIVALS[duel % RIVALS.length]
-      return this.ev('duel.message', { duel, role, rival, sender: ours ? this.team : rival, price, days }, ours ? '' : rival)
+    this.score.duel_points = Math.round((this.score.duel_points + 3.4) * 10) / 10
+    const past = (id: number, session: number, role: 'buyer' | 'seller', rival: string, item: string, limit: number, talk: readonly (readonly [boolean, number])[], price: number | null) => {
+      const d: ScriptedDuel = { id, session, role, rival, item, limit, deadline: this.tick, ours: 0, theirs: 0 }
+      return [...this.duelEvents(d, talk), this.duelEnd(d, price)]
     }
-    this.score.duel_points = Math.round((this.score.duel_points + 1.3) * 10) / 10
     return [
-      start(1, 'buyer'), msg(1, 'buyer', false, 58, 6), msg(1, 'buyer', true, 40, 3), msg(1, 'buyer', false, 49, 5), msg(1, 'buyer', true, 46, 4),
-      this.ev('duel.result', { duel: 1, rival: RIVALS[1], deal: true, price: 47, points: 1.3 }),
-      start(2, 'seller'), msg(2, 'seller', true, 66, 2), msg(2, 'seller', false, 38, 8), msg(2, 'seller', true, 61, 3),
-      this.ev('duel.result', { duel: 2, rival: RIVALS[2], deal: false, price: null, points: 0 }),
+      ...past(1, 1, 'buyer', 'Rival Noche', 'Mercado de la Paz', 60, [[false, 58], [true, 40], [false, 49], [true, 46], [false, 47]], 47),
+      ...past(2, 1, 'seller', 'Rival Azul', 'El Mesón de la Cava', 52, [[true, 66], [false, 38], [true, 61], [false, 41]], null),
+      ...past(3, 1, 'seller', 'Rival Oro', 'Palacio de Cristal', 85, [[false, 70], [true, 120], [false, 80], [true, 110], [false, 88], [true, 104], [false, 92], [true, 100], [false, 95], [true, 98], [false, 96], [true, 96]], 96),
+      ...past(4, 2, 'buyer', 'Rival Azul', 'Taxi Blanco', 100, [[false, 124], [true, 60], [false, 104], [true, 70], [false, 90], [true, 76], [false, 79]], 79),
+      ...past(5, 2, 'seller', 'Rival Noche', 'Cine Doré', 130, [[true, 190], [false, 90], [true, 170], [false, 96], [true, 160], [false, 99], [true, 150], [false, 101]], null),
     ]
+  }
+
+  /**
+   * Two live duels against two rivals, scripted from no random stream: one where their price is already inside our
+   * limit (Rival Verde, until tick 30) and one where it is far outside and creeping (Rival Sol, until tick 24). The
+   * duels agent offers on both every other tick and is blocked on the second now and then (see `agents()`).
+   */
+  private liveDuels(): GameEvent[] {
+    const inside: ScriptedDuel = { id: 6, session: 3, role: 'buyer', rival: 'Rival Verde', item: 'Café en Goya', limit: 68, deadline: 30, ours: 0, theirs: 0 }
+    const outside: ScriptedDuel = { id: 7, session: 3, role: 'seller', rival: 'Rival Sol', item: 'La Heroína del Dos de Mayo', limit: 120, deadline: 24, ours: 0, theirs: 0 }
+    this.liveScript = [inside, outside]
+    return [
+      ...this.duelEvents(inside, [[false, 84], [true, 40], [false, 72], [true, 46], [false, 61]]),
+      ...this.duelEvents(outside, [[true, 190], [false, 70], [true, 176], [false, 80], [true, 166], [false, 81]]),
+    ]
+  }
+
+  /** Our offer on the duel outside our limit (7) is blocked by duel_inside_limit one tick in eight (4, 12, 20). */
+  private duelBlocked(id: number): boolean {
+    return id === 7 && this.tick % 8 === 4
+  }
+
+  /** The scripted duels' moves, every other tick: we step towards them unless blocked, they concede a little, each ends at its deadline. */
+  private scriptedStep(): GameEvent[] {
+    const out: GameEvent[] = []
+    for (const d of this.liveScript) {
+      const last = d.lastTheirs ?? (d.role === 'buyer' ? 61 : 81)
+      if (this.tick >= d.deadline - (d.role === 'buyer' ? 2 : 0)) {
+        out.push(this.duelEnd(d, d.role === 'buyer' ? last : null))
+        continue
+      }
+      if (!this.duelBlocked(d.id)) {
+        // our offer, as the duels agent decided it this tick: a step towards them, never past their price or our limit
+        d.lastOurs = d.lastOurs === undefined ? (d.role === 'buyer' ? 49 : 162) : d.role === 'buyer' ? Math.min(last - 4, d.lastOurs + 1) : Math.max(d.limit + 20, d.lastOurs - 2)
+        out.push(this.duelSay(d, true, d.lastOurs))
+      }
+      d.lastTheirs = d.role === 'buyer' ? Math.max(56, last - 1) : last + 1
+      out.push(this.duelSay(d, false, d.lastTheirs))
+    }
+    this.liveScript = this.liveScript.filter((d) => this.tick < d.deadline - (d.role === 'buyer' ? 2 : 0))
+    return out
   }
 
   private duelStep(): GameEvent[] {
     if (this.duel) return this.duelMove()
+    // The rolling duels wait for the scripted ones to end, so the screens open with exactly two live duels.
+    if (this.liveScript.length) return []
     const id = this.duelIds()
     this.duel = { id, role: this.choice(['seller', 'buyer'] as const), rival: RIVALS[id % RIVALS.length] ?? 'rival', ours: null, theirs: null, round: 0, limit: this.int(35, 55) }
-    // What is at stake and until when, ahead of the first offer (same draws as before, so a seed is the same game).
-    const started = { duel: id, session: 2, role: this.duel.role, rival: this.duel.rival, item: DUEL_ITEMS[id % DUEL_ITEMS.length], deadline_tick: this.tick + DUEL_TICKS }
+    // What is at stake and until when, ahead of the first offer.
+    const started = { duel: id, session: 4, role: this.duel.role, rival: this.duel.rival, item: DUEL_ITEMS[id % DUEL_ITEMS.length], deadline_tick: this.tick + DUEL_TICKS, limit: this.duel.limit, decay: DUEL_DECAY }
     return [this.ev('duel.started', started), ...this.duelMove()]
   }
 
@@ -749,6 +833,9 @@ export class MockGame {
     const close = d.ours !== null && d.theirs !== null && Math.abs(d.ours - d.theirs) <= 3
     if (d.round > 9 || close) {
       const points = close ? Math.round((0.4 + this.random() * 1.2) * 10) / 10 : 0
+      const rounds = Math.ceil((d.round - 1) / 2)
+      const margin = close && d.theirs !== null ? (seller ? d.theirs - d.limit : d.limit - d.theirs) : null
+      const gain = margin === null ? 0 : Math.round(margin * (1 - DUEL_DECAY) ** rounds * 10) / 10
       this.score.duel_points = Math.round((this.score.duel_points + points) * 10) / 10
       this.duel = null
       // A duel outcome never carries its surplus or score: with the price, they give our limit away.
@@ -756,7 +843,8 @@ export class MockGame {
         target: 'duel', subject: `duel:${d.id}`, decision: null, agent: 'duels', item: null, counterparty: null, side: null, price: null, value: null,
         label: close ? 'good' : 'bad', score: null, surplus: null, jev: 'accept', jevRight: close,
       }
-      return [this.ev('duel.result', { duel: d.id, rival: d.rival, deal: close, price: close ? d.theirs : null, points }), this.ev('agent.outcome', outcome, 'duels')]
+      const result = { duel: d.id, rival: d.rival, deal: close, price: close ? d.theirs : null, points: null, gain, rounds, limit: d.limit }
+      return [this.ev('duel.result', result), this.ev('agent.outcome', outcome, 'duels')]
     }
     if (d.round % 2) {
       const gap = d.ours && d.theirs ? d.theirs - d.ours : null
@@ -885,10 +973,15 @@ export class MockGame {
         text: 'RET-04 is our only copy of a page card of a new page (protect_page_sets)',
       })
     }
-    // Duels: an id, a status, a rule id and Jev's verdict, never a price (the view keeps our limit out). Every other tick.
-    const duel = `duel:${this.duel?.id ?? 3}`
-    if (this.tick % 10 === 4) say('duels', 'duel_offer', { item: duel, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
-    else if (this.tick % 2 === 0) say('duels', 'duel_offer', { item: duel, status: 'done', jev: 'counter', method: 'duel_say' })
+    // Duels: an id, a status, a rule id and Jev's verdict, never a price (the view keeps our limit out). Every other
+    // tick an offer on each live duel; the one outside our limit is blocked by duel_inside_limit one tick in ten.
+    if (this.tick % 2 === 0) {
+      for (const id of this.liveScript.length ? this.liveScript.map((d) => d.id) : [this.duel?.id ?? 8]) {
+        const item = `duel:${id}`
+        if (this.duelBlocked(id)) say('duels', 'duel_offer', { item, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
+        else say('duels', 'duel_offer', { item, status: 'done', jev: 'counter', method: 'duel_say' })
+      }
+    }
     out.push(...this.negDecisions())
     out.push(this.ev('agent.ledger', { ticks: this.ledger.filter((r) => r.t > this.tick / 240 - 2), limits: MOCK_LIMITS }))
     return out
@@ -1012,7 +1105,7 @@ export class MockGame {
     const out: GameEvent[] = []
     if (this.n === 0) {
       const past = this.pastDuels()
-      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.duelStep(), ...this.openingBoard(), ...this.seedThreads())
+      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.liveDuels(), ...this.openingBoard(), ...this.seedThreads())
     }
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {
@@ -1027,7 +1120,7 @@ export class MockGame {
     } else if (at === 4) {
       out.push(this.ev('agent.phase', { phase: 'act' }), ...this.ourMove())
     } else if (at === 5 && this.tick % 2 === 0) {
-      out.push(...this.duelStep())
+      out.push(...this.scriptedStep(), ...this.duelStep())
     } else if (at === 6) {
       out.push(...this.theirMove())
     }
