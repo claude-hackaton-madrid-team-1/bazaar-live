@@ -436,7 +436,7 @@ export interface GameStrings {
     readonly inForce: string
     readonly inForceSub: (n: number, lifted: number) => string
     readonly noneInForce: string
-    readonly lifts: (n: number) => string
+    readonly lifts: (n: number, seconds: number | null) => string
     readonly liftsUnknown: string
     readonly forUs: string
     readonly forAll: string
@@ -447,6 +447,8 @@ export interface GameStrings {
     readonly factsSub: (n: number) => string
     readonly noFacts: string
     readonly support: (n: number) => string
+    /** The organiser's subjects (the schedule, the duels, the radio), named; anyone else by `whoName`. */
+    readonly subjects: Readonly<Record<string, string>>
     readonly confidence: string
     readonly kinds: Readonly<Record<string, string>>
     readonly sources: Readonly<Record<string, string>>
@@ -1063,7 +1065,7 @@ const EN: GameStrings = {
     inForce: 'Blocking us now',
     inForceSub: (n, lifted) => `${plural(n, 'learning', 'learnings')}${lifted ? ` · ${lifted} lifted` : ''}`,
     noneInForce: 'Nothing is blocking a deal right now.',
-    lifts: (n) => (n <= 0 ? 'lifts now' : `lifts in ${n}t`),
+    lifts: (n, sec) => (n <= 0 ? 'lifts now' : `lifts ${HUM_EN.within(n, sec)}`),
     liftsUnknown: 'until a tick',
     forUs: 'us',
     forAll: 'everyone',
@@ -1073,11 +1075,13 @@ const EN: GameStrings = {
     facts: 'Read from the feed',
     factsSub: (n) => `${plural(n, 'fact', 'facts')} · newest first`,
     noFacts: 'No fact read from the feed yet.',
-    support: (n) => `${n} ×`,
+    support: (n) => `seen ${n}×`,
+    subjects: { organiser: 'the organisers', schedule: 'schedule', duels: 'duels', radio: 'radio' },
     confidence: 'confidence',
     kinds: {
       blocker: 'blocked', cooloff: 'cooloff', quota: 'quota', sold_out: 'sold out', price_floor: 'price floor', behaviour: 'behaviour',
       rule_change: 'rule', fee_change: 'fee', announcement: 'notice', lesson: 'lesson', policy: 'policy', tactic: 'tactic',
+      schedule: 'schedule', news: 'news',
     },
     sources: { rules: 'rules', llm: 'LLM', outcome: 'outcome' },
     dealers: 'How each dealer behaves',
@@ -1093,7 +1097,7 @@ const EN: GameStrings = {
     moves: 'Dealer moves',
     movesSub: (n) => plural(n, 'move', 'moves'),
     noMoves: 'No dealer move matches.',
-    moveHead: ['tick', 'dealer', 'thread', 'move', 'her price', 'our price', 'step', 'whose'],
+    moveHead: ['when', 'dealer', 'thread', 'move', 'her price', 'our price', 'step', 'whose'],
     which: 'Whose threads',
     ours: 'Ours',
     all: 'All',
@@ -1103,7 +1107,7 @@ const EN: GameStrings = {
     rivals: 'Rivals',
     rivalsSub: (n) => `${plural(n, 'team', 'teams')} · most active first`,
     noRivals: 'No rival profile yet.',
-    rivalHead: ['team', 'level', 'venue', 'bought', 'sold', 'spent', 'earned', 'chases', 'dealer deals', 'pack price', 'tick'],
+    rivalHead: ['team', 'level', 'venue', 'bought', 'sold', 'spent', 'earned', 'chases', 'dealer deals', 'pack price', 'updated'],
   },
   history: {
     notice: {
@@ -1613,7 +1617,7 @@ const ES: GameStrings = {
     inForce: 'Lo que nos bloquea ahora',
     inForceSub: (n, lifted) => `${plural(n, 'aprendizaje', 'aprendizajes')}${lifted ? ` · ${lifted} levantados` : ''}`,
     noneInForce: 'Nada bloquea un trato ahora mismo.',
-    lifts: (n) => (n <= 0 ? 'se levanta ya' : `se levanta en ${n}t`),
+    lifts: (n, sec) => (n <= 0 ? 'se levanta ya' : `se levanta ${HUM_ES.within(n, sec)}`),
     liftsUnknown: 'hasta un turno',
     forUs: 'nosotros',
     forAll: 'todos',
@@ -1623,11 +1627,13 @@ const ES: GameStrings = {
     facts: 'Leído del feed',
     factsSub: (n) => `${plural(n, 'hecho', 'hechos')} · los más recientes primero`,
     noFacts: 'Aún no se ha leído ningún hecho del feed.',
-    support: (n) => `${n} ×`,
+    support: (n) => `visto ${plural(n, 'vez', 'veces')}`,
+    subjects: { organiser: 'la organización', schedule: 'calendario', duels: 'duelos', radio: 'radio' },
     confidence: 'confianza',
     kinds: {
       blocker: 'bloqueo', cooloff: 'enfriamiento', quota: 'cupo', sold_out: 'agotado', price_floor: 'precio suelo', behaviour: 'conducta',
       rule_change: 'regla', fee_change: 'comisión', announcement: 'aviso', lesson: 'lección', policy: 'política', tactic: 'táctica',
+      schedule: 'calendario', news: 'noticia',
     },
     sources: { rules: 'reglas', llm: 'LLM', outcome: 'resultado' },
     dealers: 'Cómo se comporta cada tratante',
@@ -1643,7 +1649,7 @@ const ES: GameStrings = {
     moves: 'Movimientos de los tratantes',
     movesSub: (n) => plural(n, 'movimiento', 'movimientos'),
     noMoves: 'Ningún movimiento coincide.',
-    moveHead: ['turno', 'tratante', 'hilo', 'movimiento', 'su precio', 'el nuestro', 'paso', 'de quién'],
+    moveHead: ['cuándo', 'tratante', 'hilo', 'movimiento', 'su precio', 'el nuestro', 'paso', 'de quién'],
     which: 'Qué hilos',
     ours: 'Nuestros',
     all: 'Todos',
@@ -1653,7 +1659,7 @@ const ES: GameStrings = {
     rivals: 'Rivales',
     rivalsSub: (n) => `${plural(n, 'equipo', 'equipos')} · los más activos primero`,
     noRivals: 'Aún no hay perfiles de rivales.',
-    rivalHead: ['equipo', 'nivel', 'puesto', 'compró', 'vendió', 'gastó', 'ganó', 'busca', 'tratos con tratantes', 'precio sobre', 'turno'],
+    rivalHead: ['equipo', 'nivel', 'puesto', 'compró', 'vendió', 'gastó', 'ganó', 'busca', 'tratos con tratantes', 'precio sobre', 'actualizado'],
   },
   history: {
     notice: {
