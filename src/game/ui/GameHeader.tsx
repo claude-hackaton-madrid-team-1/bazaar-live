@@ -114,7 +114,7 @@ export function GameHeader() {
   )
 }
 
-function NoticeBar({ children }: { children: ReactNode }) {
+export function NoticeBar({ children }: { children: ReactNode }) {
   return (
     <div className="notice glass">
       <svg className="hdr-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">

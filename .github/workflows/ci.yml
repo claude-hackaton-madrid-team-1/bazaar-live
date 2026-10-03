@@ -39,3 +39,5 @@ jobs:
           test "$(curl -fsS localhost:8080/api/tts/providers)" = '{"providers":[]}'
           test "$(curl -fsS localhost:8080/api/game)" = '{"enabled":false,"target":null,"tokenRequired":false}'
           curl -fsS localhost:8080/agent | grep -q '<div id="root">'
+          test "$(curl -fsS localhost:8080/api/learn)" = '{"enabled":false,"tokenRequired":false}'
+          curl -fsS localhost:8080/learn | grep -q '<div id="root">'

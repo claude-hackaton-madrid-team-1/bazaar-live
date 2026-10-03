@@ -1,6 +1,6 @@
 /**
- * The game screens: our agent, negotiations, album, market and the raw stream, fed by the server's
- * relay of the game (or the mock game with `?mock=1`). Loaded on demand: the show never pays for it.
+ * The game screens: our agent, negotiations, album, market, what our agents learned and the raw stream, fed
+ * by the server's relay of the game (or the mock game with `?mock=1`). Loaded on demand: the show never pays for it.
  */
 import { MotionConfig } from 'motion/react'
 import { useEffect, useState, type ReactElement } from 'react'
@@ -12,6 +12,7 @@ import { AlbumScreen } from './AlbumScreen.tsx'
 import { DebugScreen } from './DebugScreen.tsx'
 import { GameHeader, GameNotice } from './GameHeader.tsx'
 import { Inspector } from './Inspector.tsx'
+import { LearnScreen } from './LearnScreen.tsx'
 import { MarketScreen } from './MarketScreen.tsx'
 import { NegotiationsScreen } from './NegotiationsScreen.tsx'
 import './game.css'
@@ -21,6 +22,7 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   negotiations: () => <NegotiationsScreen />,
   album: () => <AlbumScreen />,
   market: () => <MarketScreen />,
+  learn: () => <LearnScreen />,
   debug: () => <DebugScreen />,
 }
 

@@ -93,6 +93,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. Duels below. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
+| `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
 
 `?mock=1` plays a TypeScript port of bazaar's mock game (`src/game/mock.ts`, seeded): our agent
@@ -116,6 +117,29 @@ negative ids, then the feed unchanged):
 - `GET /api/game` → `{enabled, target, tokenRequired}` (never the key or the URL).
 - `GET /api/game/stream` → server-sent events: one `events` message with the replay (the latest hello,
   /me, clock first, then the last 5000 events), then one `events` message per poll, and `hb`.
+
+### What our agents learned (`/learn`)
+
+Our agents keep their memory in the team's Postgres (bazaar `sql/schema.sql`: `learnings`, `trader_behaviors`,
+`dealer_curves`, `competitor_profiles`). `db/learn.sql` adds four read-only views to schema `show` for the same
+role as the transcript (`bazaar_live_reader`, `SHOW_DATABASE_URL`):
+
+- `show.learnings`: the learnings not superseded, with an evidence count (not the ids), no embedding, no dedupe
+  key; `stats` (a learning's detail, a learned ladder) only when it is an object under 2 kB.
+- `show.trader_moves`: every dealer move the behaviour reader stored (open, concede, hold, final, deal, ...),
+  ours or read from the public feed.
+- `show.dealer_stats`: per dealer, from the curves of every team: threads, deals, mean opening ask and fill, fill /
+  opening (all teams and ours), steps, ticks.
+- `show.rival_profiles`: per rival team: level, venue, pack price, what they bought and sold, the sets they chase.
+
+Apply it with the admin url, after `show.sql` (a re-run of `show.sql` revokes every grant in the schema, so run
+both, in this order, each time): `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql`.
+`sh scripts/test-sql.sh` proves both files on a throwaway local Postgres.
+
+The server reads the four views every 10 s on its own one-connection pool and serves the last read at
+`GET /api/learn`, behind the same `GAME_VIEW_TOKEN` as the game stream (the page carries `?token=`). Without
+`SHOW_DATABASE_URL` it answers `{enabled: false}`; a view not applied yet only blanks its panel. `?mock=1` shows a
+made-up memory around the mock game.
 
 ## Real conversations (LIVE-T1)
 
