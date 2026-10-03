@@ -179,7 +179,7 @@ describe('language: events and situations speak one language', () => {
 })
 
 describe('the idle talk keeps quiet rather than repeat itself (review P1)', () => {
-  it('over forty minutes of closed doors no line returns inside the window, however small the bank', async () => {
+  it('over forty minutes of a paused game no line returns inside the window, however small the bank', async () => {
     const { ShowEngine } = await import('./engine')
     const { SpeechQueue } = await import('../tts/queue')
     const spoken: { at: number; text: string }[] = []

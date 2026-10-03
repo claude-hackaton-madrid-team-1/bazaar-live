@@ -279,7 +279,8 @@ describe('a gap-free voice queue', () => {
     a.ingest(event(-41, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
     await settle()
     a.stop()
-    expect(sleeps.slice(0, 2)).toEqual([500, 500]) // a voice sets the pace; a caption still stays a moment if the voice fails
+    expect(sleeps[0]).toBe(500) // a voice sets the pace
+    expect(sleeps[1]).toBeGreaterThan(500) // ...unless it ended at once (it did not speak): then the caption keeps its reading time
     const mutedSleeps: number[] = []
     const muted = new SpeechQueue({ provider: { name: 'webspeech', speak: async () => undefined } })
     muted.setMuted(true)

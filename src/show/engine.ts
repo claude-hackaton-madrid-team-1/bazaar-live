@@ -81,6 +81,8 @@ const NOTIFY_MS = 16
 const AMBIENT_ATTEMPTS = 4
 /** A caption stays at least this long when a voice sets the pace (a failed voice must not flash it away). */
 const MIN_CAPTION_MS = 500
+/** A line is never really spoken in less than this: a voice that ends sooner did not speak. */
+const INSTANT_VOICE_MS = 250
 const STALE_TICKS = 2
 
 export const INITIAL_STATE: ShowState = {
@@ -485,7 +487,10 @@ export class ShowEngine {
       const next = following ? this.speech.say(utterance(following, i + 1)) : Promise.resolve()
       // A voice sets the pace; the reading time only applies to a muted or silent stage.
       const reading = this.speech.audible ? MIN_CAPTION_MS : readingMs(line.text, this.director.size + this.speech.backlog)
+      const started = Date.now()
       await Promise.all([current, this.sleep(reading)])
+      // A voice that ends at once (none for this language, or it failed) leaves the caption its reading time.
+      if (this.speech.audible && Date.now() - started < INSTANT_VOICE_MS) await this.sleep(Math.max(0, readingMs(line.text, this.director.size) - MIN_CAPTION_MS))
       current = next
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)

@@ -35,7 +35,7 @@ describe('assignVoices', () => {
   })
 
   it('makes the abuela a woman and El Chato a man when it can, and the characters distinct when there are enough voices', () => {
-    const rich = [v('Mónica', 'es-ES'), v('Jorge', 'es-ES'), v('Marisol', 'es-ES'), v('Diego', 'es-ES'), v('Eddy (Español (España))', 'es-ES')]
+    const rich = [v('Mónica', 'es-ES'), v('Jorge', 'es-ES'), v('Marisol', 'es-ES'), v('Diego', 'es-ES'), v('Voz local España', 'es-ES')]
     const map = assignVoices(rich, 'es')
     expect(map.abuela?.name).toMatch(/Mónica|Marisol/)
     expect(map.chato?.name).toMatch(/Jorge|Diego/)
@@ -49,10 +49,10 @@ describe('assignVoices', () => {
   })
 
   it('prefers the better engine and the local one inside a tier', () => {
-    const map = assignVoices([v('Google español', 'es-ES', false), v('Paloma Online (Natural)', 'es-ES', false), v('Eddy (Español (España))', 'es-ES', true)], 'es')
+    const map = assignVoices([v('Google español', 'es-ES', false), v('Paloma Online (Natural)', 'es-ES', false), v('Voz local España', 'es-ES', true)], 'es')
     expect(map.seller?.name).toBe('Paloma Online (Natural)') // quality hint first
-    const local = assignVoices([v('Google español', 'es-ES', false), v('Eddy (Español (España))', 'es-ES', true)], 'es')
-    expect(local.seller?.name).toBe('Eddy (Español (España))') // then local before remote
+    const local = assignVoices([v('Google español', 'es-ES', false), v('Voz local España', 'es-ES', true)], 'es')
+    expect(local.seller?.name).toBe('Voz local España') // then local before remote
   })
 
   it('has no voice for a language the browser lacks, so the utterance language tag decides', () => {

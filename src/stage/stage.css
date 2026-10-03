@@ -127,7 +127,7 @@
   place-self: center;
   font-family: 'Cinzel', Georgia, serif;
   font-weight: 800;
-  font-size: 1.8cqw;
+  font-size: max(11px, 1.8cqw);
   letter-spacing: 0.05em;
 }
 
@@ -159,7 +159,7 @@
   right: -1cqw;
   bottom: -0.8cqw;
   min-width: 5.4cqw;
-  height: 2.6cqw;
+  height: max(17px, 2.6cqw);
   padding: 0 0.8cqw 0 1.4cqw;
   display: grid;
   place-items: center;
@@ -380,7 +380,7 @@
 }
 
 .quality.uncommon {
-  color: #1f8a1f;
+  color: #17701a;
 }
 
 .quality.rare {
@@ -392,7 +392,7 @@
 }
 
 .quality.legendary {
-  color: #c25a00;
+  color: #9a4400;
 }
 
 .tag-chip {

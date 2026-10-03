@@ -23,8 +23,8 @@ const ROLE_GENDER: Readonly<Record<Speaker, Gender>> = { abuela: 'f', buyer: 'f'
 /** Who picks first: the leads speak most, so they get the most native voices before the dealers do. */
 const PICK_ORDER: readonly Speaker[] = ['seller', 'buyer', 'abuela', 'chato', 'narrator']
 
-const FEMALE = /\b(monica|mónica|paulina|helena|laura|sabina|marisol|lucia|lucía|elvira|dalia|luciana|samantha|karen|moira|tessa|serena|kate|fiona|victoria|susan|zira|female|mujer)\b/i
-const MALE = /\b(jorge|juan|diego|carlos|pablo|alvaro|álvaro|enrique|miguel|alonso|daniel|alex|fred|oliver|arthur|thomas|david|mark|male|hombre)\b/i
+const FEMALE = /\b(flo|sandy|shelley|sonia|monica|mónica|paulina|helena|laura|sabina|marisol|lucia|lucía|elvira|dalia|luciana|samantha|karen|moira|tessa|serena|kate|fiona|victoria|susan|zira|female|mujer)\b/i
+const MALE = /\b(grandpa|reed|rocko|eddy|ryan|jorge|juan|diego|carlos|pablo|alvaro|álvaro|enrique|miguel|alonso|daniel|alex|fred|oliver|arthur|thomas|david|mark|male|hombre)\b/i
 const NOVELTY = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|hysterical|junior|organ|princess|ralph|trinoids|whisper|wobble|zarvox|superstar|jester)\b/i
 const QUALITY = /\b(natural|neural|premium|enhanced|online|siri)\b/i
 

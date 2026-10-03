@@ -102,6 +102,13 @@ body {
   color: #3a2416;
 }
 
+.lang-toggle button:focus-visible {
+  clip-path: none;
+  outline: 3px solid var(--gold-soft);
+  outline-offset: -3px;
+  border-radius: 7px;
+}
+
 .lang-toggle button:hover:not(.on) {
   color: var(--gold-soft);
 }
