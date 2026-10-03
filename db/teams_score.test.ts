@@ -131,7 +131,7 @@ describe.skipIf(!ADMIN_URL)('db/teams_score.sql (local Postgres)', () => {
     expect(text).not.toContain(SECRET)
     expect(text).not.toContain('134.7')
     expect(text).not.toContain('777')
-    expect(Object.keys(r.rows[0] ?? {})).toEqual(['day', 'tick', 'team', 'rank', 'score', 'negotiating', 'market', 'level', 'pages', 'deals', 'read_at'])
+    expect(Object.keys(r.rows[0] ?? {})).toEqual(['day', 'tick', 'team', 'rank', 'score', 'negotiating', 'market', 'level', 'pages', 'deals', 'read_at', 'venue'])
   })
 
   it.each(['public.me_snapshots', 'public.leaderboard_snapshots'])('cannot read %s directly', async (table) => {

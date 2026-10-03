@@ -3,8 +3,8 @@
 -- game facts: nothing here reads our snapshots, decisions, ledger or duels; the page knows which team is ours.
 --
 -- One view in schema `show`, like the other show files (no table grant, no new function):
---   show.team_scores  per (day, tick, team): rank, score, negotiating, market, level, complete pages, deals and when
---                     the board was read. Kept only when one of them moved for that team since its last read of the
+--   show.team_scores  per (day, tick, team): rank, score, negotiating, market, level, complete pages, deals, when
+--                     the board was read and the team's venue (the Market Test panel says where its market comes from). Kept only when one of them moved for that team since its last read of the
 --                     day, plus each team's first and latest read of the day: the page draws steps (a value holds
 --                     until the next reading), so a dropped row loses nothing.
 --
@@ -37,7 +37,7 @@ create or replace view show.team_scores with (security_barrier = true) as
 with reads as (
   select (s.read_at at time zone 'Europe/Madrid')::date as day, s.tick, s.team, s.rank,
          round(s.score, 3) as score, round(s.negotiating, 3) as negotiating, round(s.market, 3) as market,
-         s.level, s.pages, s.deals, s.read_at
+         s.level, s.pages, s.deals, s.read_at, left(s.venue, 24) as venue
     from public.leaderboard_snapshots s
    where s.world = 'real' and s.team ~ '^t[0-9]{1,3}$' and s.tick is not null and s.rank is not null and s.score is not null
 ), marked as (
@@ -48,7 +48,9 @@ with reads as (
     from reads r
   window w as (partition by r.team, r.day order by r.tick)
 )
-select day, tick, team, rank, score, negotiating, market, level, pages, deals, read_at
+-- venue is not compared: a read kept for a move carries the venue of that read. New columns go last (`create or
+-- replace view` only appends).
+select day, tick, team, rank, score, negotiating, market, level, pages, deals, read_at, venue
   from marked
  where prev_row is null or prev_row <> now_row or next_tick is null;
 

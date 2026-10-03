@@ -21,8 +21,9 @@ export const SQL = {
              from show.our_events order by day desc, tick desc, id desc limit $1`,
   scores: `select * from (select day::text as day, tick, read_at, cash, score, duel, ladder, neg, mm, bench from show.score_points order by day desc, tick desc limit $1) p order by day, tick`,
   marks: `select kind, id, day::text as day, tick, agent, action, note, at from show.score_marks order by day desc, tick desc limit $1`,
-  board: `select * from (select day::text as day, tick, team, rank, score, negotiating, market, level, pages, deals, read_at
-             from show.team_scores order by day desc, tick desc, team limit $1) b order by day, tick, team`,
+  // venue through to_jsonb: a server deployed before db/teams_score.sql is re-applied still reads the board
+  board: `select * from (select day::text as day, tick, team, rank, score, negotiating, market, level, pages, deals, read_at, to_jsonb(t) ->> 'venue' as venue
+             from show.team_scores t order by day desc, tick desc, team limit $1) b order by day, tick, team`,
 } as const
 
 /** board: about 700 reads for 18 teams by Saturday evening (a read is kept only when it moved): room for a long day. */

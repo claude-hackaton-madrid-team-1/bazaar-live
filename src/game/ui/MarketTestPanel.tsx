@@ -8,7 +8,7 @@ import { whoName } from '../humanize.ts'
 import { useMarketTestStrings } from '../marketTestStrings.ts'
 import type { Score } from '../state.ts'
 import { useGameStrings } from '../strings.ts'
-import { marketTest } from '../views/market-test.ts'
+import { marketTest, type MarketTeam } from '../views/market-test.ts'
 import { Panel } from './bits.tsx'
 import './teams.css'
 
@@ -21,10 +21,10 @@ export function MarketTestPanel({ board, us, score }: { board: readonly TeamScor
   const m = useMemo(() => marketTest(board, us, score), [board, us, score])
   if (!m) return null
   const top = m.levels[0]?.value ?? 0
-  const name = (team: string) => (team === us ? t.us : whoName(g, team))
+  const name = ({ team, venue }: MarketTeam) => t.named(team === us ? t.us : whoName(g, team), venue)
   return (
     <Panel title={t.title} sub={t.sub} className="mt-panel">
-      <p className="ts-headline">{t.headline(m.ours, m.place, m.teams, m.leader && { name: whoName(g, m.leader.team), value: m.leader.value, gap: m.leader.gap })}</p>
+      <p className="ts-headline">{t.headline(m.ours, m.place, m.teams, m.leader && { name: whoName(g, m.leader.team), venue: m.leader.venue, value: m.leader.value, gap: m.leader.gap })}</p>
       {m.levels.length > 0 && (
         <ol className="mt-levels">
           {m.levels.map((l) => (

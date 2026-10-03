@@ -124,6 +124,8 @@ export interface TeamScore {
   readonly deals: number | null
   /** When the board was read (ISO), or null. */
   readonly at: string | null
+  /** The team's venue at that read (`v07`), or null without one. */
+  readonly venue: string | null
 }
 
 /** Which views answered on the last poll (a view the admin has not applied yet is `false`). */

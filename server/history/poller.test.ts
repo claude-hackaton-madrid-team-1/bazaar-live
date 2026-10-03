@@ -34,7 +34,7 @@ describe('HistoryPoller', () => {
     expect(poller.current().scores[0]).toMatchObject({ at: '2026-10-03T07:28:41.000Z', score: 8.34, duel: null })
     expect(poller.current().marks[0]).toMatchObject({ kind: 'start', agent: 'taker', tick: 1 })
     expect(poller.current().events[0]?.cash).toBe(40)
-    expect(poller.current().board).toEqual([{ day: '2026-10-03', tick: 800, team: 't05', rank: 1, score: 30.1, negotiating: 20, market: 10.1, level: 4, pages: 2, deals: 40, at: '2026-10-03T15:00:00.000Z' }])
+    expect(poller.current().board).toEqual([{ day: '2026-10-03', tick: 800, team: 't05', rank: 1, score: 30.1, negotiating: 20, market: 10.1, level: 4, pages: 2, deals: 40, at: '2026-10-03T15:00:00.000Z', venue: null }])
   })
 
   it('a view not applied yet blanks only its part, logged once; another error keeps the last good part', async () => {

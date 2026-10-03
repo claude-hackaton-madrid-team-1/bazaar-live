@@ -147,5 +147,6 @@ export function teamScoreOf(raw: unknown): TeamScore | null {
     pages: int(r.pages),
     deals: int(r.deals),
     at: isoOf(r.read_at),
+    venue: typeof r.venue === 'string' && /^[a-z0-9_-]{1,24}$/.test(r.venue) ? r.venue : null,
   }
 }

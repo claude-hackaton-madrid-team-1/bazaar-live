@@ -8,13 +8,19 @@
  */
 import type { TeamScore } from '../../../shared/history.ts'
 import type { Score } from '../state.ts'
-import { boardOf, lastTick, standingAt } from './teams.ts'
+import { boardOf, lastTick, readAt, standingAt } from './teams.ts'
 
 /** Teams level on market, one row: a value shared by many (the free stall's level) reads as one line. */
+export interface MarketTeam {
+  readonly team: string
+  /** Its venue at the board's latest read (`v07`), or null without one. */
+  readonly venue: string | null
+}
+
 export interface MarketLevel {
   readonly value: number
-  /** By name order, ours first when we are among them. */
-  readonly teams: readonly string[]
+  /** By team number, ours first when we are among them. */
+  readonly teams: readonly MarketTeam[]
   readonly us: boolean
 }
 
@@ -23,8 +29,8 @@ export interface MarketTest {
   readonly ours: number | null
   readonly place: number | null
   readonly teams: number
-  /** The best rival and how far ahead of us it is. */
-  readonly leader: { readonly team: string; readonly value: number; readonly gap: number | null } | null
+  /** The best rival, its venue and how far ahead of us it is. */
+  readonly leader: { readonly team: string; readonly venue: string | null; readonly value: number; readonly gap: number | null } | null
   /** Highest first. */
   readonly levels: readonly MarketLevel[]
   readonly bench: {
@@ -46,21 +52,23 @@ export function marketTest(rows: readonly TeamScore[], us: string, score: Score 
   const mine = standing.find((s) => s.team === us)
   const ours = mine?.value ?? n(score?.market)
   const leaderRow = standing.find((s) => s.team !== us) ?? null
-  const levels: { value: number; teams: string[]; us: boolean }[] = []
+  const venueOf = (team: string): string | null => (tick === null ? null : (readAt(b, team, tick)?.venue ?? null))
+  const levels: { value: number; teams: MarketTeam[]; us: boolean }[] = []
   for (const s of standing) {
     const value = r2(s.value)
+    const team = { team: s.team, venue: venueOf(s.team) }
     const last = levels.at(-1)
-    if (last && last.value === value) last.teams.push(s.team)
-    else levels.push({ value, teams: [s.team], us: false })
+    if (last && last.value === value) last.teams.push(team)
+    else levels.push({ value, teams: [team], us: false })
   }
   for (const l of levels) {
-    l.us = l.teams.includes(us)
-    l.teams.sort((a, c) => Number(c === us) - Number(a === us) || a.localeCompare(c, undefined, { numeric: true }))
+    l.us = l.teams.some((t) => t.team === us)
+    l.teams.sort((a, c) => Number(c.team === us) - Number(a.team === us) || a.team.localeCompare(c.team, undefined, { numeric: true }))
   }
   const bench = {
     points: n(score?.bench_points),
     efficiency: n(score?.bench_efficiency),
-    venue: typeof score?.bench_venue === 'string' && score.bench_venue ? score.bench_venue : null,
+    venue: typeof score?.bench_venue === 'string' && score.bench_venue ? score.bench_venue : venueOf(us),
     mm: n(score?.mm_points),
   }
   if (!standing.length && bench.points === null && bench.efficiency === null && ours === null) return null
@@ -68,7 +76,7 @@ export function marketTest(rows: readonly TeamScore[], us: string, score: Score 
     ours,
     place: mine?.rank ?? null,
     teams: standing.length,
-    leader: leaderRow ? { team: leaderRow.team, value: leaderRow.value, gap: ours === null ? null : r2(leaderRow.value - ours) } : null,
+    leader: leaderRow ? { team: leaderRow.team, venue: venueOf(leaderRow.team), value: leaderRow.value, gap: ours === null ? null : r2(leaderRow.value - ours) } : null,
     levels,
     bench,
   }

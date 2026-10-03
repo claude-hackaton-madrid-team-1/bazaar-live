@@ -14,7 +14,9 @@ export interface MarketTestStrings {
   readonly title: string
   readonly sub: string
   /** "Market 7.5 · 8th of 18 · Team 10 leads with 12.5 (+5)". */
-  readonly headline: (ours: number | null, place: number | null, of: number, leader: { name: string; value: number; gap: number | null } | null) => string
+  readonly headline: (ours: number | null, place: number | null, of: number, leader: { name: string; venue: string | null; value: number; gap: number | null } | null) => string
+  /** "Team 10 (v07)". */
+  readonly named: (name: string, venue: string | null) => string
   readonly value: (v: number) => string
   readonly us: string
   readonly more: (n: number) => string
@@ -36,11 +38,12 @@ const EN: MarketTestStrings = {
     [
       ours === null ? 'Our market: not read yet' : `Our market ${fmt(ours, 'en')}`,
       place !== null && of > 0 ? `#${place} of ${of}` : null,
-      leader ? `${leader.name} leads with ${fmt(leader.value, 'en')}${leader.gap !== null && leader.gap > 0 ? ` (+${fmt(leader.gap, 'en')})` : ''}` : null,
+      leader ? `${leader.name} leads with ${fmt(leader.value, 'en')}${leader.venue ? ` on ${leader.venue}` : ''}${leader.gap !== null && leader.gap > 0 ? ` (+${fmt(leader.gap, 'en')})` : ''}` : null,
     ]
       .filter(Boolean)
       .join(' · '),
   value: (v) => v.toFixed(2),
+  named: (name, venue) => (venue ? `${name} (${venue})` : name),
   us: 'us',
   more: (n) => `+${n} more`,
   levelTitle: (teams) => `${teams} ${teams === 1 ? 'team' : 'teams'} at this market`,
@@ -61,11 +64,12 @@ const ES: MarketTestStrings = {
     [
       ours === null ? 'Nuestro mercado: sin leer todavía' : `Nuestro mercado ${fmt(ours, 'es')}`,
       place !== null && of > 0 ? `#${place} de ${of}` : null,
-      leader ? `${leader.name} va primero con ${fmt(leader.value, 'es')}${leader.gap !== null && leader.gap > 0 ? ` (+${fmt(leader.gap, 'es')})` : ''}` : null,
+      leader ? `${leader.name} va primero con ${fmt(leader.value, 'es')}${leader.venue ? ` en ${leader.venue}` : ''}${leader.gap !== null && leader.gap > 0 ? ` (+${fmt(leader.gap, 'es')})` : ''}` : null,
     ]
       .filter(Boolean)
       .join(' · '),
   value: (v) => v.toFixed(2).replace('.', ','),
+  named: (name, venue) => (venue ? `${name} (${venue})` : name),
   us: 'nosotros',
   more: (n) => `+${n} más`,
   levelTitle: (teams) => `${teams} ${teams === 1 ? 'equipo' : 'equipos'} con este mercado`,
