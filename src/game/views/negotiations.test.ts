@@ -282,7 +282,7 @@ test('a settlement closes the dealer thread (the feed sends no thread.closed): w
   const rows = negRows(s)
   assert.deepEqual(rows.map((r) => [r.id, r.status, r.state]), [[7, 'open', 'haggling'], [644, 'closed', 'won']])
   const won = rows[1]!
-  assert.deepEqual(won.ended, { how: 'deal', price: 95, edge: 82.1, firstAsk: 97 })
+  assert.deepEqual(won.ended, { how: 'deal', price: 95, value: 177.1, edge: 82.1, firstAsk: 97 })
   assert.deepEqual([won.next, won.ticksLeft], [null, null])
   assert.deepEqual(won.verdict, { kind: 'won', price: 95, value: 177.1, edge: 82.1 })
   // the selected thread skips the ended one
@@ -337,6 +337,35 @@ test('our value falls back to the latest decision for the item, then to /me', ()
   apply(s, theirAsk(1, 30, { expires: 34 }))
   assert.strictEqual(negRow(s, s.threads[1]!).value, 12)
   apply(s, decided('accept_ask', { item: 'LAT-08', counterparty: 't05', price: 9, value: 14 }, 5))
+  assert.strictEqual(negRow(s, s.threads[1]!).value, 14)
+})
+
+test('selling a duplicate is measured against the copy sold, not the page copy left behind', () => {
+  const s = fresh(30)
+  // two copies: after the sale /me values the one left (the page card) far above the one we sold
+  apply(s, ev('agent.me', { cash: 100, assets: [{ id: 2, kind: 'card', ref: 'LAT-08', serial: 4, your_value: 60 }] }))
+  apply(s, message('abuela', offer({ thread: 20, maker: 'abuela', to: 't01', giveCash: 18, wantTypes: ['card:LAT-08'], expires: 40 }), { thread: 20, tick: 25 }))
+  apply(s, ev('settlement', {
+    settlement: 90, kind: 'trade', parties: ['t01', 'abuela'], persona: 'abuela', venue: null, fee: 0, price: 20,
+    items: [{ id: 1, ref: 'LAT-08', frm: 't01', to: 'abuela', kind: 'card', name: 'x', rarity: 'common' }],
+  }, 26))
+  const before = negRow(s, s.threads[20]!)
+  assert.strictEqual(before.side, 'sell')
+  // without the sale's own value the card's value today is all we have
+  assert.deepEqual([before.ended?.value, before.ended?.edge], [60, -40])
+  // the scored outcome carries the value of the copy sold (dealer-sell's, by asset id)
+  apply(s, ev('agent.outcome', { target: 'dealer', subject: 'thread:20', decision: null, agent: 'taker', item: 'assets:1', counterparty: 'abuela', side: 'sell', price: 20, value: 5, label: 'good', score: 0.6, surplus: null, jev: null, jevRight: null }, 27))
+  const r = negRow(s, s.threads[20]!)
+  assert.deepEqual([r.state, r.ended?.value, r.ended?.edge], ['won', 5, 15])
+  assert.deepEqual(r.verdict, { kind: 'won', price: 20, value: 5, edge: 15 })
+})
+
+test('an ended thread takes no value our agent decided after it ended', () => {
+  const s = fresh(30)
+  apply(s, theirAsk(1, 30, { expires: 34 }, { tick: 10 }))
+  apply(s, decided('accept_ask', { item: 'LAT-08', counterparty: 't05', price: 9, value: 14 }, 9))
+  apply(s, ev('thread.closed', { thread: 1 }, 12))
+  apply(s, decided('accept_ask', { item: 'LAT-08', counterparty: 't05', price: 9, value: 50 }, 20))
   assert.strictEqual(negRow(s, s.threads[1]!).value, 14)
 })
 
