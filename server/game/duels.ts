@@ -7,8 +7,11 @@
  * is the duel's `rival`, the only name the game gives the other side (an alias like "Rival Azul", not a team id,
  * so there is no team to look up); null when missing. Every duel also opens with one
  * `duel.started {duel, session, role, rival, item, deadline_tick}`, so a live duel shows before anyone has
- * spoken, with what is at stake and until when. Nothing else
- * of a duel leaves: not our limit, our days weight, our gain or share (they reveal our limits), nor the words.
+ * spoken, with what is at stake and until when, our limit (`limit`, the duel's `your_limit`) and the decay per round
+ * (`decay`). The result adds what the deal kept for us (`gain`: a numeric `result`, as the real game sends it, or the
+ * simulator's `result.your_gain`), the simulator's `result.points`, the `rounds` and our limit again. Our limit and
+ * gain go to the token-gated game stream only (the Duels screen asks whether their price is inside our limit), never
+ * to the public show. Nothing else of a duel leaves: not our days weight, our share, our own offer object, nor the words.
  */
 export type Payload = Record<string, unknown>
 
@@ -44,6 +47,12 @@ function closedTick(d: Payload, last: number | null): number | null {
 /** The rival's alias, trimmed and bounded; null when the duel has none. */
 const rivalOf = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 40) : null)
 
+/** The decay per round, a share in [0, 1); null when missing or out of range. */
+const decayOf = (v: unknown): number | null => {
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 1 ? n : null
+}
+
 /** The card at stake (a name like "El Mesón de la Cava"), trimmed and bounded; null when missing. */
 const itemOf = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : null)
 
@@ -52,9 +61,10 @@ function eventsOf(d: Payload, duel: number, team: string): DuelEvent[] {
   const rival = rivalOf(d.rival)
   const messages = Array.isArray(d.messages) ? d.messages.slice(0, SLOTS - 2) : []
   const firstTick = messages.map((m: unknown) => (isRecord(m) && isInt(m.tick) ? m.tick : null)).find((t) => t !== null) ?? null
+  const limit = numOrNull(d.your_limit)
   const started = {
     duel, session: isInt(d.session) ? d.session : null, role, rival, item: itemOf(d.item),
-    deadline_tick: isInt(d.deadline_tick) ? d.deadline_tick : null,
+    deadline_tick: isInt(d.deadline_tick) ? d.deadline_tick : null, limit, decay: decayOf(d.decay_per_round),
   }
   const out: DuelEvent[] = [{ id: duelEventId(duel, SLOTS - 2), tick: firstTick ?? (isInt(d.tick) ? d.tick : null), type: 'duel.started', payload: started }]
   let last: number | null = null
@@ -68,7 +78,11 @@ function eventsOf(d: Payload, duel: number, team: string): DuelEvent[] {
   if (d.status === 'deal' || d.status === 'no_deal') {
     const result = isRecord(d.result) ? d.result : {}
     const deal = d.status === 'deal'
-    const payload = { duel, rival, deal, price: deal ? numOrNull(result.price ?? d.price) : null, points: numOrNull(result.points) }
+    const gain = numOrNull(d.result) ?? numOrNull(result.your_gain)
+    const payload = {
+      duel, rival, deal, price: deal ? numOrNull(result.price ?? d.price) : null, points: numOrNull(result.points),
+      gain, rounds: isInt(d.rounds) && d.rounds >= 0 ? d.rounds : null, limit,
+    }
     out.push({ id: duelEventId(duel, SLOTS - 1), tick: closedTick(d, last), type: 'duel.result', payload })
   }
   return out

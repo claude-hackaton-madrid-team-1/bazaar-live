@@ -1,11 +1,14 @@
-import { setParam, useParam } from '../../ui/route'
+import type { MouseEvent } from 'react'
+import { hrefOf, navigate, setParam, useParam } from '../../ui/route'
+import { useDuelStrings } from '../duelStrings.ts'
 import { fmtP } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
-  conversation, dealerTactics, duelColumns, duelRows, endedGroups, negRows, rivalSummary, selectedThreadId,
-  type Bubble, type Conversation, type DealerTactics, type DuelRow, type EndedGroup, type NegRow, type NegStatus, type RivalRow,
+  conversation, dealerTactics, endedGroups, negRows, selectedThreadId,
+  type Bubble, type Conversation, type DealerTactics, type EndedGroup, type NegRow, type NegStatus,
 } from '../views/negotiations.ts'
+import { liveDuelCount } from '../views/duels.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
 
 function Pill({ state }: { state: NegStatus }) {
@@ -206,93 +209,19 @@ function Worked({ rows }: { rows: DealerTactics[] }) {
   )
 }
 
-function Rivals({ rows }: { rows: RivalRow[] }) {
-  const t = useGameStrings()
-  if (!rows.length) return null
+/** The duels have their own screen: one line pointing there while any is live. */
+function DuelsLink({ live }: { live: number }) {
+  const t = useDuelStrings()
+  if (!live) return null
+  const go = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+    e.preventDefault()
+    navigate('duels')
+  }
   return (
-    <section className="gm-rivals-wrap" aria-label={t.neg.against}>
-      <h3 className="eyebrow">{t.neg.against}</h3>
-      <ul className="gm-rivals">
-        {rows.map((r) => (
-          <li key={r.rival ?? ''} className="gm-rival" data-live={r.open > 0 || undefined}>
-            <span className="gm-row">
-              <span className="gm-rival-name" data-unknown={r.rival === null || undefined} title={r.rival ?? undefined}>
-                {r.rival ?? t.neg.unknownRival}
-              </span>
-              <span className="gm-spacer" />
-              {r.open > 0 && <Badge tone="warn">{t.neg.duelsSub(r.open)}</Badge>}
-            </span>
-            <span className="gm-rival-meta">{t.neg.rivalDuels(r.duels, r.finished)}</span>
-            <span className="gm-rival-meta">
-              <span>{t.neg.rivalDeals(r.deals, r.noDeals)}</span>
-              <span className="gm-spacer" />
-              <span title={r.points == null ? t.neg.rivalPointsNone : undefined} className={r.points == null ? 'gm-muted' : r.points > 0 ? 'gm-good' : undefined}>
-                {t.neg.rivalPoints(r.points)}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
-}
-
-const days = (d: number | null) => (d == null ? '' : ` · ${d}d`)
-
-function DuelsTable({ rows }: { rows: DuelRow[] }) {
-  const t = useGameStrings()
-  if (!rows.length) return <Empty>{t.neg.noDuels}</Empty>
-  const show = duelColumns(rows)
-  const c = t.neg.duelCol
-  return (
-    <div className="gm-scroll">
-      <table className="gm-table">
-        <thead>
-          <tr>
-            <th>{c.duel}</th>
-            <th>{c.rival}</th>
-            {show.role && <th>{c.role}</th>}
-            <th className="gm-r">{c.us}</th>
-            <th className="gm-r">{c.them}</th>
-            <th className="gm-r">{c.gap}</th>
-            <th className="gm-r">{c.rounds}</th>
-            <th>{c.status}</th>
-            <th className="gm-r">{c.deal}</th>
-            {show.points && <th className="gm-r">{c.points}</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((d) => (
-            <tr key={d.id} data-live={d.status === 'open' || undefined}>
-              <td>
-                #{d.id}
-                {d.item && <span className="gm-duel-item">{d.item}</span>}
-              </td>
-              <td className="gm-rival-cell" data-tone="them" title={d.rival ?? undefined}>
-                {d.rival ?? '—'}
-              </td>
-              {show.role && <td>{d.role}</td>}
-              <td className="gm-r" data-tone="us">
-                {fmtP(d.ourPrice)}
-                {show.days && days(d.ourDays)}
-              </td>
-              <td className="gm-r" data-tone="them">
-                {fmtP(d.theirPrice)}
-                {show.days && days(d.theirDays)}
-              </td>
-              <td className="gm-r">{fmtP(d.gap)}</td>
-              <td className="gm-r">{d.rounds}</td>
-              <td>
-                <Badge tone={d.tone}>{t.neg.duelStatus[d.status]}</Badge>
-                {d.ticksLeft !== null && <span className="gm-duel-left">{t.neg.ticksLeft(d.ticksLeft)}</span>}
-              </td>
-              <td className="gm-r">{fmtP(d.dealPrice)}</td>
-              {show.points && <td className="gm-r">{d.points ?? '—'}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <a className="neg-duels-link" href={hrefOf('duels', window.location.search)} onClick={go}>
+      {t.link(live)}
+    </a>
   )
 }
 
@@ -305,12 +234,11 @@ export function NegotiationsScreen() {
   const ended = rows.filter((r) => r.status !== 'open')
   const selected = selectedThreadId(state, requested)
   const convo = selected == null ? null : conversation(state, selected)
-  const duels = duelRows(state)
   const select = (id: number) => setParam('id', String(id))
   const won = ended.filter((r) => r.state === 'won').length
   return (
     <>
-      <Panel title={t.neg.live} sub={t.neg.liveSub(live.length)}>
+      <Panel title={t.neg.live} sub={t.neg.liveSub(live.length)} actions={<DuelsLink live={liveDuelCount(state)} />}>
         {!rows.length ? (
           <Empty>{t.neg.noThreads}</Empty>
         ) : live.length ? (
@@ -338,10 +266,6 @@ export function NegotiationsScreen() {
           </Panel>
         )}
       </div>
-      <Panel title={t.neg.duels} sub={t.neg.duelsSub(duels.filter((d) => d.status === 'open').length)}>
-        <Rivals rows={rivalSummary(state)} />
-        <DuelsTable rows={duels} />
-      </Panel>
     </>
   )
 }

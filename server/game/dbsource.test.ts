@@ -26,12 +26,14 @@ const ME = {
 
 const DUEL_DEAL = {
   duel: 274, session: 1, tick: 367, status: 'deal', role: 'buyer', item: 'Plaza de Olavide', rival: 'Rival Rojo', deadline_tick: 163, price: 103, days: 0,
+  your_limit: 136, rounds: 2, decay_per_round: 0.06, result: 29.2,
   stamp: '2026-10-03T09:13:30.000001Z',
   messages: [{ from: 'you', tick: 151, price: 59, days: null }, { from: 'Rival Rojo', tick: 151, price: 154, days: null }, { from: 'Rival Rojo', tick: 152, price: 103, days: null }],
 }
 
 const DUEL_NO_DEAL = {
   duel: 280, session: 1, tick: 367, status: 'no_deal', role: 'buyer', item: 'El Rastro al Amanecer', rival: 'Rival Noche', deadline_tick: 176, price: null, days: null,
+  your_limit: 61, rounds: 0, decay_per_round: 0.06, result: '0',
   stamp: '2026-10-03T09:13:30.000001Z', messages: [{ from: 'you', tick: 164, price: 42, days: null }],
 }
 
@@ -61,17 +63,17 @@ describe('row translation', () => {
     expect(meRow({ tick: 1 })).toBeNull()
   })
 
-  it('turns duel rows into the relay\'s duel events, with no points (the view never has our gain)', () => {
+  it('turns duel rows into the relay\'s duel events, with our limit, the rounds and our gain (never points: the view has none)', () => {
     const events = duelRowEvents([DUEL_NO_DEAL, DUEL_DEAL], 't01', 50)
     expect(events.map((e) => [e.id, e.type])).toEqual([
       [duelEventId(274, 998), 'duel.started'], [duelEventId(274, 0), 'duel.message'], [duelEventId(274, 1), 'duel.message'], [duelEventId(274, 2), 'duel.message'], [duelEventId(274, 999), 'duel.result'],
       [duelEventId(280, 998), 'duel.started'], [duelEventId(280, 0), 'duel.message'], [duelEventId(280, 999), 'duel.result'],
     ])
-    expect(events[0]).toMatchObject({ tick: 151, scope: 'team', payload: { duel: 274, session: 1, role: 'buyer', rival: 'Rival Rojo', item: 'Plaza de Olavide', deadline_tick: 163 } })
+    expect(events[0]).toMatchObject({ tick: 151, scope: 'team', payload: { duel: 274, session: 1, role: 'buyer', rival: 'Rival Rojo', item: 'Plaza de Olavide', deadline_tick: 163, limit: 136, decay: 0.06 } })
     expect(events[1]?.payload).toEqual({ duel: 274, role: 'buyer', rival: 'Rival Rojo', sender: 't01', price: 59, days: null })
     expect(events[2]?.payload.sender).toBe('Rival Rojo')
-    expect(events[4]).toMatchObject({ tick: 153, scope: 'team', payload: { duel: 274, rival: 'Rival Rojo', deal: true, price: 103, points: null } })
-    expect(events[7]?.payload).toEqual({ duel: 280, rival: 'Rival Noche', deal: false, price: null, points: null })
+    expect(events[4]).toMatchObject({ tick: 153, scope: 'team', payload: { duel: 274, rival: 'Rival Rojo', deal: true, price: 103, points: null, gain: 29.2, rounds: 2, limit: 136 } })
+    expect(events[7]?.payload).toEqual({ duel: 280, rival: 'Rival Noche', deal: false, price: null, points: null, gain: 0, rounds: 0, limit: 61 })
   })
 })
 
@@ -134,6 +136,15 @@ describe('GameDbSource', () => {
     expect(source.viewsMissing).toBe(true)
     expect(onMissing).toHaveBeenCalledTimes(1)
     expect(logs.filter((l) => l.event === 'db_views_missing')).toHaveLength(1)
+  })
+
+  it('an older view without the columns this code reads counts as missing (db/game.sql not re-applied)', async () => {
+    const onMissing = vi.fn()
+    const stale = Object.assign(new Error('column "your_limit" does not exist'), { code: '42703' })
+    const source = new GameDbSource({ db: fakeDb(new Map([[DB_SQL.duelsFirst, stale]])), hub: new GameHub(), log: () => undefined, onMissing })
+    await source.pollOnce()
+    expect(source.viewsMissing).toBe(true)
+    expect(onMissing).toHaveBeenCalledTimes(1)
   })
 
   it('logs any other failure redacted, and keeps going', async () => {

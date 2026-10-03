@@ -79,9 +79,10 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
       (21159, 161, 'thread.message', 't01', '"not an object"')`)
     await adminDb.query(`insert into me_snapshots (world, team, tick, affinity, me) values ('real', 't01', 401, $1, $2), ('sim', 't01', 402, null, $2), ('real', 't07', 403, null, $2)`,
       [JSON.stringify({ LAV: SECRET }), JSON.stringify(ME)])
-    await adminDb.query(`insert into duels (duel, session, tick, status, role, item, your_limit, rival, deadline_tick, price, days, result, payload)
-      values (274, 1, 367, 'deal', 'buyer', 'Plaza', $1, 'Rival Rojo', 163, 103, 0, 29.2, $2), (275, 1, 367, 'live', 'seller', 'Taxi', $1, 'Rival Sol', 999, null, null, null, '"not an object"')`,
-      [SECRET_LIMIT, JSON.stringify(DUEL_PAYLOAD)])
+    // The limit column leaves (the Duels screen, behind the token); what the payload repeats of it never does.
+    await adminDb.query(`insert into duels (duel, session, tick, status, role, item, your_limit, rival, deadline_tick, rounds, decay_per_round, price, days, result, payload)
+      values (274, 1, 367, 'deal', 'buyer', 'Plaza', 136, 'Rival Rojo', 163, 2, 0.06, 103, 0, 29.2, $1), (275, 1, 367, 'live', 'seller', 'Taxi', 71, 'Rival Sol', 999, 1, 0.06, null, null, null, '"not an object"')`,
+      [JSON.stringify(DUEL_PAYLOAD)])
     await adminDb.query(`insert into threads (id, counterpart, kind, topic, status, opened_tick, ours) values (316, 'abuela', 'persona', '{"buy": {"card": "LAV-08"}}', 'deal', 159, true), (317, 'chato', 'persona', '{}', 'open', 160, false)`)
     await adminDb.query(`insert into messages (id, thread_id, sender, tick, text, price, final, embedding, ours, tactic) values
       (1, 316, 't01', 159, 'buenas', 17, false, '${SECRET}', true, '${SECRET}'), (2, 317, 'chato', 160, 'not our thread', 9, false, null, false, null),
@@ -146,16 +147,23 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
     expect(JSON.stringify(r.rows)).not.toContain(SECRET)
   })
 
-  it('reads our duels without the limit, the result or the words', async () => {
+  it('reads our duels with our limit and the result, never the words, our offer or the days weight', async () => {
     const r = await reader.query('select * from show.game_duels order by duel')
     expect(r.rows.map((x) => x.duel)).toEqual([274, 275])
+    expect(r.rows.map((x) => [x.your_limit, x.rounds, x.decay_per_round, x.result])).toEqual([[136, 2, 0.06, 29.2], [71, 1, 0.06, null]])
+    expect(Object.keys(r.rows[0])).toEqual(['duel', 'session', 'tick', 'status', 'role', 'item', 'rival', 'deadline_tick', 'price', 'days', 'updated_at', 'messages', 'your_limit', 'rounds', 'decay_per_round', 'result'])
     expect(r.rows[0].messages).toEqual([{ from: 'you', tick: 151, price: 59, days: null }, { from: 'Rival Rojo', tick: 151, price: 154, days: null }])
     expect(r.rows[1].messages).toEqual([])
     const text = JSON.stringify(r.rows)
     expect(text).not.toContain(SECRET)
     expect(text).not.toContain(String(SECRET_LIMIT))
     expect(text).not.toContain('154 P?')
-    expect(text).not.toContain('29.2')
+  })
+
+  it('never puts our limit or the result in show.duel_lines (the public show)', async () => {
+    const cols = await adminDb.query(`select column_name from information_schema.columns where table_schema = 'show' and table_name = 'duel_lines'`)
+    expect(cols.rows.map((x) => x.column_name)).not.toEqual(expect.arrayContaining(['your_limit']))
+    expect(cols.rows.map((x) => x.column_name)).not.toEqual(expect.arrayContaining(['result']))
   })
 
   it('reads our threads and their messages, without embedding, with the tactic of ours', async () => {

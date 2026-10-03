@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { HistoryParts } from '../../../shared/history.ts'
 import { fmtP, signed } from '../game.ts'
 import { useHistory } from '../history.ts'
@@ -7,6 +7,8 @@ import { useGame } from '../store.ts'
 import { agentsOf, cashChart, cashSummary, filterMovements, movements, ordersOf, type MoveFilter, type MoveLine, type Movement } from '../views/history.ts'
 import { Badge, CardRef, Empty, Panel, Seg } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
+import { ScorePanel } from './ScorePanel.tsx'
+import { useWidth } from './useWidth.ts'
 
 const tone = (n: number | null): 'in' | 'out' | undefined => (n === null || n === 0 ? undefined : n > 0 ? 'in' : 'out')
 
@@ -103,19 +105,6 @@ function Moves({ rows, today }: { rows: Movement[]; today: string | null }) {
 }
 
 const H = 220
-
-/** The chart's own width in CSS pixels, so its labels stay readable from a phone to a wide screen. */
-function useWidth(ref: RefObject<HTMLElement | null>, fallback: number): number {
-  const [w, setW] = useState(fallback)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(([e]) => e && setW(Math.max(240, Math.round(e.contentRect.width))))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [ref])
-  return w
-}
 
 function Chart({ points }: { points: Parameters<typeof cashChart>[0] }) {
   const t = useGameStrings()
@@ -234,17 +223,21 @@ export function HistoryScreen() {
           </div>
         </dl>
       </section>
-      <Panel
-        title={t.history.chart}
-        sub={
-          <>
-            {t.history.chartSub(Math.max(0, changes))}
-            <Missing part="points" parts={snapshot.parts} live={live} />
-          </>
-        }
-      >
-        <Chart points={snapshot.points} />
-      </Panel>
+      {snapshot.scores.length ? (
+        <ScorePanel scores={snapshot.scores} marks={snapshot.marks} missing={<Missing part="marks" parts={snapshot.parts} live={live} />} />
+      ) : (
+        <Panel
+          title={t.history.chart}
+          sub={
+            <>
+              {t.history.chartSub(Math.max(0, changes))}
+              <Missing part="points" parts={snapshot.parts} live={live} />
+            </>
+          }
+        >
+          <Chart points={snapshot.points} />
+        </Panel>
+      )}
       <div className="gm-history-cols">
         <Panel
           title={t.history.moves}

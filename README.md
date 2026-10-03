@@ -87,13 +87,14 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
 ## Game screens (from bazaar's web view)
 
 The Next.js `web/` view that lived on bazaar's `feat/web-live` branch now lives here, on the glass
-design, and that branch is gone. A nav in the header moves between the show and five screens, one per
+design, and that branch is gone. A nav in the header moves between the show and the game screens, one per
 question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to the next):
 
 | Route | Answers | Shows |
 |---|---|---|
 | `/agent` | What is our agent doing, and why? | The current phase and goal, then a timeline of our events by tick, each tick read as Observe → Decide → Act → Result (thoughts, actions, our offers, their replies, our settlements with their gain). Nothing from other teams. |
-| `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. Duels below. |
+| `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. A link to Duels while any is live. |
+| `/duels` | Is their price inside our limit? | One card per live duel: rival, buying or selling, the card at stake, their price → ours, the gap, our limit and how far inside or outside it their price is, the rounds and what their decay costs, the ticks left, the duels agent's last call (offer, blocked by a rule, accept planned by the deadline − 2) and a pill (inside limit / haggling / outside limit / expiring). Then the record per rival and per session with `score.duel_points`, every finished duel in one line (deal at X vs our limit Y, what it kept, rounds), and whether the duels agent is silent or blocked. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
 | `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
@@ -110,7 +111,7 @@ and never hands the key to the page:
 |---|---|
 | `BAZAAR_KEY` | The real game (`https://bazaar.causaprima.ai`). Without it (and without `BAZAAR_SIM`) the relay is off and the screens say so. |
 | `BAZAAR_SIM=1`, `BAZAAR_SIM_KEY` | The simulator instead, with a `sim-…` key (default `sim-team1`). With `sim-team1` the screens show team 1 of the simulator. |
-| `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values, our album and our duel offers. |
+| `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values, our album, our duel offers and our duel limits. |
 | `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
 | `SHOW_DATABASE_URL`, `GAME_SOURCE` | With the show's read-only url, the screens read our own database instead (`db/game.sql`'s views, every 3 s, `server/game/dbsource.ts`), no key needed; the header says `DB` or `GAME API`. `GAME_SOURCE=api` forces the relay; views not applied yet → the relay. |
 
@@ -122,9 +123,11 @@ carries only what the screens read (`server/game/me.ts`: id, name, cash, the sco
 pages, each asset's id, kind, ref, serial and our value); never the affinity, a key or the rest. Duel
 messages and results are team-only, so the feed never has them: on each new tick (after `/me`, inside the same
 budget, a 429 waiting for the next tick and its Retry-After) the relay reads `/api/duels?done=true` and turns
-the newest 20 duels into `duel.message {duel, role, sender, price, days}` and `duel.result {duel, deal, price,
-points}`, each once, with stable negative ids, scope `team` (`server/game/duels.ts`). Never our limit, days
-weight, gain or the words. The page counts a duel event as ours only when it is `team` or names a duel of ours,
+the newest 20 duels into `duel.started {duel, session, role, rival, item, deadline_tick, limit, decay}`,
+`duel.message {duel, role, sender, price, days}` and `duel.result {duel, deal, price, points, gain, rounds, limit}`,
+each once, with stable negative ids, scope `team` (`server/game/duels.ts`). Our limit and gain go to this
+token-gated stream only, for the Duels screen; never the days weight, our share, our offer object or the words,
+and never to the public show. The page counts a duel event as ours only when it is `team` or names a duel of ours,
 so the feed's public `duel.closed` of other teams stays in the market:
 
 - `GET /api/game` → `{enabled, target, tokenRequired}` (never the key or the URL).
@@ -199,15 +202,37 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
   row with `×N, ticks A–B`; "no decision this tick" is one line, on the current tick only. A restart
   (`process_started`) reads "restart (deploy)", and rows that write nothing carry no guardrail badge. Ids shown
   are real ones (decision, settlement, thread): the server's own event ids count down from -1 and are never printed.
-- `?mock=1` plays decisions too: approved ones, blocks by several rules, an expired accept, the maker idle one
-  tick in three, scored deals and a ledger.
+- `?mock=1` plays decisions too: approved ones, blocks by several rules, an expired accept, the maker posting in
+  bursts (quiet in between), the duels every other tick, scored deals and a ledger.
 - Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` runs `db/agent_decisions.test.ts` after `db/show.test.ts`.
+
+### Our agents' health (header)
+
+Every game screen's header has one chip per agent (taker, maker, duels): green, amber or red with the one
+reason that matters (`dry run`, `ledger down`, `tick 14.2/15 s`, `429 ×3`, `Jev slow 9 s`, `no tick for 2 min`,
+`silent 12 ticks`, `quiet 5 ticks`, `closed · opens 09:00`); a click opens the details. On `/agent`, a silent or
+quiet agent carries the same reason: `taker silent for 12 ticks: ledger down since 11:40`.
+
+- The server (`server/game/health.ts`) asks the taker's and the maker's public `/health` every 10 s (4 s
+  timeout, one round at a time) and relays an allow-listed report (`shared/health.ts`) as `agent.health` on the
+  game stream: a sticky status, the latest first in every replay, never in the backlog. The page never calls the
+  agents. Never relayed: the target url or any field not listed. It remembers since when each reason holds.
+  `RAILWAY_SERVICE_BAZAAR_TAKER_URL` / `_MAKER_URL` (bare domains) override shared/endpoints.ts; `AGENT_HEALTH=off`
+  turns it off. It runs whenever the game stream does.
+- `/health` today says mode, target, ledger, tick, last tick, doors, paused and the game's tick. The tick's
+  duration (`tick_ms`, `tick_budget_s`), 429s (`rate_limited`) and Jev (`jev_ms`, `jev_undecided` 0–1) are read
+  as soon as bazaar's `status.py` reports them; until then only the mock shows them.
+- The duels have no HTTP: their chip reads their decisions. Silence thresholds are per agent
+  (`SILENCE` in `src/game/views/decisions.ts`): the taker is silent after 3 ticks; the maker, which posts in
+  bursts, is quiet (amber) after 3 and silent after 24; the duels after 3 and 12. Closed doors or a paused game
+  explain a silence; a report older than 45 s greys the chip.
+- `?mock=1`: the taker's ledger is down (red), the maker's ticks run at 14.2 of 15 s (amber), the duels are fine.
 
 ### Our cash and its movements (`/history`)
 
 Cash is in the header of every game screen, larger than the other figures, with its last change (▲ +68 P); once
 the header scrolls away it stays in a pill in the corner. Both open `/history`. The header's figure is the game's
-own `/me`, live; the screen reads Postgres through `db/history.sql`, four more read-only views for the same role:
+own `/me`, live; the screen reads Postgres through `db/history.sql`, six more read-only views for the same role:
 
 - `show.cash_points`: our cash (real world, our team) at each tick it changed, and the latest, with score and rank.
 - `show.our_trades`: our settlements from the feed (it carries when we received them, so a tick that starts again
@@ -215,6 +240,19 @@ own `/me`, live; the screen reads Postgres through `db/history.sql`, four more r
 - `show.our_orders`: the ledger (listings, accepts, spends) per agent.
 - `show.our_events`: our feed events that move cash or stock besides a trade: a market's bond, a pack opened, a
   gift, a level, a failed settlement.
+- `show.score_points`: our score and its five parts (duels, ladder, negotiation, market-making, bench) and cash at
+  each tick one of them moved, and the latest. Never the whole score object (it carries `luck_private`).
+- `show.score_marks`: what may explain a change of score: an agent's `process_started` decision (a deploy or a
+  restart; only the agent and the tick leave the row) and the game's own turns (a round, a Market Test, duels, a
+  new day). A decision has a tick and no time, so a start is put on its day by order: a tick far below the one
+  before it starts a new run of the clock, as does a day that starts far below the last day's last tick.
+
+The top of `/history` is **Score today**: the score tick by tick with a mark at each start (an agent's starts
+within 10 ticks of each other fold into one, `taker restart ×8 (t434–480)`) and each game turn. Tap a mark to
+compare from it, until now or until the next mark: each part's change since the mark against the same number of
+ticks before it (▲ moving faster, ▼ slower), which is the answer to "did the change help?". Tap a part to put it
+on the big chart. Changes to the agents' GUARDRAILS.md, STRATEGY.md or flags are not marked: that repository is
+private, and the server holds no GitHub token. Until `show.score_points` is applied the panel is the cash chart.
 
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/history.sql`. The server reads

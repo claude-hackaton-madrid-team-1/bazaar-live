@@ -13,13 +13,15 @@
 --   * show.game_feed      the game feed as the agents received it (public events; one world: the real game),
 --                         plus, on our own thread.message rows, the words we sent and their tactic
 --   * show.game_me        our team's /me snapshots in the real world, projected to what the screens read
---   * show.game_duels     our duels: the outcome and, per message, only from/tick/price/days
+--   * show.game_duels     our duels: the outcome, our limit, the rounds, the decay per round and our gain (the
+--                         Duels screen asks whether their price is inside our limit), and per message only
+--                         from/tick/price/days; never in show.duel_lines, which feeds the public show
 --   * show.game_threads   our dealer threads
 --   * show.game_messages  the messages of our threads, with the tactic of each of ours (no embedding)
 --   * show.game_tape      the settlement tape (public)
 -- The views run with their OWNER's rights, so the role holds no grant on the tables. Never selected:
--- collection_value, any key, an affinity that is not a number, badges, open threads; a duel's your_limit, your_offer, result
--- (our gain), limit_meaning, your_days_weight and its words; of a decision, anything but its tactic's id (no tactic_why,
+-- collection_value, any key, an affinity that is not a number, badges, open threads; a duel's your_offer, limit_meaning,
+-- your_days_weight and its words; of a decision, anything but its tactic's id (no tactic_why,
 -- rag_context, jev, candidates or chosen).
 
 begin;
@@ -60,15 +62,19 @@ select s.tick,
   from public.me_snapshots s
  where s.world = 'real' and s.team = 't01';
 
--- Our duels, live ones included (the API relay shows them too, behind the same token). Like show.duel_lines,
--- nothing private leaves the payload: per message only these four keys, never the words.
+-- Our duels, live ones included (the API relay shows them too, behind the same token). Our limit and the result
+-- (what the deal kept for us: the surplus against our limit after the decay of its rounds) leave here, behind
+-- GAME_VIEW_TOKEN only, for the Duels screen: is their price inside our limit, what did each deal make. Never add
+-- them to show.duel_lines (the public show). Per message only these four keys, never the words; never your_offer,
+-- limit_meaning or your_days_weight. New columns go last: `create or replace view` only appends.
 create or replace view show.game_duels with (security_barrier = true) as
 select d.duel, d.session, d.tick, d.status, d.role, d.item, d.rival, d.deadline_tick, d.price, d.days, d.updated_at,
        coalesce((select jsonb_agg(jsonb_build_object('from', show.as_text(m.msg -> 'from', 40), 'tick', show.as_int(m.msg -> 'tick'),
                                                      'price', show.as_int(m.msg -> 'price'), 'days', show.as_int(m.msg -> 'days')) order by m.n)
                    from jsonb_array_elements(case when jsonb_typeof(d.payload -> 'messages') = 'array' then d.payload -> 'messages' else '[]'::jsonb end)
                         with ordinality as m(msg, n)
-                  where jsonb_typeof(m.msg) = 'object'), '[]'::jsonb) as messages
+                  where jsonb_typeof(m.msg) = 'object'), '[]'::jsonb) as messages,
+       d.your_limit, d.rounds, d.decay_per_round::float8 as decay_per_round, d.result::float8 as result
   from public.duels d;
 
 create or replace view show.game_threads with (security_barrier = true) as

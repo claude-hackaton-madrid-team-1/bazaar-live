@@ -7,10 +7,23 @@ import type { Route } from '../ui/route'
 import { useLang } from '../ui/lang'
 import type { GameStatus } from './store.ts'
 import type { Lane } from './views/agent.ts'
-import type { DecisionStatus } from '../../shared/decisions.ts'
+import type { AgentName, DecisionStatus } from '../../shared/decisions.ts'
+import type { HealthError } from '../../shared/health.ts'
+import type { ChipReason } from './views/health.ts'
 import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+type Silence = Readonly<Record<AgentName, { readonly quiet: number; readonly silent: number }>>
+
+/** A wait in seconds as a person says it: 45 s, 2 min, 1 h 5 min. */
+const span = (s: number): string => (s < 90 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`)
+
+/** An ISO time in the viewer's clock, hours and minutes. */
+export const hhmm = (iso: string | null): string | null => {
+  const at = iso ? new Date(iso) : null
+  return at && Number.isFinite(at.getTime()) ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : null
+}
 
 /** Our agents' tactic ids (bazaar's tactic bank, plus `plain`: our usual words), as the screens name them. */
 const TACTICS_EN: Readonly<Record<string, string>> = {
@@ -114,8 +127,8 @@ export interface GameStrings {
   /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agent names, kinds and rule ids stay as written. */
   readonly agt: {
     readonly agents: string
-    readonly agentsSub: (silentAfter: number) => string
-    readonly state: Readonly<Record<'none' | 'silent' | 'stuck' | 'ok', string>>
+    readonly agentsSub: (silence: Silence) => string
+    readonly state: Readonly<Record<'none' | 'silent' | 'quiet' | 'stuck' | 'ok', string>>
     readonly ago: (n: number) => string
     readonly never: string
     readonly noLog: string
@@ -140,8 +153,44 @@ export interface GameStrings {
     readonly more: (n: number) => string
     readonly label: Readonly<Record<'good' | 'ok' | 'bad', string>>
     readonly alertSilent: (agent: string, ticks: number | null) => string
+    readonly alertQuiet: (agent: string, ticks: number) => string
     readonly alertStuck: (agent: string, n: number, rule: string) => string
     readonly allOk: string
+    /** What its /health says beside a silent or quiet agent: ": ledger down since 11:40". */
+    readonly because: (reason: string, since: string | null) => string
+    readonly healthFine: string
+  }
+  /** The header's health strip: one chip per agent, its one reason, and the panel a click opens. */
+  readonly health: {
+    readonly label: string
+    readonly reason: (r: ChipReason) => string
+    readonly since: (hhmm: string) => string
+    readonly ok: string
+    readonly title: (agent: string, reason: string) => string
+    readonly close: string
+    readonly problems: string
+    readonly row: {
+      readonly mode: string
+      readonly game: string
+      readonly ledger: string
+      readonly lastTick: string
+      readonly doors: string
+      readonly tickTime: string
+      readonly rateLimited: string
+      readonly jev: string
+      readonly decisions: string
+      readonly checked: string
+    }
+    readonly mode: { readonly live: string; readonly dry: string }
+    readonly target: { readonly real: string; readonly simulator: string }
+    readonly ledger: { readonly shared: string; readonly down: string; readonly local: string }
+    readonly doors: { readonly open: string; readonly closed: string; readonly paused: string }
+    readonly ago: (s: number) => string
+    readonly tickOf: (tick: number, server: number | null) => string
+    readonly undecided: (share: number) => string
+    readonly noHttp: string
+    readonly noReport: string
+    readonly error: Readonly<Record<HealthError, string>>
   }
   readonly badge: {
     readonly final: string
@@ -200,18 +249,6 @@ export interface GameStrings {
     readonly detailsLine: (b: { round: number; tick: number | null; offerId: number | null; messageId: number | null; expiresTick: number | null }) => string
     readonly we: string
     readonly convoLabel: (id: number) => string
-    readonly duels: string
-    readonly duelsSub: (live: number) => string
-    readonly noDuels: string
-    readonly duelCol: Readonly<Record<'duel' | 'rival' | 'role' | 'us' | 'them' | 'gap' | 'rounds' | 'status' | 'deal' | 'points', string>>
-    readonly duelStatus: Readonly<Record<'open' | 'deal' | 'no deal', string>>
-    readonly against: string
-    readonly unknownRival: string
-    readonly rivalDuels: (duels: number, finished: number) => string
-    readonly ticksLeft: (ticks: number) => string
-    readonly rivalDeals: (deals: number, noDeals: number) => string
-    readonly rivalPoints: (points: number | null) => string
-    readonly rivalPointsNone: string
     readonly tactic: (id: string) => string
     readonly tacticTitle: string
     readonly worked: string
@@ -448,15 +485,39 @@ export interface GameStrings {
     readonly ordersHead: readonly string[]
     readonly agent: string
     readonly allAgents: string
+    readonly score: {
+      readonly title: string
+      readonly sub: (marks: number) => string
+      readonly series: Readonly<Record<'score' | 'duel' | 'ladder' | 'neg' | 'mm' | 'bench' | 'cash', string>>
+      readonly until: string
+      readonly untilNow: string
+      readonly untilNext: string
+      readonly start: (agent: string, count: number, first: number, last: number) => string
+      readonly startWhy: string
+      readonly game: Readonly<Record<string, string>>
+      readonly from: string
+      readonly to: string
+      readonly now: string
+      readonly ticks: (n: number, minutes: number | null) => string
+      readonly after: string
+      readonly before: (ticks: number) => string
+      readonly better: string
+      readonly worse: string
+      readonly same: string
+      readonly noMarks: string
+      readonly focus: (series: string) => string
+      readonly chartLabel: (series: string) => string
+    }
   }
 }
 
 const EN: GameStrings = {
-  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
-    negotiations: 'our threads and duels',
+    negotiations: 'our dealer threads',
+    duels: 'our duels: is their price inside our limit?',
     album: 'pages and score',
     market: 'everyone else',
     history: 'our cash and every movement of it',
@@ -548,8 +609,8 @@ const EN: GameStrings = {
   },
   agt: {
     agents: 'Agents',
-    agentsSub: (n) => `silent after ${plural(n, 'tick', 'ticks')} without a decision`,
-    state: { none: 'NO LOG', silent: 'SILENT', stuck: 'BLOCKED', ok: 'OK' },
+    agentsSub: (x) => `silent after ${plural(x.taker.silent, 'tick', 'ticks')} without a decision · maker quiet first, silent after ${x.maker.silent} · duels after ${x.duels.silent}`,
+    state: { none: 'NO LOG', silent: 'SILENT', quiet: 'QUIET', stuck: 'BLOCKED', ok: 'OK' },
     ago: (n) => (n === 0 ? 'decided this tick' : `last decision ${plural(n, 'tick', 'ticks')} ago`),
     never: 'never decided',
     noLog: 'no decision log from this source',
@@ -574,8 +635,55 @@ const EN: GameStrings = {
     more: (n) => `+${n} more`,
     label: { good: 'good', ok: 'ok', bad: 'bad' },
     alertSilent: (agent, n) => (n == null ? `${agent} has never decided` : `${agent} silent for ${plural(n, 'tick', 'ticks')}`),
+    alertQuiet: (agent, n) => `${agent} quiet for ${plural(n, 'tick', 'ticks')}`,
     alertStuck: (agent, n, rule) => `${agent} blocked ×${n} in a row by ${rule}`,
     allOk: 'all three agents are deciding',
+    because: (reason, since) => `: ${reason}${since ? ` since ${since}` : ''}`,
+    healthFine: ' · /health fine',
+  },
+  health: {
+    label: 'Agents\' health',
+    reason: (r) => {
+      switch (r.kind) {
+        case 'unreachable': return { timeout: 'no answer', http: '/health error', bad_body: 'bad /health', unreachable: 'unreachable' }[r.error]
+        case 'ledger_down': return 'ledger down'
+        case 'no_tick': return `no tick for ${span(r.ageS)}`
+        case 'tick_over':
+        case 'tick_slow': return `tick ${r.usedS}/${r.budgetS} s`
+        case 'dry': return 'dry run'
+        case 'paused': return 'game paused'
+        case 'behind': return `${plural(r.ticks, 'tick', 'ticks')} behind`
+        case 'rate_limited': return `429 ×${r.count}`
+        case 'jev_slow': return `Jev slow ${r.s} s`
+        case 'jev_undecided': return `Jev undecided ${Math.round(r.share * 100)}%`
+        case 'simulator': return 'simulator'
+        case 'ledger_local': return 'ledger local'
+        case 'closed': return hhmm(r.opens) ? `closed · opens ${hhmm(r.opens)}` : 'doors closed'
+        case 'silent': return r.ticks == null ? 'never decided' : `silent ${plural(r.ticks, 'tick', 'ticks')}`
+        case 'quiet': return `quiet ${plural(r.ticks, 'tick', 'ticks')}`
+        case 'stuck': return `blocked ×${r.count}`
+        case 'stale': return `no /health for ${span(r.ageS)}`
+      }
+    },
+    since: (t) => `since ${t}`,
+    ok: 'ok',
+    title: (agent, reason) => `${agent}: ${reason} · click for details`,
+    close: 'Close',
+    problems: 'What is wrong',
+    row: {
+      mode: 'mode', game: 'game', ledger: 'ledger', lastTick: 'last tick', doors: 'doors', tickTime: 'tick time',
+      rateLimited: '429s', jev: 'Jev', decisions: 'decisions', checked: '/health read',
+    },
+    mode: { live: 'live', dry: 'dry run (sends nothing)' },
+    target: { real: 'real game', simulator: 'simulator' },
+    ledger: { shared: 'shared', down: 'down (a live agent sends nothing)', local: 'local file' },
+    doors: { open: 'open', closed: 'closed', paused: 'paused' },
+    ago: (s) => `${span(s)} ago`,
+    tickOf: (tick, server) => (server == null || server === tick ? `tick ${tick}` : `tick ${tick} · game at ${server}`),
+    undecided: (share) => `${Math.round(share * 100)}% undecided`,
+    noHttp: 'no /health: read from its decisions',
+    noReport: 'no /health relayed yet: read from its decisions',
+    error: { timeout: 'no answer in 4 s', http: '/health answered an error', bad_body: '/health answered something else', unreachable: 'could not connect' },
   },
   badge: {
     final: 'FINAL',
@@ -663,18 +771,6 @@ const EN: GameStrings = {
     detailsLine: (b) => `round ${b.round} · tick ${b.tick ?? '—'} · offer ${b.offerId ?? '—'} · message ${b.messageId ?? '—'} · expires t${b.expiresTick ?? '—'}`,
     we: 'we',
     convoLabel: (id) => `Conversation in thread ${id}`,
-    duels: 'Duels',
-    duelsSub: (live) => `${live} live`,
-    noDuels: 'No duels yet.',
-    duelCol: { duel: 'duel', rival: 'rival', role: 'role', us: 'us', them: 'them', gap: 'gap', rounds: 'rounds', status: 'status', deal: 'deal', points: 'points' },
-    duelStatus: { open: 'open', deal: 'deal', 'no deal': 'no deal' },
-    against: 'Dueling against',
-    unknownRival: 'unknown rival',
-    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duel' : 'duels'} · ${done} finished`,
-    ticksLeft: (n) => (n === 0 ? 'ends this tick' : `${n} ${n === 1 ? 'tick' : 'ticks'} left`),
-    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'deal' : 'deals'} · ${none} no deal`,
-    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
-    rivalPointsNone: 'No points recorded for these duels (our database does not keep them)',
     tactic: (id) => TACTICS_EN[id] ?? id.replace(/_/g, ' '),
     tacticTitle: 'The tactic our agent picked for these words',
     worked: 'What worked',
@@ -934,15 +1030,39 @@ const EN: GameStrings = {
     ordersHead: ['tick', 'agent', 'order', 'card', 'price'],
     agent: 'Agent',
     allAgents: 'All',
+    score: {
+      title: 'Score today',
+      sub: (marks) => `${plural(marks, 'mark', 'marks')} where something changed · tap one to compare`,
+      series: { score: 'Score', duel: 'Duels', ladder: 'Ladder', neg: 'Negotiation', mm: 'Market-making', bench: 'Bench', cash: 'Cash' },
+      until: 'Compare until',
+      untilNow: 'until now',
+      untilNext: 'until the next mark',
+      start: (agent, count, first, last) => `${agent} restart${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      startWhy: 'the process started: a deploy or a restart',
+      game: { round: 'New round', bench: 'Market Test', duels: 'Duels', day: 'New day' },
+      from: 'since',
+      to: 'until',
+      now: 'now',
+      ticks: (n, minutes) => `${plural(n, 'tick', 'ticks')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      after: 'since the mark',
+      before: (ticks) => `the ${ticks} ticks before`,
+      better: 'moving faster than before the mark',
+      worse: 'moving slower than before the mark',
+      same: 'as before the mark',
+      noMarks: 'No change marked today yet: the chart shows the score alone.',
+      focus: (series) => `Show ${series} on the big chart`,
+      chartLabel: (series) => `${series} today, tick by tick, with the marks where something changed`,
+    },
   },
 }
 
 const ES: GameStrings = {
-  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
-    negotiations: 'nuestros hilos y duelos',
+    negotiations: 'nuestros hilos con tratantes',
+    duels: 'nuestros duelos: ¿su precio está dentro de nuestro límite?',
     album: 'páginas y puntuación',
     market: 'todos los demás',
     history: 'nuestra caja y cada movimiento',
@@ -1034,8 +1154,8 @@ const ES: GameStrings = {
   },
   agt: {
     agents: 'Agentes',
-    agentsSub: (n) => `en silencio tras ${plural(n, 'turno', 'turnos')} sin decidir`,
-    state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', stuck: 'BLOQUEADO', ok: 'OK' },
+    agentsSub: (x) => `en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · el maker primero callado, en silencio tras ${x.maker.silent} · duelos tras ${x.duels.silent}`,
+    state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', quiet: 'CALLADO', stuck: 'BLOQUEADO', ok: 'OK' },
     ago: (n) => (n === 0 ? 'ha decidido este turno' : `última decisión hace ${plural(n, 'turno', 'turnos')}`),
     never: 'nunca ha decidido',
     noLog: 'esta fuente no trae registro de decisiones',
@@ -1060,8 +1180,55 @@ const ES: GameStrings = {
     more: (n) => `+${n} más`,
     label: { good: 'bueno', ok: 'justo', bad: 'malo' },
     alertSilent: (agent, n) => (n == null ? `${agent} nunca ha decidido` : `${agent} lleva ${plural(n, 'turno', 'turnos')} sin decidir`),
+    alertQuiet: (agent, n) => `${agent} lleva ${plural(n, 'turno', 'turnos')} callado`,
     alertStuck: (agent, n, rule) => `${agent} bloqueado ×${n} seguidas por ${rule}`,
     allOk: 'los tres agentes están decidiendo',
+    because: (reason, since) => `: ${reason}${since ? ` desde las ${since}` : ''}`,
+    healthFine: ' · /health bien',
+  },
+  health: {
+    label: 'Salud de los agentes',
+    reason: (r) => {
+      switch (r.kind) {
+        case 'unreachable': return { timeout: 'sin respuesta', http: 'error en /health', bad_body: '/health raro', unreachable: 'inalcanzable' }[r.error]
+        case 'ledger_down': return 'ledger caído'
+        case 'no_tick': return `sin turno hace ${span(r.ageS)}`
+        case 'tick_over':
+        case 'tick_slow': return `turno ${r.usedS}/${r.budgetS} s`
+        case 'dry': return 'ensayo'
+        case 'paused': return 'juego en pausa'
+        case 'behind': return `${plural(r.ticks, 'turno', 'turnos')} de retraso`
+        case 'rate_limited': return `429 ×${r.count}`
+        case 'jev_slow': return `Jev lento ${r.s} s`
+        case 'jev_undecided': return `Jev indeciso ${Math.round(r.share * 100)}%`
+        case 'simulator': return 'simulador'
+        case 'ledger_local': return 'ledger local'
+        case 'closed': return hhmm(r.opens) ? `cerrado · abre ${hhmm(r.opens)}` : 'puertas cerradas'
+        case 'silent': return r.ticks == null ? 'nunca ha decidido' : `${plural(r.ticks, 'turno', 'turnos')} en silencio`
+        case 'quiet': return `${plural(r.ticks, 'turno', 'turnos')} callado`
+        case 'stuck': return `bloqueado ×${r.count}`
+        case 'stale': return `sin /health hace ${span(r.ageS)}`
+      }
+    },
+    since: (t) => `desde las ${t}`,
+    ok: 'ok',
+    title: (agent, reason) => `${agent}: ${reason} · pulsa para ver el detalle`,
+    close: 'Cerrar',
+    problems: 'Qué falla',
+    row: {
+      mode: 'modo', game: 'juego', ledger: 'ledger', lastTick: 'último turno', doors: 'puertas', tickTime: 'duración del turno',
+      rateLimited: '429', jev: 'Jev', decisions: 'decisiones', checked: '/health leído',
+    },
+    mode: { live: 'en vivo', dry: 'ensayo (no envía nada)' },
+    target: { real: 'juego real', simulator: 'simulador' },
+    ledger: { shared: 'compartido', down: 'caído (un agente en vivo no envía nada)', local: 'fichero local' },
+    doors: { open: 'abiertas', closed: 'cerradas', paused: 'en pausa' },
+    ago: (s) => `hace ${span(s)}`,
+    tickOf: (tick, server) => (server == null || server === tick ? `turno ${tick}` : `turno ${tick} · el juego va por el ${server}`),
+    undecided: (share) => `${Math.round(share * 100)}% indeciso`,
+    noHttp: 'sin /health: se lee de sus decisiones',
+    noReport: 'aún no llega su /health: se lee de sus decisiones',
+    error: { timeout: 'no respondió en 4 s', http: '/health respondió un error', bad_body: '/health respondió otra cosa', unreachable: 'no se pudo conectar' },
   },
   badge: {
     final: 'FINAL',
@@ -1149,18 +1316,6 @@ const ES: GameStrings = {
     detailsLine: (b) => `ronda ${b.round} · turno ${b.tick ?? '—'} · oferta ${b.offerId ?? '—'} · mensaje ${b.messageId ?? '—'} · caduca t${b.expiresTick ?? '—'}`,
     we: 'nosotros',
     convoLabel: (id) => `Conversación del hilo ${id}`,
-    duels: 'Duelos',
-    duelsSub: (live) => `${live} en curso`,
-    noDuels: 'Aún no hay duelos.',
-    duelCol: { duel: 'duelo', rival: 'rival', role: 'papel', us: 'nosotros', them: 'ellos', gap: 'distancia', rounds: 'rondas', status: 'estado', deal: 'trato', points: 'puntos' },
-    duelStatus: { open: 'abierto', deal: 'trato', 'no deal': 'sin trato' },
-    against: 'En duelo contra',
-    unknownRival: 'rival desconocido',
-    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duelo' : 'duelos'} · ${done} ${done === 1 ? 'terminado' : 'terminados'}`,
-    ticksLeft: (n) => (n === 0 ? 'acaba este turno' : `quedan ${n} ${n === 1 ? 'turno' : 'turnos'}`),
-    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'trato' : 'tratos'} · ${none} sin trato`,
-    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
-    rivalPointsNone: 'Sin puntos registrados para estos duelos (nuestra base de datos no los guarda)',
     tactic: (id) => TACTICS_ES[id] ?? id.replace(/_/g, ' '),
     tacticTitle: 'La táctica que eligió nuestro agente para estas palabras',
     worked: 'Qué funcionó',
@@ -1420,6 +1575,29 @@ const ES: GameStrings = {
     ordersHead: ['turno', 'agente', 'orden', 'carta', 'precio'],
     agent: 'Agente',
     allAgents: 'Todos',
+    score: {
+      title: 'Puntos de hoy',
+      sub: (marks) => `${plural(marks, 'marca', 'marcas')} donde algo cambió · toca una para comparar`,
+      series: { score: 'Puntos', duel: 'Duelos', ladder: 'Escalera', neg: 'Negociación', mm: 'Creación de mercado', bench: 'Banco de pruebas', cash: 'Caja' },
+      until: 'Comparar hasta',
+      untilNow: 'hasta ahora',
+      untilNext: 'hasta la siguiente',
+      start: (agent, count, first, last) => `reinicio de ${agent}${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      startWhy: 'arrancó el proceso: un despliegue o un reinicio',
+      game: { round: 'Nueva ronda', bench: 'Prueba de mercado', duels: 'Duelos', day: 'Nuevo día' },
+      from: 'desde',
+      to: 'hasta',
+      now: 'ahora',
+      ticks: (n, minutes) => `${plural(n, 'turno', 'turnos')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      after: 'desde la marca',
+      before: (ticks) => `${ticks} turnos antes`,
+      better: 'avanza más rápido que antes de la marca',
+      worse: 'avanza más despacio que antes de la marca',
+      same: 'igual que antes de la marca',
+      noMarks: 'Hoy aún no hay cambios marcados: el gráfico muestra solo los puntos.',
+      focus: (series) => `Ver ${series} en el gráfico grande`,
+      chartLabel: (series) => `${series} de hoy, turno a turno, con las marcas donde algo cambió`,
+    },
   },
 }
 
