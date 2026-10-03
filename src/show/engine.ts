@@ -5,12 +5,16 @@
  * (cards fly, dealers pop in, the stop sign shakes), then says each line, waiting for the voice (or a
  * reading time when muted) before the next. Replayed history goes straight to the transcript.
  */
+import { DEFAULT_LANG, type Lang } from '../../shared/lang.ts'
+import { HOODS } from '../../shared/vocab.ts'
 import type { AgentHealth, AgentId, OpenOffer, ShowEvent } from '../model/events'
 import type { FeedStatus } from '../net/feed'
 import type { SpeechQueue } from '../tts/queue'
 import type { Beat, Cue, DealerId, Line, Side } from './beat'
-import { toBeat, idleBeat } from './dialogue'
+import { holdsBeat, situationBeat, toBeat, type DialogueContext } from './dialogue'
 import { Director } from './director'
+import { LineMemory } from './memory'
+import { situationOf } from './situation'
 
 export interface BoardCard {
   readonly key: string
@@ -65,7 +69,13 @@ export interface ShowState {
 
 const MAX_TRANSCRIPT = 240
 const MAX_BOARD = 8
-const IDLE_AFTER_MS = 50_000
+/** A quiet open market talks again after this long; closed doors, a pause or no signal a bit sooner. */
+const IDLE_AFTER_MS = 35_000
+const IDLE_AFTER_CLOSED_MS = 22_000
+/** The neighbourhoods that arrive after day one (RULES.md: El Retiro on Saturday, Chamberí on Sunday). */
+const LATE_HOODS: ReadonlySet<string> = new Set(['RET', 'CHA'])
+/** The Market Test runs every two game hours (RULES.md): a session starts each time this slot changes. */
+const MARKET_TEST_HOURS = 2
 const NOTIFY_MS = 16
 const STALE_TICKS = 2
 
@@ -96,9 +106,16 @@ export function readingMs(text: string, backlog: number): number {
 export interface EngineOptions {
   readonly speech: SpeechQueue
   readonly director?: Director
+  /** The language of every line (default castellano). */
+  readonly lang?: Lang
+  /** What was said lately, so no line repeats within its window (a fresh one by default). */
+  readonly memory?: LineMemory
   /** Ambient banter when nothing happened for a while (off in tests). */
   readonly idle?: boolean
+  /** Overrides how long a quiet stage waits before it talks about the situation. */
+  readonly idleAfterMs?: number
   readonly sleep?: (ms: number) => Promise<void>
+  readonly now?: () => number
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -167,6 +184,17 @@ export class ShowEngine {
   private readonly director: Director
   private readonly sleep: (ms: number) => Promise<void>
   private readonly idle: boolean
+  private readonly lang: Lang
+  private readonly memory: LineMemory
+  private readonly clock: () => number
+  private readonly idleAfterMs: number | null
+  /** Late neighbourhoods already seen (or announced), and the Market Test slot last seen. */
+  private readonly seenHoods = new Set<string>()
+  private freshHood: string | null = null
+  private marketTestSlot: number | null = null
+  private freshMarketTest = false
+  /** When the stage last did something (a live event, a scene ended, a line of situation talk), in real time. */
+  private activityAt = Date.now()
   private wake: (() => void) | null = null
   /** Each start() bumps it; an older run loop sees the change and exits (React StrictMode restarts). */
   private generation = 0
@@ -178,9 +206,25 @@ export class ShowEngine {
 
   constructor(options: EngineOptions) {
     this.speech = options.speech
-    this.director = options.director ?? new Director()
+    this.lang = options.lang ?? DEFAULT_LANG
+    this.memory = options.memory ?? new LineMemory()
+    this.clock = options.now ?? Date.now
+    this.director = options.director ?? new Director({ mergeHolds: (holds) => holdsBeat(holds, this.dialogue(true)) })
     this.sleep = options.sleep ?? defaultSleep
     this.idle = options.idle ?? true
+    this.idleAfterMs = options.idleAfterMs ?? null
+  }
+
+  /** The dialogue's view of the stage; only live beats get the memory (replayed history must not use lines up). */
+  private dialogue(live: boolean): DialogueContext {
+    const last = this.state.lastEventAt
+    return {
+      lang: this.lang,
+      memory: live ? this.memory : undefined,
+      now: this.clock(),
+      busy: this.director.size > 3,
+      quietMs: last === null ? null : this.clock() - last,
+    }
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -239,27 +283,90 @@ export class ShowEngine {
     if (event.type === 'agent.tick') {
       const heartbeat = replay ? this.state.heartbeat : { ...this.state.heartbeat, [event.agent]: this.state.heartbeat[event.agent] + 1 }
       this.set({ ticks: { ...this.state.ticks, [event.agent]: event.tick }, heartbeat })
+      if (!replay) {
+        this.noticeClock(event.t)
+        this.announce()
+        this.wake?.()
+      }
       return
     }
-    const beat = toBeat(event)
-    if (!beat) return
     // A late replay on slow Wi-Fi can arrive after the feed's replay window: an event several ticks
     // behind what the agent's /health reports is history, not a scene.
     const agentTick = this.state.health[event.agent]?.tick ?? null
     const stale = event.tick !== null && agentTick !== null && event.tick < agentTick - STALE_TICKS
-    if (replay || stale) {
+    const live = !(replay || stale)
+    const beat = toBeat(event, this.dialogue(live))
+    if (!beat) return
+    this.noticePage(event, live)
+    if (!live) {
       this.set({ board: this.boardAfter(beat), transcript: this.appendLines(beat, 'history') })
       return
     }
     const dropped = this.director.push(beat)
-    this.set({ lastEventAt: Date.now() })
+    this.set({ lastEventAt: this.clock() })
+    this.activityAt = Date.now()
     dropped.forEach((b) => this.set({ transcript: this.appendLines(b, 'skipped') }))
+    this.announce()
     this.wake?.()
+  }
+
+  /** A card from a neighbourhood that opens late is a new page, announced once when a live event shows it. */
+  private noticePage(event: ShowEvent, live: boolean): void {
+    if (event.type !== 'agent.decision') return
+    const inputs = event.decision.inputs
+    const set = (inputs.ref ?? inputs.card ?? inputs.item ?? '').slice(0, 3).toUpperCase()
+    if (!LATE_HOODS.has(set) || this.seenHoods.has(set)) return
+    this.seenHoods.add(set)
+    if (live) this.freshHood = HOODS[set] ?? null
+  }
+
+  /** The Market Test starts a session every two game hours: a new slot on a live tick is one. */
+  private noticeClock(t: number | null): void {
+    if (t === null) return
+    const slot = Math.floor(t / MARKET_TEST_HOURS)
+    if (this.marketTestSlot !== null && slot > this.marketTestSlot) this.freshMarketTest = true
+    this.marketTestSlot = slot
+  }
+
+  /** What the stage knows about the world, for the situation it talks about when it is idle. */
+  private narration() {
+    return {
+      health: this.state.health,
+      feeds: this.state.feeds,
+      now: this.clock(),
+      tick: this.state.ticks.taker ?? this.state.ticks.maker ?? this.state.health.taker?.tick ?? this.state.health.maker?.tick ?? null,
+      freshHood: this.freshHood,
+      freshMarketTest: this.freshMarketTest,
+    }
+  }
+
+  /** One-shot news (a new page, a Market Test session) is said at once, not when the stage next gets bored. */
+  private announce(): void {
+    if (!this.freshHood && !this.freshMarketTest) return
+    this.situational()
+  }
+
+  /** Queue one beat about the situation; one-shot news is consumed by being said. */
+  private situational(): void {
+    this.activityAt = Date.now()
+    this.idleCount += 1
+    const situation = situationOf(this.narration(), this.lang, this.idleCount)
+    if (situation.topic === 'new_page') this.freshHood = null
+    if (situation.topic === 'market_test') this.freshMarketTest = false
+    this.director.push(situationBeat(this.idleCount, situation, this.dialogue(true)))
+  }
+
+  /** How long a quiet stage waits: less when the doors are closed or the game is paused or unreachable. */
+  private idleDelay(): number {
+    if (this.idleAfterMs !== null) return this.idleAfterMs
+    const topic = situationOf(this.narration(), this.lang, 0).topic
+    return topic === 'doors_closed' || topic === 'paused' || topic === 'offline' ? IDLE_AFTER_CLOSED_MS : IDLE_AFTER_MS
   }
 
   start(): void {
     if (this.running) return
     this.running = true
+    this.activityAt = Date.now()
     this.generation += 1
     void this.run(this.generation)
   }
@@ -295,12 +402,12 @@ export class ShowEngine {
         await this.play(beat, generation)
         continue
       }
-      await this.waitForWork(IDLE_AFTER_MS)
+      // Quiet for `delay` since anything last happened: then it talks about the situation. A wake-up
+      // before that (a tick, a replayed event) only moves the clock forward.
+      const delay = this.idleDelay()
+      await this.waitForWork(Math.max(50, delay - (Date.now() - this.activityAt)))
       this.wake = null
-      if (this.running && this.idle && this.director.size === 0 && Date.now() - (this.state.lastEventAt ?? 0) >= IDLE_AFTER_MS) {
-        this.idleCount += 1
-        this.director.push(idleBeat(this.idleCount))
-      }
+      if (this.running && this.idle && this.director.size === 0 && Date.now() - this.activityAt >= delay) this.situational()
     }
   }
 
@@ -322,21 +429,31 @@ export class ShowEngine {
   }
 
   private prefetch(beat: Beat | null): void {
-    beat?.lines.forEach((line, i) => this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }))
+    beat?.lines.forEach((line, i) => this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, lang: this.lang, text: line.text }))
   }
 
   private async play(beat: Beat, generation: number): Promise<void> {
     this.prefetch(beat)
     this.prefetch(this.director.peek())
     this.set(this.cuePatch(beat))
+    const utterance = (line: Line, i: number) => ({ id: `${beat.id}#${i}`, speaker: line.speaker, lang: this.lang, text: line.text })
+    // The next line goes into the voice queue while the current one is still being said, so the queue
+    // never waits for the stage and there is no silence between lines.
+    let current: Promise<void> = Promise.resolve()
     for (const [i, line] of beat.lines.entries()) {
       if (!this.running || this.generation !== generation) return
       this.set({ line, transcript: this.appendLines(beat, 'played', line) })
-      const backlog = this.director.size + this.speech.backlog
-      await Promise.all([this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }), this.sleep(readingMs(line.text, backlog))])
+      if (i === 0) current = this.speech.say(utterance(line, 0))
+      const following = beat.lines[i + 1]
+      const next = following ? this.speech.say(utterance(following, i + 1)) : Promise.resolve()
+      // A voice sets the pace; the reading time only applies to a muted or silent stage.
+      const reading = this.speech.audible ? 0 : readingMs(line.text, this.director.size + this.speech.backlog)
+      await Promise.all([current, this.sleep(reading)])
+      current = next
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)
     this.set(this.clearPatch())
+    this.activityAt = Date.now()
   }
 
   /** After a beat the stage relaxes; a dealer stays only if the next beat continues the conversation. */

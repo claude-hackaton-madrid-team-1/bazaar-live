@@ -13,6 +13,8 @@ export interface DirectorOptions {
   /** Beats at or above this priority are never dropped for age. */
   readonly keepPriority: number
   readonly now: () => number
+  /** Joins a run of holds into one beat (the engine passes one that speaks the show's language). */
+  readonly mergeHolds: (holds: readonly Beat[]) => Beat
 }
 
 const DEFAULTS: DirectorOptions = {
@@ -20,6 +22,7 @@ const DEFAULTS: DirectorOptions = {
   maxAgeMs: 40_000,
   keepPriority: PRIORITY.dealer,
   now: () => Date.now(),
+  mergeHolds: (holds) => holdsBeat(holds, { lang: 'es' }),
 }
 
 interface Queued {
@@ -91,6 +94,6 @@ export class Director {
     const same = this.queue.filter((q) => q.beat.cue.kind === 'hold' && q.beat.agent === first.agent)
     if (same.length === 0) return first
     this.queue = this.queue.filter((q) => !same.includes(q))
-    return holdsBeat([first, ...same.map((q) => q.beat)])
+    return this.opts.mergeHolds([first, ...same.map((q) => q.beat)])
   }
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isShowLine } from '../../shared/lines.ts'
 import type { ShowEvent } from '../model/events'
 import { parseEnvelope } from '../model/sanitize'
 import { SpeechQueue } from '../tts/queue'
@@ -113,7 +114,7 @@ describe('board sync and stale events', () => {
   it('treats a live event far behind the agent tick as history', async () => {
     const { show, spoken } = engine()
     show.start()
-    show.setHealth('maker', { ok: true, agent: 'maker', mode: 'live', tick: 310, doors: 'open', paused: false, nextOpens: null, tickSeconds: 15, serverTick: 310 })
+    show.setHealth('maker', { ok: true, agent: 'maker', mode: 'live', tick: 310, doors: 'open', paused: false, nextOpens: null, tickSeconds: 15, serverTick: 310, target: 'real' })
     show.ingest(event(-30, { kind: 'post_ask', inputs: { ref: 'LAT-09', price: 68 } }), false)
     await settle()
     expect(spoken).toEqual([])
@@ -163,5 +164,130 @@ describe('a /state snapshot older than our own events (review P2 #1)', () => {
     expect(board(show)).toEqual([['LAT-09', 59, 1]])
     show.syncBoard(offer(59), 12)
     expect(board(show)).toEqual([['LAT-09', 59, 1]])
+  })
+})
+
+describe('the idle brain: the characters know what is going on', () => {
+  const NOW = Date.parse('2026-10-03T07:25:00+02:00')
+  const closedHealth = (agent: 'taker' | 'maker') => ({ ok: true, agent, mode: 'live' as const, tick: null, doors: 'closed', paused: true, nextOpens: '2026-10-03T09:00:00+02:00', tickSeconds: 60, serverTick: 159, target: 'real' as const })
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  function idleEngine(lang: 'es' | 'en') {
+    const spoken: Utterance[] = []
+    const provider: SpeechProvider = { name: 'webspeech', speak: async (u) => void spoken.push(u) }
+    const show = new ShowEngine({ speech: new SpeechQueue({ provider }), idle: true, idleAfterMs: 5, lang, now: () => NOW, sleep: () => Promise.resolve() })
+    return { show, spoken }
+  }
+
+  it('with the doors closed it talks about the countdown to the opening, in castellano', async () => {
+    const { show, spoken } = idleEngine('es')
+    show.setHealth('taker', closedHealth('taker'))
+    show.setHealth('maker', closedHealth('maker'))
+    show.start()
+    await wait(150)
+    show.stop()
+    const said = spoken.map((u) => u.text).join('\n')
+    expect(spoken.length).toBeGreaterThan(1)
+    expect(said).toMatch(/95 minutos|hoy a las 9:00|puertas|cerrad/i)
+    expect(spoken.every((u) => u.lang === 'es')).toBe(true)
+  })
+
+  it('says it in English with ?lang=en, and never in a mixed line', async () => {
+    const { show, spoken } = idleEngine('en')
+    show.setHealth('taker', closedHealth('taker'))
+    show.start()
+    await wait(150)
+    show.stop()
+    expect(spoken.map((u) => u.text).join('\n')).toMatch(/95 minutes|today at 9:00|doors|shut/i)
+    expect(spoken.every((u) => u.lang === 'en')).toBe(true)
+    for (const u of spoken) expect(isShowLine(u.speaker, u.text, 'en'), u.text).toBe(true)
+  })
+
+  it('does not repeat a line while the stage keeps talking to itself', async () => {
+    const { show, spoken } = idleEngine('es')
+    show.setHealth('taker', closedHealth('taker'))
+    show.start()
+    await wait(400)
+    show.stop()
+    const firsts = spoken.filter((u) => u.id.endsWith('#0')).map((u) => u.text)
+    expect(firsts.length).toBeGreaterThan(4)
+    // 4 beats fit well inside the default 6 minute window, and a closed-door bank has more than that.
+    expect(new Set(firsts.slice(0, 4)).size).toBe(4)
+  })
+
+  it('announces a new neighbourhood page once, only when a live event first shows it', async () => {
+    const { show, spoken } = engine()
+    show.start()
+    show.ingest(event(-1, { kind: 'post_ask', inputs: { ref: 'RET-03', price: 40 } }, 'maker'), true) // replay: seen, not news
+    show.ingest(event(-2, { kind: 'post_ask', inputs: { ref: 'RET-04', price: 41 } }, 'maker'), false)
+    await settle()
+    expect(spoken.map((u) => u.text).join(' ')).not.toMatch(/Páginas nuevas|Llega|zona nueva|comerciar/)
+    const fresh = engine()
+    fresh.show.start()
+    fresh.show.ingest(event(-3, { kind: 'post_ask', inputs: { ref: 'CHA-01', price: 40 } }, 'maker'), false)
+    fresh.show.ingest(event(-4, { kind: 'post_ask', inputs: { ref: 'CHA-02', price: 41 } }, 'maker'), false)
+    await settle()
+    await settle()
+    const mentions = fresh.spoken.filter((u) => /Chamberí/.test(u.text) && /(zona|Páginas|Llega)/.test(u.text))
+    expect(mentions.length).toBe(1)
+    show.stop()
+    fresh.show.stop()
+  })
+
+  it('notices a Market Test session when the game clock crosses a two-hour mark', async () => {
+    const { show, spoken } = engine()
+    show.start()
+    const tickAt = (id: number, t: number) => parseEnvelope({ id, tick: id, t, type: 'agent.tick', agent: 'maker', payload: { mode: 'live' } })!
+    show.ingest(tickAt(-1, 3.9), false) // first reading: the slot is learned, nothing is announced
+    await settle()
+    expect(spoken).toEqual([])
+    show.ingest(tickAt(-2, 4.1), false) // slot 1 → 2: a session started
+    await settle()
+    await settle()
+    expect(spoken.map((u) => u.text).join(' ')).toMatch(/Test de Mercado/)
+    show.stop()
+  })
+})
+
+describe('a gap-free voice queue', () => {
+  it('puts the next line in the queue while the current one is still being said', async () => {
+    const started: string[] = []
+    const release: (() => void)[] = []
+    const provider: SpeechProvider = {
+      name: 'webspeech',
+      speak: (u) => new Promise<void>((resolve) => { started.push(u.id); release.push(resolve) }),
+    }
+    const speech = new SpeechQueue({ provider })
+    const show = new ShowEngine({ speech, idle: false, sleep: () => Promise.resolve() })
+    show.start()
+    show.ingest(event(-40, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
+    await settle()
+    expect(started.length).toBe(1)
+    expect(speech.backlog).toBeGreaterThanOrEqual(1) // line 2 waits in the queue, not in the stage
+    release.shift()?.()
+    await settle()
+    expect(started.length).toBe(2) // and starts the moment line 1 ends
+    release.forEach((r) => r())
+    show.stop()
+  })
+
+  it('shows each caption when its voice starts, and the reading time only applies when muted', async () => {
+    const sleeps: number[] = []
+    const voiced = new SpeechQueue({ provider: { name: 'webspeech', speak: async () => undefined } })
+    const a = new ShowEngine({ speech: voiced, idle: false, sleep: (ms) => { sleeps.push(ms); return Promise.resolve() } })
+    a.start()
+    a.ingest(event(-41, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
+    await settle()
+    a.stop()
+    expect(sleeps.slice(0, 2)).toEqual([0, 0]) // a voice sets the pace
+    const mutedSleeps: number[] = []
+    const muted = new SpeechQueue({ provider: { name: 'webspeech', speak: async () => undefined } })
+    muted.setMuted(true)
+    const b = new ShowEngine({ speech: muted, idle: false, sleep: (ms) => { mutedSleeps.push(ms); return Promise.resolve() } })
+    b.start()
+    b.ingest(event(-42, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
+    await settle()
+    b.stop()
+    expect(mutedSleeps[0]).toBeGreaterThan(1000) // text is read at reading speed
   })
 })

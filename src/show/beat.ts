@@ -1,7 +1,8 @@
+import type { Mood } from '../../shared/bank.ts'
 import type { Speaker } from '../../shared/tags.ts'
 import type { AgentId } from '../model/events'
 
-export type { Speaker }
+export type { Mood, Speaker }
 
 export interface Line {
   readonly speaker: Speaker
@@ -32,6 +33,8 @@ export interface Beat {
   /** Higher plays first and survives a busy tick; see PRIORITY. */
   readonly priority: number
   readonly lines: readonly Line[]
+  /** The tone the words were picked in (see mood.ts); the stage can show it. */
+  readonly mood: Mood
   readonly cue: Cue
   /** A guardrail said no: the stop sign. */
   readonly denied: boolean
@@ -49,10 +52,12 @@ export const PRIORITY = {
   dealerAccept: 85,
   take: 80,
   dealer: 70,
+  duel: 65,
   fail: 60,
   dealerBid: 60,
   post: 50,
-  reprice: 45,
+  news: 45,
+  reprice: 44,
   cancel: 35,
   pass: 25,
   sent: 20,

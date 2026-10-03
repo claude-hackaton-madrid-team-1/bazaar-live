@@ -1,4 +1,5 @@
 import { MAKER_HTTP, TAKER_HTTP, toWs } from '../shared/endpoints.ts'
+import { parseLang, type Lang } from '../shared/lang.ts'
 import type { AgentId } from './model/events'
 
 export interface AgentEndpoint {
@@ -22,6 +23,12 @@ export interface ShowConfig {
   readonly speed: number
   /** `?tts=webspeech|elevenlabs|gemini|off|auto` (default auto: the best provider the proxy has). */
   readonly tts: TtsChoice
+  /** `?lang=en` for English; castellano (with a Madrid flavour) by default. One language per line, never mixed. */
+  readonly lang: Lang
+  /** `?doors=closed`: the mock's /health says the doors are closed (to see the countdown talk). */
+  readonly mockDoors: 'open' | 'closed'
+  /** `?idle=8`: seconds of quiet before the characters talk about the situation (default 22 to 35, by the situation). */
+  readonly idleSeconds: number | null
   /** `?mode=dry`: the mock's /health says dry run instead of live. */
   readonly mockMode: 'live' | 'dry'
 }
@@ -30,6 +37,12 @@ export const POLL = { healthMs: 20_000, stateMs: 30_000 } as const
 
 function flag(value: string | null): boolean {
   return value !== null && ['1', 'true', 'yes', 'on', ''].includes(value.toLowerCase())
+}
+
+function idleSeconds(value: string | null): number | null {
+  if (value === null) return null
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.min(600, Math.max(2, n)) : null
 }
 
 export function readConfig(search: string): ShowConfig {
@@ -41,5 +54,8 @@ export function readConfig(search: string): ShowConfig {
     speed: Number.isFinite(speed) ? Math.min(8, Math.max(0.25, speed)) : 1,
     tts: (TTS_CHOICES as readonly string[]).includes(tts) ? (tts as TtsChoice) : 'auto',
     mockMode: params.get('mode') === 'dry' ? 'dry' : 'live',
+    lang: parseLang(params.get('lang')),
+    idleSeconds: idleSeconds(params.get('idle')),
+    mockDoors: params.get('doors') === 'closed' ? 'closed' : 'open',
   }
 }

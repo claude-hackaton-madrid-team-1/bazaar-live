@@ -34,7 +34,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
       }),
     [providerFor],
   )
-  const engine = useMemo(() => new ShowEngine({ speech: queue }), [queue])
+  const engine = useMemo(() => new ShowEngine({ speech: queue, lang: config.lang, idleAfterMs: config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.lang, config.idleSeconds])
   const state = useSyncExternalStore(engine.subscribe, engine.getSnapshot)
 
   const [muted, setMuted] = useState(true)
@@ -61,7 +61,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
 }
 
 function useSources(engine: ShowEngine, config: ShowConfig): void {
-  const { mock, speed, mockMode } = config
+  const { mock, speed, mockMode, mockDoors } = config
   useEffect(() => {
     if (mock) {
       // The fixtures load only with ?mock=1: a normal visit never downloads them.
@@ -69,7 +69,7 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
       let cancelled = false
       void import('../mock/player').then(({ MockPlayer }) => {
         if (cancelled) return
-        const mockPlayer = new MockPlayer({ speed, mode: mockMode, onEvent: (e, replay) => engine.ingest(e, replay), onTick: () => refresh() })
+        const mockPlayer = new MockPlayer({ speed, mode: mockMode, doors: mockDoors, onEvent: (e, replay) => engine.ingest(e, replay), onTick: () => refresh() })
         const refresh = () => AGENTS.forEach((a) => engine.setHealth(a, mockPlayer.health(a)))
         AGENTS.forEach((a) => engine.setFeed(a, 'open'))
         refresh()
@@ -121,5 +121,5 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
       clearInterval(boardTimer)
       window.removeEventListener('online', online)
     }
-  }, [engine, mock, speed, mockMode])
+  }, [engine, mock, speed, mockMode, mockDoors])
 }

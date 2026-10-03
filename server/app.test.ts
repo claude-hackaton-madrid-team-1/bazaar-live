@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { clientAddress, createApp, parseTtsRequest } from './app.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, readLimits } from './limits.ts'
-import { geminiAudioData, geminiRequest, readProviderConfig, wavFromPcm } from './providers.ts'
+import { ELEVEN_SETTINGS, elevenRequest, geminiAudioData, geminiRequest, readProviderConfig, wavFromPcm } from './providers.ts'
 
 const servers: Server[] = []
 afterEach(() => servers.splice(0).forEach((s) => s.close()))
@@ -30,7 +30,7 @@ const tts = (base: string, body: unknown, headers: Record<string, string> = {}) 
   fetch(`${base}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...headers }, body: JSON.stringify(body) })
 
 /** A different show line per n (a seller hold), so each one misses the cache. */
-const holdLine = (n: number) => ({ provider: 'elevenlabs', speaker: 'seller', text: `La Latina number ${n} stays put.` })
+const holdLine = (n: number) => ({ provider: 'elevenlabs', speaker: 'seller', lang: 'es', text: `La Latina número ${n} se queda como está.` })
 
 describe('the TTS proxy', () => {
   it('reports no providers and still serves the show when no key is set', async () => {
@@ -51,7 +51,7 @@ describe('the TTS proxy', () => {
       return new Response(Buffer.from('ID3fake-mp3'), { status: 200, headers: { 'Content-Type': 'audio/mpeg' } })
     }) as unknown as typeof fetch
     const base = await start({ ELEVENLABS_API_KEY: 'test-key', ELEVENLABS_VOICE_BUYER: 'voice123' }, fake)
-    const body = { provider: 'elevenlabs', speaker: 'buyer', text: '[excited] Salamanca number 5 at 18 primas? ¡Me lo llevo!' }
+    const body = { provider: 'elevenlabs', speaker: 'buyer', lang: 'es', text: '[excited] ¿Salamanca número 5 a 18 primas? ¡Me la llevo!' }
     const first = await tts(base, body)
     expect(first.status).toBe(200)
     expect(first.headers.get('content-type')).toBe('audio/mpeg')
@@ -60,7 +60,12 @@ describe('the TTS proxy', () => {
     expect(calls.length).toBe(1)
     expect(calls[0]?.url).toContain('/v1/text-to-speech/voice123')
     expect(calls[0]?.headers['xi-api-key']).toBe('test-key')
-    expect(calls[0]?.body).toEqual({ text: '[excited] Salamanca number 5 at 18 primas? ¡Me lo llevo!', model_id: 'eleven_v4' })
+    expect(calls[0]?.body).toEqual({
+      text: '[excited] ¿Salamanca número 5 a 18 primas? ¡Me la llevo!',
+      model_id: 'eleven_v4',
+      language_code: 'es',
+      voice_settings: { stability: 0.35, similarity_boost: 0.75 },
+    })
   })
 
   it('speaks only the show\'s own lines, only for its own page', async () => {
@@ -74,7 +79,7 @@ describe('the TTS proxy', () => {
     expect(own.status).toBe(400)
     expect(await own.text()).toContain("only the show's own lines")
     // A template with free text smuggled into a slot is refused too.
-    expect((await tts(base, { provider: 'elevenlabs', speaker: 'seller', text: 'Buy my crypto now stays put.' })).status).toBe(400)
+    expect((await tts(base, { provider: 'elevenlabs', speaker: 'seller', text: 'Buy my crypto now se queda como está.' })).status).toBe(400)
     // The right words from the wrong character are refused.
     expect((await tts(base, { ...holdLine(1), speaker: 'buyer' })).status).toBe(400)
     expect((await tts(base, holdLine(1), { Origin: 'https://evil.example' })).status).toBe(403)
@@ -111,7 +116,7 @@ describe('the TTS proxy', () => {
       calls += 1
       return new Response(Buffer.from('mp3'), { status: 200 })
     }) as unknown as typeof fetch
-    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget: new DailyBudget(70, 70) })
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget: new DailyBudget(80, 80) })
     expect((await tts(base, holdLine(1))).status).toBe(200)
     expect((await tts(base, holdLine(2))).status).toBe(200)
     const over = await tts(base, holdLine(3))
@@ -123,7 +128,7 @@ describe('the TTS proxy', () => {
   it('answers 502 without leaking upstream details when the provider fails', async () => {
     const fake = (async () => new Response('quota exceeded for key k-123', { status: 401 })) as unknown as typeof fetch
     const base = await start({ GEMINI_API_KEY: 'k-123' }, fake)
-    const res = await tts(base, { provider: 'gemini', speaker: 'abuela', text: 'Ay, cariño, sit down, sit down.' })
+    const res = await tts(base, { provider: 'gemini', speaker: 'abuela', lang: 'en', text: 'Oh, sweetheart, sit down, sit down.' })
     expect(res.status).toBe(502)
     expect(await res.text()).not.toContain('k-123')
   })
@@ -132,7 +137,7 @@ describe('the TTS proxy', () => {
     const pcm = Buffer.alloc(480)
     const fake = (async () => Response.json({ steps: [{ type: 'model_output', content: [{ type: 'audio', data: pcm.toString('base64') }] }] })) as unknown as typeof fetch
     const base = await start({ GEMINI_API_KEY: 'k' }, fake)
-    const res = await tts(base, { provider: 'gemini', speaker: 'chato', text: "[snorts] Walk, then. The door's that way." })
+    const res = await tts(base, { provider: 'gemini', speaker: 'chato', text: '[snorts] Pues largo. La puerta está por ahí.' })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('audio/wav')
     const wav = Buffer.from(await res.arrayBuffer())
@@ -174,7 +179,7 @@ describe('provider helpers', () => {
 
   it('validates TTS requests', () => {
     expect(parseTtsRequest('nope', ['gemini'])).toBe('body is not JSON')
-    expect(parseTtsRequest(JSON.stringify({ provider: 'gemini', speaker: 'buyer', text: '  Olé, olé, olé!\u0007 ' }), ['gemini'])).toEqual({ provider: 'gemini', speaker: 'buyer', text: 'Olé, olé, olé!' })
+    expect(parseTtsRequest(JSON.stringify({ provider: 'gemini', speaker: 'buyer', text: '  ¡Olé, olé, olé!\u0007 ' }), ['gemini'])).toEqual({ provider: 'gemini', speaker: 'buyer', lang: 'es', text: '¡Olé, olé, olé!' })
     expect(parseTtsRequest(JSON.stringify({ provider: 'gemini', speaker: 'buyer', text: 'hola' }), ['gemini'])).toMatch(/own lines/)
   })
 
@@ -217,7 +222,7 @@ describe('shared upstream calls and limits from env', () => {
       return new Response(Buffer.from('mp3'), { status: 200 })
     }) as unknown as typeof fetch
     const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake)
-    const body = { provider: 'elevenlabs', speaker: 'seller', text: 'Quiet day at the Rastro.' }
+    const body = { provider: 'elevenlabs', speaker: 'seller', text: 'Mercado tranquilo. Nadie compra, nadie vende.' }
     const results = await Promise.all([tts(base, body), tts(base, body), tts(base, body)])
     expect(results.map((r) => r.status)).toEqual([200, 200, 200])
     expect(calls).toBe(1)
@@ -292,7 +297,7 @@ describe('budget shares and the edge host (review P2 #3, P3 #5, P3 #6)', () => {
   it('caps each address at its share of the day, and refunds a failed call', async () => {
     let fail = true
     const fake = (async () => (fail ? new Response('{}', { status: 500 }) : new Response(Buffer.from('mp3')))) as unknown as typeof fetch
-    const budget = new DailyBudget(1000, 70)
+    const budget = new DailyBudget(1000, 80)
     const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget })
     expect((await tts(base, holdLine(1), { 'X-Real-IP': '6.6.6.6' })).status).toBe(502)
     expect(budget.remaining).toBe(1000) // the failed call was refunded
@@ -316,7 +321,7 @@ describe('budget shares and the edge host (review P2 #3, P3 #5, P3 #6)', () => {
 describe('second review of the follow-ups', () => {
   it('lets one address (the pitch screen) use the whole day unless a share is set', async () => {
     const fake = (async () => new Response(Buffer.from('mp3'))) as unknown as typeof fetch
-    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { limits: readLimits({ TTS_DAILY_CHARS: '60', TTS_PER_ADDRESS_BURST: '100', TTS_GLOBAL_BURST: '100' }) })
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { limits: readLimits({ TTS_DAILY_CHARS: '80', TTS_PER_ADDRESS_BURST: '100', TTS_GLOBAL_BURST: '100' }) })
     expect((await tts(base, holdLine(1))).status).toBe(200)
     expect((await tts(base, holdLine(2))).status).toBe(200)
     expect((await tts(base, holdLine(3))).status).toBe(429)
@@ -347,5 +352,57 @@ describe('post-approval P3s', () => {
     const line = { provider: 'gemini', speaker: 'seller', text: 'La Latina number 3 stays put.' }
     expect((await tts(base, line)).status).toBe(502)
     expect(budget.remaining).toBe(1000 - line.text.length)
+  })
+})
+
+describe('one language per line (the proxy contract, both languages)', () => {
+  const ask = (lang: unknown, speaker: string, text: string) => parseTtsRequest(JSON.stringify({ provider: 'elevenlabs', speaker, lang, text }), ['elevenlabs'])
+
+  it('speaks a line only in the language whose templates it matches', () => {
+    expect(ask('es', 'seller', 'La Latina número 9 se queda como está.')).toMatchObject({ lang: 'es' })
+    expect(ask('en', 'seller', 'La Latina number 9 stays put.')).toMatchObject({ lang: 'en' })
+    expect(ask('en', 'seller', 'La Latina número 9 se queda como está.')).toMatch(/own lines/)
+    expect(ask('es', 'seller', 'La Latina number 9 stays put.')).toMatch(/own lines/)
+    expect(ask('fr', 'seller', 'La Latina número 9 se queda como está.')).toMatch(/lang must be one of es, en/)
+  })
+
+  it('finds the language itself when the page does not say (an older page)', () => {
+    expect(ask(undefined, 'seller', 'La Latina número 9 se queda como está.')).toMatchObject({ lang: 'es' })
+    expect(ask(undefined, 'seller', 'La Latina number 9 stays put.')).toMatchObject({ lang: 'en' })
+  })
+
+  it('refuses a line mixed from both languages, and a slot from the other language', () => {
+    expect(ask('es', 'seller', 'La Latina número 9 stays put.')).toMatch(/own lines/)
+    expect(ask('es', 'seller', 'Las puertas siguen cerradas. Abrimos today at 9:00.')).toMatch(/own lines/)
+    expect(ask('es', 'seller', 'Las puertas siguen cerradas. Abrimos hoy a las 9:00.')).toMatchObject({ lang: 'es' })
+    expect(ask('en', 'seller', 'The doors are still shut. We open tomorrow at 9:00.')).toMatchObject({ lang: 'en' })
+    expect(ask('en', 'seller', 'The doors are still shut. We open mañana a las 9:00.')).toMatch(/own lines/)
+  })
+
+  it('accepts the situational lines with their countdown, and nothing free in the slots', () => {
+    expect(ask('es', 'buyer', 'Quedan 45 minutos para abrir. ¿Qué hacemos mientras?')).toMatchObject({ lang: 'es' })
+    expect(ask('es', 'buyer', 'Quedan 45 mensajes para abrir. ¿Qué hacemos mientras?')).toMatch(/own lines/)
+    expect(ask('en', 'seller', '[excited] New pages! We can trade El Retiro now.')).toMatchObject({ lang: 'en' })
+    expect(ask('en', 'seller', '[excited] New pages! We can trade Wall Street now.')).toMatch(/own lines/)
+  })
+
+  it('builds the ElevenLabs request with the language and the role settings, without sending it', () => {
+    const config = readProviderConfig({ ELEVENLABS_API_KEY: 'e' }).elevenlabs!
+    const req = elevenRequest(config, 'abuela', 'es', '[sighs] Ay, qué calor.')
+    expect(req.url).toBe(`https://api.elevenlabs.io/v1/text-to-speech/${config.voices.abuela}?output_format=mp3_44100_128`)
+    expect(req.body).toEqual({ text: '[sighs] Ay, qué calor.', model_id: 'eleven_v4', language_code: 'es', voice_settings: { stability: 0.55, similarity_boost: 0.8 } })
+    expect(Object.keys(ELEVEN_SETTINGS).sort()).toEqual(['abuela', 'buyer', 'chato', 'narrator', 'seller'])
+    for (const s of Object.values(ELEVEN_SETTINGS)) {
+      expect(s.stability).toBeGreaterThanOrEqual(0)
+      expect(s.stability).toBeLessThanOrEqual(1)
+      expect(s.similarity_boost).toBeGreaterThanOrEqual(0)
+      expect(s.similarity_boost).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('tells Gemini the accent of the line: castellano, or English with a light Madrid accent', () => {
+    const style = (lang: 'es' | 'en') => (geminiRequest('m', 'Puck', 'buyer', 'Hola.', lang) as { input: { content: { annotations: { style: string }[] }[] }[] }).input[0]!.content[0]!.annotations[0]!.style
+    expect(style('es')).toMatch(/peninsular Spanish \(castellano\) from Madrid/)
+    expect(style('en')).toMatch(/English with a light Madrid accent/)
   })
 })

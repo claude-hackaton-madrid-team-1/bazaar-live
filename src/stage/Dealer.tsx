@@ -1,46 +1,34 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { DealerId } from '../show/beat'
-import { DEALER_NAMES } from '../show/words'
+import { useStrings } from '../ui/langContext'
+import { Merchant, type Pose } from './Merchant'
 
-/** Avatars as the organiser's /api/dealers describes them (colour and emoji). */
-const LOOK: Readonly<Record<DealerId, { readonly color: string; readonly emoji: string }>> = {
-  abuela: { color: '#E07A5F', emoji: '🧶' },
-  chato: { color: '#5C6B73', emoji: '🧢' },
-  other: { color: '#8d99ae', emoji: '🎩' },
-}
+const POSE: Readonly<Record<string, Pose>> = { open: 'greet', bid: 'haggle', accept: 'triumph', walk: 'grumble' }
 
-const MOVES: Readonly<Record<string, string>> = {
-  open: '¡Hola!',
-  bid: 'haggling…',
-  accept: '¡trato!',
-  walk: 'walks away',
-}
-
-/** A dealer pops up from behind the table for dealer_* moves. */
-export function Dealer({ dealer }: { readonly dealer: { readonly id: DealerId; readonly move: string } | null }) {
+/**
+ * A dealer steps up behind the counter for dealer_* moves, as a full merchant: Abuela Carmen with her
+ * lantern, or El Chato in his flat cap. The move sets the gesture: greet, haggle, triumph, or grumble
+ * and turn away.
+ */
+export function Dealer({ dealer, speaking }: { readonly dealer: { readonly id: DealerId; readonly move: string } | null; readonly speaking: boolean }) {
+  const t = useStrings()
   return (
     <AnimatePresence>
       {dealer && (
         <motion.div
           key={dealer.id}
-          className="dealer"
-          initial={{ y: '120%', opacity: 0 }}
+          className={`dealer ${dealer.id}`}
+          initial={{ y: '40%', opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: '120%', opacity: 0, transition: { duration: 0.35 } }}
-          transition={{ type: 'spring', stiffness: 260, damping: 16 }}
-          aria-label={`${DEALER_NAMES[dealer.id]}: ${MOVES[dealer.move] ?? dealer.move}`}
+          exit={dealer.move === 'walk' ? { x: dealer.id === 'chato' ? '60%' : '-60%', opacity: 0, transition: { duration: 0.6 } } : { y: '40%', opacity: 0, transition: { duration: 0.35 } }}
+          transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+          aria-label={`${t.dealers[dealer.id]}: ${t.moves[dealer.move] ?? dealer.move}`}
         >
-          <motion.div
-            className="dealer-face"
-            style={{ background: LOOK[dealer.id].color }}
-            key={dealer.move}
-            animate={dealer.move === 'walk' ? { rotate: [0, -12, 12, 0] } : { rotate: [0, 6, -6, 0], scale: [1, 1.08, 1] }}
-            transition={{ duration: 0.6 }}
-          >
-            <span aria-hidden="true">{LOOK[dealer.id].emoji}</span>
-          </motion.div>
-          <div className="dealer-name">{DEALER_NAMES[dealer.id]}</div>
-          <div className="dealer-move">{MOVES[dealer.move] ?? dealer.move}</div>
+          <Merchant role={dealer.id === 'chato' ? 'chato' : 'abuela'} pose={POSE[dealer.move] ?? 'idle'} talking={speaking} label={t.dealers[dealer.id]} />
+          <div className="dealer-plaque">
+            <span className="dealer-name">{t.dealers[dealer.id]}</span>
+            <span className="dealer-move">{t.moves[dealer.move] ?? dealer.move}</span>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

@@ -11,15 +11,18 @@ import { modeOf } from './ui/mode'
 
 describe('readConfig', () => {
   it('reads ?mock, ?speed, ?tts and ?mode with safe defaults', () => {
-    expect(readConfig('')).toEqual({ mock: false, speed: 1, tts: 'auto', mockMode: 'live' })
-    expect(readConfig('?mock=1&speed=20&tts=Gemini&mode=dry')).toEqual({ mock: true, speed: 8, tts: 'gemini', mockMode: 'dry' })
-    expect(readConfig('?mock&speed=abc&tts=shout')).toEqual({ mock: true, speed: 1, tts: 'auto', mockMode: 'live' })
+    expect(readConfig('')).toEqual({ mock: false, speed: 1, tts: 'auto', mockMode: 'live', lang: 'es', mockDoors: 'open', idleSeconds: null })
+    expect(readConfig('?mock=1&speed=20&tts=Gemini&mode=dry&lang=EN-gb&doors=closed')).toEqual({ mock: true, speed: 8, tts: 'gemini', mockMode: 'dry', lang: 'en', mockDoors: 'closed', idleSeconds: null })
+    expect(readConfig('?mock&speed=abc&tts=shout&lang=fr')).toEqual({ mock: true, speed: 1, tts: 'auto', mockMode: 'live', lang: 'es', mockDoors: 'open', idleSeconds: null })
+    expect(readConfig('?idle=0').idleSeconds).toBe(2)
+    expect(readConfig('?idle=9999').idleSeconds).toBe(600)
+    expect(readConfig('?idle=abc').idleSeconds).toBeNull()
     expect(readConfig('?mock=0').mock).toBe(false)
   })
 })
 
 describe('modeOf and verdictFamily', () => {
-  const health = { ok: true, agent: 'taker', mode: 'live' as const, tick: 1, doors: 'open', paused: false, nextOpens: null, tickSeconds: 15, serverTick: 1 }
+  const health = { ok: true, agent: 'taker', mode: 'live' as const, tick: 1, doors: 'open', paused: false, nextOpens: null, tickSeconds: 15, serverTick: 1, target: 'real' as const }
   it('labels LIVE / DRY RUN from /health only', () => {
     expect(modeOf(health, 'open')).toBe('live')
     expect(modeOf({ ...health, mode: 'dry' }, 'open')).toBe('dry')
@@ -68,7 +71,7 @@ describe('remote TTS client', () => {
       return new Response(new Blob(['mp3']), { status: 200 })
     }) as unknown as typeof fetch
     const remote = createRemote('elevenlabs', { fetchImpl })
-    const u = { id: '1', speaker: 'seller' as const, text: '[laughs] Hola' }
+    const u = { id: '1', speaker: 'seller' as const, lang: 'es' as const, text: '[laughs] Hola' }
     const aborted = new AbortController()
     aborted.abort()
     await expect(remote.speak(u, aborted.signal)).rejects.toThrow('502')
@@ -77,7 +80,7 @@ describe('remote TTS client', () => {
     remote.prefetch?.(u)
     await remote.speak(u, aborted.signal)
     expect(bodies.length).toBe(2)
-    expect(JSON.parse(bodies[1]!)).toEqual({ provider: 'elevenlabs', speaker: 'seller', text: '[laughs] Hola' })
+    expect(JSON.parse(bodies[1]!)).toEqual({ provider: 'elevenlabs', speaker: 'seller', lang: 'es', text: '[laughs] Hola' })
   })
 
   it('hands out one provider per name', () => {

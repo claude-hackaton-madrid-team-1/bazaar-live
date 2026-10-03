@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpeechQueue } from './queue'
 import type { ProviderName, SpeechProvider, Utterance } from './types'
 
-const line = (id: string, text = 'hola'): Utterance => ({ id, speaker: 'buyer', text })
+const line = (id: string, text = 'hola'): Utterance => ({ id, speaker: 'buyer', lang: 'es', text })
 
 /** A provider whose lines last `ms` each; it records how many speak at once. */
 function timedProvider(name: ProviderName, ms = 100, fail = false) {
@@ -45,6 +45,29 @@ describe('SpeechQueue', () => {
     await done
     expect(p.maxActive()).toBe(1)
     expect(p.log).toEqual(['start a', 'end a', 'start b', 'end b', 'start c', 'end c'])
+  })
+
+  it('has no silence between lines: the next one starts the instant the last ends', async () => {
+    const starts: Record<string, number> = {}
+    const ends: Record<string, number> = {}
+    const provider: SpeechProvider = {
+      name: 'webspeech',
+      speak: (u) =>
+        new Promise<void>((resolve) => {
+          starts[u.id] = Date.now()
+          setTimeout(() => {
+            ends[u.id] = Date.now()
+            resolve()
+          }, 120)
+        }),
+    }
+    const q = new SpeechQueue({ provider })
+    // The stage hands over the next line while the current one is still being said.
+    const all = [q.say(line('a')), q.say(line('b')), q.say(line('c'))]
+    await vi.advanceTimersByTimeAsync(1000)
+    await Promise.all(all)
+    expect(starts.b).toBe(ends.a)
+    expect(starts.c).toBe(ends.b)
   })
 
   it('mute stops the current line and resolves the waiting ones unspoken', async () => {

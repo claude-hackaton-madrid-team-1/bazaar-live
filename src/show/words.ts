@@ -1,44 +1,29 @@
-/** Small helpers that turn refs, items and numbers into words the characters can say. */
-import { ERROR_WORDS, KINDS, UNKNOWN_ERROR, UNKNOWN_KIND, VERDICTS } from '../../shared/lines.ts'
+/** Small helpers that turn refs, items and numbers into words the characters can say, per language. */
+import type { Lang } from '../../shared/lang.ts'
+import { ERROR_CODES, HOODS, KIND_CODES, RARITY_CODES, VERDICT_CODES, VOCAB } from '../../shared/vocab.ts'
 import type { DealerId } from './beat'
-
-const NEIGHBOURHOODS: Readonly<Record<string, string>> = {
-  LAV: 'Lavapiés',
-  MAL: 'Malasaña',
-  LAT: 'La Latina',
-  SAL: 'Salamanca',
-  RET: 'El Retiro',
-  CHA: 'Chamberí',
-}
-
-const ITEMS: Readonly<Record<string, string>> = {
-  sobre_barrio: 'a neighbourhood pack',
-  sobre_plata: 'a silver pack',
-  common: 'a common',
-  uncommon: 'an uncommon',
-  rare: 'a rare',
-  epic: 'an epic',
-  legendary: 'a legendary',
-}
 
 const REF = /^([A-Z]{3})-(\d{1,3})$/
 
+const has = <T extends string>(list: readonly T[], value: string): value is T => (list as readonly string[]).includes(value)
+
 /**
- * `LAT-09` → `La Latina number 9`; a ref from a set we do not know yet stays `XYZ-01`; anything else
- * is `this card`. Every output matches shared/lines.ts's card pattern (the proxy checks it).
+ * `LAT-09` → `La Latina número 9`; a ref from a set we do not know yet stays `XYZ-01`; anything else
+ * is `esta carta`. Every output matches the card pattern in shared/vocab.ts (the proxy checks it).
  */
-export function cardName(ref: string | undefined): string {
+export function cardName(ref: string | undefined, lang: Lang): string {
   const m = REF.exec((ref ?? '').trim().toUpperCase())
-  if (!m) return 'this card'
+  if (!m) return VOCAB[lang].thisCard
   const [, set = '', n = ''] = m
-  const hood = NEIGHBOURHOODS[set]
-  return hood ? `${hood} number ${Number(n)}` : `${set}-${n}`
+  const hood = HOODS[set]
+  return hood ? `${hood} ${VOCAB[lang].number} ${Number(n)}` : `${set}-${n}`
 }
 
 /** What a dealer thread is about: a pack, a rarity or a card. */
-export function itemName(item: string | undefined): string {
-  if (!item) return 'a little something'
-  return ITEMS[item.toLowerCase()] ?? cardName(item)
+export function itemName(item: string | undefined, lang: Lang): string {
+  if (!item) return VOCAB[lang].someItem
+  const key = item.toLowerCase()
+  return has(RARITY_CODES, key) ? VOCAB[lang].items[key] : cardName(item, lang)
 }
 
 const MAX_PRIMAS = 10_000_000 // the game's own cap on prices and cash
@@ -58,15 +43,15 @@ export function labelWords(label: string | null | undefined): string | null {
 }
 
 /** A decision kind as words, from the documented list only (the TTS proxy accepts nothing else). */
-export function kindWords(kind: string | null | undefined): string {
+export function kindWords(kind: string | null | undefined, lang: Lang): string {
   const v = (kind ?? '').toLowerCase()
-  return KINDS.includes(v) ? v.replace(/_/g, ' ') : UNKNOWN_KIND
+  return has(KIND_CODES, v) ? VOCAB[lang].kinds[v] : VOCAB[lang].unknownKind
 }
 
-/** Jev's verdict as words (`quick sale`), from its known options only; null otherwise. */
-export function verdictWords(verdict: string | null | undefined): string | null {
+/** Jev's verdict as words (`venta rápida`), from its known options only; null otherwise. */
+export function verdictWords(verdict: string | null | undefined, lang: Lang): string | null {
   const v = (verdict ?? '').toLowerCase()
-  return VERDICTS.includes(v) ? v.replace(/_/g, ' ') : null
+  return has(VERDICT_CODES, v) ? VOCAB[lang].verdicts[v] : null
 }
 
 export function dealerId(name: string | undefined): DealerId {
@@ -76,14 +61,13 @@ export function dealerId(name: string | undefined): DealerId {
   return 'other'
 }
 
-export const DEALER_NAMES: Readonly<Record<DealerId, string>> = {
-  abuela: 'Abuela Carmen',
-  chato: 'El Chato',
-  other: 'the dealer',
+export function dealerName(id: DealerId, lang: Lang): string {
+  return VOCAB[lang].dealers[id]
 }
 
-export function errorWords(code: string): string {
-  return ERROR_WORDS[code] ?? UNKNOWN_ERROR
+export function errorWords(code: string, lang: Lang): string {
+  const v = VOCAB[lang]
+  return has(ERROR_CODES, code) ? v.errors[code] : v.unknownError
 }
 
 /** FNV-1a: a stable 32-bit seed per event, so the same event always gets the same line. */

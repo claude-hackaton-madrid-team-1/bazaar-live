@@ -120,6 +120,8 @@ export interface AgentHealth {
   readonly nextOpens: string | null
   readonly tickSeconds: number | null
   readonly serverTick: number | null
+  /** Where the agent's requests go: the real game or the simulator (`target.mode`). */
+  readonly target: 'real' | 'simulator' | null
 }
 
 /** One of the maker's open offers from GET /state (already public on the board). */

@@ -1,3 +1,4 @@
+import type { Lang } from '../../shared/lang.ts'
 import type { Speaker } from '../../shared/tags.ts'
 
 export type ProviderName = 'webspeech' | 'elevenlabs' | 'gemini' | 'silent'
@@ -5,6 +6,8 @@ export type ProviderName = 'webspeech' | 'elevenlabs' | 'gemini' | 'silent'
 export interface Utterance {
   readonly id: string
   readonly speaker: Speaker
+  /** The one language of the line. */
+  readonly lang: Lang
   /** With expressive tags; each provider strips or converts them. */
   readonly text: string
 }

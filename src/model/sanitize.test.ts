@@ -142,7 +142,10 @@ describe('parseEnvelope', () => {
 describe('parseHealth and parseState', () => {
   it('reads /health as services.md documents it', () => {
     const h = parseHealth({ ok: true, agent: 'taker', mode: 'live', tick: null, last_tick_at: null, doors: 'closed', paused: true, next_opens: '2026-10-03T09:00:00+02:00', tick_seconds: 60, server_tick: 159 })
-    expect(h).toEqual({ ok: true, agent: 'taker', mode: 'live', tick: null, doors: 'closed', paused: true, nextOpens: '2026-10-03T09:00:00+02:00', tickSeconds: 60, serverTick: 159 })
+    expect(h).toEqual({ ok: true, agent: 'taker', mode: 'live', tick: null, doors: 'closed', paused: true, nextOpens: '2026-10-03T09:00:00+02:00', tickSeconds: 60, serverTick: 159, target: null })
+    expect(parseHealth({ ok: true, agent: 'maker', target: { mode: 'simulator', url: 'x' } })?.target).toBe('simulator')
+    expect(parseHealth({ ok: true, agent: 'maker', target: { mode: 'real', url: 'x' } })?.target).toBe('real')
+    expect(parseHealth({ ok: true, agent: 'maker', target: { mode: 'moon' } })?.target).toBeNull()
   })
 
   it('keeps only the public fields of the maker open offers', () => {

@@ -53,6 +53,11 @@ export class SpeechQueue {
     return this.active().name
   }
 
+  /** A real voice is on: not muted and not the silent provider. */
+  get audible(): boolean {
+    return !this.isMuted && this.active().name !== 'silent'
+  }
+
   /** Lines waiting, not counting the one being spoken. */
   get backlog(): number {
     return this.pending.length

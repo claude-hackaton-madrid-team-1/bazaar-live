@@ -202,6 +202,11 @@ export function parseEnvelope(raw: unknown, fallbackAgent?: AgentId): ShowEvent 
   }
 }
 
+function targetMode(raw: unknown): 'real' | 'simulator' | null {
+  const mode = isRecord(raw) ? text(raw.mode) : undefined
+  return mode === 'real' || mode === 'simulator' ? mode : null
+}
+
 export function parseHealth(raw: unknown): AgentHealth | null {
   if (!isRecord(raw)) return null
   return {
@@ -214,6 +219,7 @@ export function parseHealth(raw: unknown): AgentHealth | null {
     nextOpens: orNull(text(raw.next_opens)),
     tickSeconds: orNull(num(raw.tick_seconds)),
     serverTick: orNull(int(raw.server_tick)),
+    target: targetMode(raw.target),
   }
 }
 

@@ -3,7 +3,7 @@ import { PRIORITY, type Beat, type Cue } from './beat'
 import { Director } from './director'
 
 function beat(id: string, priority: number, cue: Cue = { kind: 'talk' }, agent: 'taker' | 'maker' = 'maker'): Beat {
-  return { id, agent, tick: 1, priority, lines: [{ speaker: 'seller', text: id }], cue, denied: false, jev: null, practice: false, note: null }
+  return { id, agent, tick: 1, priority, lines: [{ speaker: 'seller', text: id }], mood: 'calm', cue, denied: false, jev: null, practice: false, note: null }
 }
 
 describe('Director', () => {

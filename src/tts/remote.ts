@@ -58,7 +58,7 @@ export function createRemote(name: RemoteName, options: RemoteOptions = {}): Spe
   const cache = new Map<string, Promise<Blob>>()
 
   const load = (u: Utterance): Promise<Blob> => {
-    const key = `${u.speaker}|${u.text}`
+    const key = `${u.lang}|${u.speaker}|${u.text}`
     const hit = cache.get(key)
     if (hit) return hit
     const controller = new AbortController()
@@ -66,7 +66,7 @@ export function createRemote(name: RemoteName, options: RemoteOptions = {}): Spe
     const request = fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: name, speaker: u.speaker, text: u.text }),
+      body: JSON.stringify({ provider: name, speaker: u.speaker, lang: u.lang, text: u.text }),
       signal: controller.signal,
     })
       .then(async (res) => {
