@@ -73,6 +73,25 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
   probabilities: the probabilities are private.
 - **Read-only.** The page never sends anything to the agents or the game.
 
+## Real conversations (LIVE-T1)
+
+The show can narrate our real dealer threads and closed duels, read from Postgres through a read-only role.
+Spec: [`docs/specs/LIVE-T1.md`](docs/specs/LIVE-T1.md).
+
+- `db/show.sql` (applied by whoever holds the admin url, never by this repo): schema `show`, views
+  `show.thread_lines` and `show.duel_lines`, role `bazaar_live_reader` (NOLOGIN in the file; add LOGIN and a
+  password outside it). The role has no grant on `feed_events` or `duels`. A duel's words are exposed only
+  after it closes; a live duel is `duel in progress: <item> vs <rival>`.
+- `SHOW_DATABASE_URL` (a Railway service variable, that role's url): absent → the feature is off and the show
+  is unchanged. Pool of 2, 2 s statement timeout, a poll every 3 s with backoff; `GET /api/transcript` and the
+  SSE stream `/api/transcript/stream`.
+- One language (`?lang=es|en`) for every generated line and voice. A real quote is spoken only when its
+  detected language is the selected one; otherwise it is shown as text and a generated line built from the
+  structured offer is spoken. The TTS proxy voices only show templates, generated real lines, and quotes the
+  server itself read from the database.
+- `?mock=1` plays a synthetic transcript with no database.
+- Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` (needs docker).
+
 ## What it shows
 
 - **Stage** (`src/stage/`): the SELLER behind the stall, the BUYER in front, a cork board with our
