@@ -15,8 +15,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@fontsource/alegreya": "^5.3.0",
-    "@fontsource/cinzel": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "motion": "^14.0.0",
     "pg": "^8.23.1",
     "pg-connection-string": "^2.14.1",

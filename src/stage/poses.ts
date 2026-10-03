@@ -1,7 +1,8 @@
 import type { ShowState } from '../show/engine'
-import type { Pose } from './Merchant'
+import type { Pose } from './Voice'
 
-const DEALER_POSE: Readonly<Record<string, Pose>> = { open: 'greet', bid: 'haggle', accept: 'triumph', walk: 'grumble' }
+/** What a dealer's move looks like on its orb (and on the buyer's, who is the one haggling with it). */
+export const DEALER_POSE: Readonly<Record<string, Pose>> = { open: 'greet', bid: 'haggle', accept: 'triumph', walk: 'grumble' }
 
 /** What each lead does for what the stage is showing: a deal lifts both, a refusal sulks, a dealer is haggled with. */
 export function poses(state: ShowState): { buyer: Pose; seller: Pose } {
@@ -17,4 +18,3 @@ export function poses(state: ShowState): { buyer: Pose; seller: Pose } {
   if (cue === 'reprice') return { buyer: 'idle', seller: 'haggle' }
   return { buyer: 'idle', seller: 'idle' }
 }
-

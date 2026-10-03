@@ -49,6 +49,8 @@ export interface Strings {
   readonly langLabel: string
   readonly noVoice: string
   readonly noEleven: string
+  /** A speaker's voice status when its provider voice fails: a short word and the tooltip. */
+  readonly voiceStatus: { readonly fallback: string; readonly failed: string; readonly fallbackTitle: string; readonly failedTitle: string }
   readonly muted: string
   readonly soundOn: string
   readonly tick: string
@@ -68,12 +70,12 @@ export interface Strings {
 const HOODS_ALL = { LAV: 'Lavapiés', MAL: 'Malasaña', LAT: 'La Latina', SAL: 'Salamanca', RET: 'El Retiro', CHA: 'Chamberí' }
 
 const ES: Strings = {
-  sign: 'EL RASTRO · PUESTO Nº 1',
+  sign: 'El Rastro · Puesto 01',
   buyer: 'COMPRADOR',
   seller: 'VENDEDOR',
   taker: 'taker',
   maker: 'maker',
-  stageLabel: 'El puesto en El Rastro, al atardecer',
+  stageLabel: 'El puesto en El Rastro',
   boardLabel: 'Nuestras ofertas en el tablón',
   boardEmpty: 'El tablón está vacío… por ahora.',
   wanted: 'SE BUSCA',
@@ -95,7 +97,7 @@ const ES: Strings = {
   dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', other: 'el tratante' },
   moves: { open: 'saluda', bid: 'regatea…', accept: '¡trato!', walk: 'se va' },
   hoods: HOODS_ALL,
-  transcript: 'Diario de misión',
+  transcript: 'Transcripción',
   captions: 'subtítulos',
   waiting: 'Esperando el primer movimiento…',
   skipped: 'omitida',
@@ -112,6 +114,7 @@ const ES: Strings = {
   langLabel: 'Idioma',
   noVoice: 'Este navegador no tiene voz en castellano: solo se muestra el texto',
   noEleven: 'El servidor no tiene la clave de ElevenLabs: solo se muestra el texto, sin voz',
+  voiceStatus: { fallback: 'voz de reserva', failed: 'sin voz', fallbackTitle: 'Su voz no está disponible: habla con una voz de reserva', failedTitle: 'Su voz ha fallado: sus frases se muestran como subtítulos' },
   muted: 'Silenciado',
   soundOn: 'Con sonido',
   tick: 'turno',
@@ -119,7 +122,7 @@ const ES: Strings = {
   fallback: 'El puesto tropezó con una caja. Vuelvo enseguida; la transcripción sigue.',
   gateTitle: 'Bazaar Live',
   gateText: 'Nuestros dos agentes, el comprador y el vendedor, regatean en un puesto de El Rastro al caer la tarde. Cada movimiento que hacen, lo dicen en voz alta.',
-  gateSound: '▶ Empezar con sonido',
+  gateSound: 'Empezar con sonido',
   gateMuted: 'Ver en silencio',
   gateKey: 'Pulsa M en cualquier momento para silenciar o activar el sonido.',
   mockNotice: 'Modo simulacro: una tarde grabada en el puesto, en bucle. Quita ?mock=1 para ver a los agentes en vivo.',
@@ -129,12 +132,12 @@ const ES: Strings = {
 }
 
 const EN: Strings = {
-  sign: 'EL RASTRO · STALL Nº 1',
+  sign: 'El Rastro · Stall 01',
   buyer: 'BUYER',
   seller: 'SELLER',
   taker: 'taker',
   maker: 'maker',
-  stageLabel: 'The stall at El Rastro, at dusk',
+  stageLabel: 'The stall at El Rastro',
   boardLabel: 'Our offers on the board',
   boardEmpty: 'The board is empty… for now.',
   wanted: 'WANTED',
@@ -156,7 +159,7 @@ const EN: Strings = {
   dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', other: 'the dealer' },
   moves: { open: 'greets', bid: 'haggling…', accept: 'deal!', walk: 'walks away' },
   hoods: HOODS_ALL,
-  transcript: 'Quest log',
+  transcript: 'Transcript',
   captions: 'captions',
   waiting: 'Waiting for the first move…',
   skipped: 'skipped',
@@ -173,6 +176,7 @@ const EN: Strings = {
   langLabel: 'Language',
   noVoice: 'This browser has no English voice: the text is shown, not spoken',
   noEleven: 'The server has no ElevenLabs key: the text is shown, with no voice',
+  voiceStatus: { fallback: 'backup voice', failed: 'no voice', fallbackTitle: 'Its voice is unavailable: it speaks with a backup voice', failedTitle: 'Its voice failed: its lines are shown as captions' },
   muted: 'Muted',
   soundOn: 'Sound on',
   tick: 'tick',
@@ -180,7 +184,7 @@ const EN: Strings = {
   fallback: 'The stall tripped over a crate. Back in a moment; the transcript keeps going.',
   gateTitle: 'Bazaar Live',
   gateText: 'Our two trading agents, the buyer and the seller, haggle at a stall in El Rastro as the evening falls. Every move they make, they say out loud.',
-  gateSound: '▶ Start the show with sound',
+  gateSound: 'Start the show with sound',
   gateMuted: 'Watch muted',
   gateKey: 'Press M any time to mute or unmute.',
   mockNotice: 'Mock mode: a recorded afternoon at the stall, on a loop. Drop ?mock=1 for the live agents.',

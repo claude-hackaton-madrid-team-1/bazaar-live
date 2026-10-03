@@ -46,6 +46,7 @@ npm run test:coverage  # with v8 coverage
 | `?doors=closed` | With `?mock=1`: the mock's `/health` says the doors are closed (no events, a countdown to the opening), to hear the idle talk. |
 | `?idle=8` | Seconds of quiet before the characters talk about the situation (default 22 s with closed doors or a pause, 35 s otherwise; 2 to 600). |
 | `?mode=dry` | The mock's agents report DRY RUN, so every move is acted out as practice. |
+| `?theme=light\|dark` | Forces the light or dark appearance. Without it the page follows the system's setting. |
 | `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) is ElevenLabs v4 when the server has its key, else captions only: no browser-voice or Gemini stand-in. `webspeech` and `gemini` are for development, by name. The header's picker offers ElevenLabs v4 or no voice. |
 
 Keyboard: **M** mutes and unmutes. Browsers only let a page speak after a click, so the show opens
