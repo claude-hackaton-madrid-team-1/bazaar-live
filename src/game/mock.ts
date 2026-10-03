@@ -4,6 +4,7 @@
  * envelope the server relays. A port of bazaar's `tui/mock.py`, seeded so a replay looks the same.
  */
 import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../../shared/decisions.ts'
+import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import type { HealthReport } from '../../shared/health.ts'
 import { rng } from '../stage/rng.ts'
 
@@ -159,8 +160,8 @@ const DUEL_TICKS = 20
 /** The share of a duel's value lost per round of talk, as the game's sessions set it. */
 const DUEL_DECAY = 0.06
 
-/** GUARDRAILS.md's caps, as the server sends them with the ledger (server/game/decisions.ts). */
-const MOCK_LIMITS = { spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 }
+/** GUARDRAILS.md's caps, as the server sends them with the ledger (server/game/decisions.ts): the docs' own. */
+const MOCK_LIMITS = { spendPerHour: GUARDRAILS_DOC.maxSpendPerHour, cashFloor: GUARDRAILS_DOC.cashFloor, acceptsPerTick: GUARDRAILS_DOC.acceptsPerTick, bondReserve: GUARDRAILS_DOC.venueBondReserve }
 
 /** A decision row as the server builds it from db/agent_decisions.sql: everything unknown is null. */
 const decision = (decision: number, agent: AgentName, kind: string, fields: Partial<DecisionPayload>): DecisionPayload => ({
@@ -986,7 +987,7 @@ export class MockGame {
       }
     }
     out.push(...this.negDecisions())
-    out.push(this.ev('agent.ledger', { ticks: this.ledger.filter((r) => r.t > this.tick / 240 - 2), limits: MOCK_LIMITS }))
+    out.push(this.ev('agent.ledger', { ticks: this.ledger.filter((r) => r.t > this.tick / 240 - 2), limits: MOCK_LIMITS, venue: true }))
     return out
   }
 

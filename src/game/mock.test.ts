@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import { MockGame } from './mock'
 import { apply, createState, KNOWN_TYPES, type GameEvent } from './state'
 import { albumSummary, bestMoves } from './views/album'
@@ -66,7 +67,7 @@ describe('MockGame', () => {
     const ticks = new Set(s.agents.decisions.maker.map((d) => d.tick))
     expect([1, 2, 3, 4, 5, 6].some((tick) => !ticks.has(tick))).toBe(true)
     expect(s.agents.outcomes.length).toBeGreaterThan(0)
-    expect(s.agents.ledger?.limits).toEqual({ spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 })
+    expect(s.agents.ledger?.limits).toMatchObject({ spendPerHour: GUARDRAILS_DOC.maxSpendPerHour, cashFloor: GUARDRAILS_DOC.cashFloor, acceptsPerTick: 1 })
   })
 
   it('duels by alias from the first step: five finished duels and two live ones, one inside our limit and one outside', () => {

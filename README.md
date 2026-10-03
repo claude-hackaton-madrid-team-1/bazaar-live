@@ -198,8 +198,13 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
   `agent.ledger` (`shared/decisions.ts`) into the game stream, behind `GAME_VIEW_TOKEN` like the rest. A missing
   view (or a grant `show.sql` dropped) is logged once (`agent_decisions off view_missing`) and re-checked every
   minute; the relay never notices.
-- The caps are not in the database: `GUARDRAIL_SPEND_PER_HOUR` (150), `GUARDRAIL_CASH_FLOOR` (50),
-  `GUARDRAIL_ACCEPTS_PER_TICK` (1) follow an edit of GUARDRAILS.md.
+- The caps are in no live source (the agents' `/health` and `/events` leave limits out, the database only keeps a
+  denial's text), so the newest evidence wins (`src/game/limits.ts`): a denial text newer than the docs
+  (`cash 73 - 67 < cash_floor 20`, the newest per rule by tick), else `GUARDRAIL_SPEND_PER_HOUR`,
+  `GUARDRAIL_CASH_FLOOR`, `GUARDRAIL_ACCEPTS_PER_TICK`, else `shared/guardrails.ts` (bazaar#219: floor 5; #216: 250
+  an hour). A `GUARDRAIL_*` variable left behind after the docs move on overrides them: remove it once the docs agree. A denial is newer when its tick is at or past the docs' `since` tick in the same run (or in a run whose clock
+  started again below it). The floor holds `venue_bond_reserve` (270) only while `allow_venue_open` is on and our venue
+  is not open yet; `agent.ledger` carries `venue` (from the Strategy poller's `show.strategy_me`) to tell.
 - How the page reads them (`src/game/views/decisions.ts`, `agent.ts`): the feed keeps only its last window, so
   "Now" falls back to the latest decision (goal, guardrail and Jev) and the latest one whose request went out,
   and the counters (open threads, our trades, value gained) come from the same outcomes as the deals tile. A
@@ -216,7 +221,8 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
 
 Every game screen names things the same way: the agents as Comprador / Vendedor / Duelos (Buyer / Seller / Duels),
 guardrail rules and decision kinds in words (`suelo de caja`, `abrir trato con un equipo`), a denial as one sentence
-from its numbers (`cash 81 - 79 < cash_floor 50` → "nos dejaría con 2 P, por debajo del suelo de 50 P"; the raw text
+from its numbers (`cash 81 - 79 < cash_floor 20` → "nos dejaría con 2 P, por debajo del suelo de 20 P"; an older floor
+reads "del suelo de entonces (50 P)"; the raw text
 stays under Detalles), cards by name with the code as a small token, dealers, rivals and teams by name (Abuela Carmen,
 Rival Sol, Equipo 6), and times as game time from the newest tick ("hace 3 min", "caduca en ~8 min", the tick on hover).
 The parsers live in `src/game/humanize.ts` (tested), the words in `strings.ts` (`hum`, es and en). An id with no word
@@ -306,10 +312,11 @@ and why our agents refused a buy: never in the public show views):
   not expired, cancelled or settled since), ours flagged.
 - `show.strategy_cards`: the released catalog with the last price the tape filled for each card.
 
-The caps are read live from the guardrail texts (`cash 81 - 79 < cash_floor 50` names the floor and its value); a cap no
-denial has named yet (the rare's, the pack's) comes from `src/game/guardrailsDoc.ts`, a typed copy of bazaar's
-GUARDRAILS.md and STRATEGY.md that says which commit it was read from; update it when those files change a value no
-denial shows. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
+The caps are read live from the guardrail texts (`cash 73 - 67 < cash_floor 20` names the floor and its value) when they
+are newer than the docs; else from the server's `GUARDRAIL_*` variables (`/api/strategy` carries them as `limits`); a
+cap no fresh denial has named (the rare's, the pack's) comes from `shared/guardrails.ts`, a typed copy of bazaar's
+GUARDRAILS.md and STRATEGY.md. When those files change a value, change it there and move its `since` to the first tick
+that runs it: an older denial never overrides it. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
 The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.

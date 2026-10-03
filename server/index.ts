@@ -53,7 +53,8 @@ const game = startGame(process.env, log, undefined, show)
 // Without SHOW_DATABASE_URL (or before db/learn.sql is applied) the Learn screen says so; nothing else changes.
 const learn = startLearn(process.env, log, show)
 // Our agents' decisions (db/agent_decisions.sql) into the game stream: on the shared pool and the game hub, else off.
-const decisions = startDecisions(process.env, { db: transcript.db, hub: game.hub, log, secrets: transcript.secrets })
+// Whether we run our own venue (the floor's bond reserve) comes from the Strategy poller's last read, asked at each poll.
+const decisions = startDecisions(process.env, { db: transcript.db, hub: game.hub, log, secrets: transcript.secrets, venue: () => ourVenue() })
 // Our agents' /health (taker, maker) every 10 s into the same stream, so the page never calls them itself.
 const health = startHealth(process.env, { hub: game.hub, log })
 // The agents' /events: a live event reads the game views and the decisions now instead of at the next 3 s poll.
@@ -62,6 +63,10 @@ const agentsWs = startAgentsWs(process.env, { database: show !== null, game, dec
 const history = startHistory(process.env, log, show)
 // What we aim for, why we hold what we hold and why we do not buy (db/strategy.sql), on the same pool.
 const strategy = startStrategy(process.env, log, show)
+function ourVenue(): boolean | null {
+  const me = strategy.snapshot().me
+  return me ? me.venue !== null : null
+}
 // What each rival holds by the public feed, its rank and what it chases (db/rival_albums.sql), on the same pool.
 const rivals = startRivals(process.env, log, show)
 // The prompt-injection attempts our agents recorded (db/injections.sql), on the same pool: public, never voiced.

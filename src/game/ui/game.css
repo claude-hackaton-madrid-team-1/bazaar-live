@@ -1018,6 +1018,81 @@
   color: var(--gm-bad);
 }
 
+/* our money against its limits (ui/Money.tsx): cash vs floor, the hour's spend; the one that stops us is marked */
+.gm-money {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.gm-money-row {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+}
+
+.gm-money-row[data-binds] {
+  border-color: color-mix(in srgb, var(--gm-warn) 50%, transparent);
+  background: color-mix(in srgb, var(--gm-warn) 9%, transparent);
+}
+
+.gm-money-row[data-binds][data-zero],
+.gm-money-row[data-binds][data-level='bad'] {
+  border-color: color-mix(in srgb, var(--gm-bad) 50%, transparent);
+  background: color-mix(in srgb, var(--gm-bad) 9%, transparent);
+}
+
+.gm-money-row dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.gm-money-row dd {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.gm-money-line {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.gm-money-note {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.gm-money + .st-levers {
+  margin-top: var(--s-3);
+}
+
+/* the header's chip beside our cash: what the next buy may cost; the two wrap together */
+.gm-money-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+}
+
+.gm-room[data-tone='bad'] {
+  border-color: color-mix(in srgb, var(--gm-bad) 45%, transparent);
+}
+
+.gm-room[data-tone='bad'] .gm-kpi-num {
+  color: var(--gm-bad);
+}
+
 .gm-meter-note {
   margin: var(--s-3) 0 0;
   font-size: 0.8125rem;
