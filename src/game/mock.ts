@@ -3,6 +3,7 @@
  * other teams, settling, duelling, and the rest of the market trading around it, in the same event
  * envelope the server relays. A port of bazaar's `tui/mock.py`, seeded so a replay looks the same.
  */
+import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../../shared/decisions.ts'
 import { rng } from '../stage/rng.ts'
 import type { GameEvent, Payload } from './state.ts'
 
@@ -95,6 +96,15 @@ interface MockDuel {
   limit: number
 }
 
+/** GUARDRAILS.md's caps, as the server sends them with the ledger (server/game/decisions.ts). */
+const MOCK_LIMITS = { spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 }
+
+/** A decision row as the server builds it from db/agent_decisions.sql: everything unknown is null. */
+const decision = (decision: number, agent: AgentName, kind: string, fields: Partial<DecisionPayload>): DecisionPayload => ({
+  decision, agent, kind, item: null, counterparty: null, price: null, value: null, status: 'approved', verdict: 'allowed', rule: null,
+  text: null, jev: null, jevValue: null, method: null, error: null, outcome: null, surplus: null, jevRight: null, ...fields,
+})
+
 const counter = (start: number) => {
   let n = start
   return () => n++
@@ -123,6 +133,11 @@ export class MockGame {
   private duel: MockDuel | null = null
   private readonly board = new Map<number, Listing>()
   private packs: Asset[] = []
+  private readonly decisionIds = counter(4100)
+  /** The guardrail ledger per tick, as agent.ledger carries it; tick 0 is what was bought before the mock started. */
+  private readonly ledger: LedgerTick[] = [{ tick: 0, t: 0, spent: 96, accepts: 1, listings: 0 }]
+  /** Deals our taker accepted, scored the tick after (agent.outcome). */
+  private scored: [number, OutcomePayload][] = []
 
   constructor(seed = 1, team = 't01', name = 'Team 1') {
     this.random = rng(seed)
@@ -530,7 +545,12 @@ export class MockGame {
       const points = close ? Math.round((0.4 + this.random() * 1.2) * 10) / 10 : 0
       this.score.duel_points = Math.round((this.score.duel_points + points) * 10) / 10
       this.duel = null
-      return [this.ev('duel.result', { duel: d.id, deal: close, price: close ? d.theirs : null, points })]
+      // A duel outcome never carries its surplus or score: with the price, they give our limit away.
+      const outcome: OutcomePayload = {
+        target: 'duel', subject: `duel:${d.id}`, decision: null, agent: 'duels', item: null, counterparty: null, side: null, price: null, value: null,
+        label: close ? 'good' : 'bad', score: null, surplus: null, jev: 'accept', jevRight: close,
+      }
+      return [this.ev('duel.result', { duel: d.id, deal: close, price: close ? d.theirs : null, points }), this.ev('agent.outcome', outcome, 'duels')]
     }
     if (d.round % 2) {
       const gap = d.ours && d.theirs ? d.theirs - d.ours : null
@@ -539,6 +559,85 @@ export class MockGame {
     }
     d.theirs = d.theirs === null ? (seller ? d.limit - 15 : d.limit + 18) : d.theirs + (seller ? 1 : -1) * Math.max(1, Math.round(Math.abs((d.ours ?? 0) - d.theirs) * 0.45))
     return [this.ev('duel.message', { duel: d.id, role: d.role, sender: 'rival', price: d.theirs, days: this.int(3, 9) }, 'rival')]
+  }
+
+  private book(spent: number, accepts = 0, listings = 0): void {
+    const row = this.ledger.find((r) => r.tick === this.tick)
+    const t = Math.round((this.tick / 240) * 1e4) / 1e4
+    if (row) this.ledger[this.ledger.indexOf(row)] = { ...row, spent: row.spent + spent, accepts: row.accepts + accepts, listings: row.listings + listings }
+    else this.ledger.push({ tick: this.tick, t, spent, accepts, listings })
+  }
+
+  private spentThisHour(): number {
+    const now = this.tick / 240
+    return this.ledger.filter((r) => r.t > now - 1).reduce((n, r) => n + r.spent, 0)
+  }
+
+  /**
+   * Our three agents' decisions this tick, as db/agent_decisions.sql would show them: the taker every tick (an
+   * accept and the second one the per-tick cap refuses, a pack the hour's budget or quota refuses, a rare final
+   * above its cap, an accept that ran out of tick), the maker two ticks in three, the duels every other tick.
+   */
+  private agents(): GameEvent[] {
+    const out: GameEvent[] = []
+    const say = (agent: AgentName, kind: string, fields: Partial<DecisionPayload>) => out.push(this.ev('agent.decision', decision(this.decisionIds(), agent, kind, fields), agent))
+    for (const [due, outcome] of this.scored) if (due <= this.tick) out.push(this.ev('agent.outcome', outcome, 'taker'))
+    this.scored = this.scored.filter(([due]) => due > this.tick)
+    const k = this.tick % 4
+    if (k === 1) {
+      const ref = this.ref(1, 5)
+      const who = this.choice(TEAMS)
+      const price = this.int(8, 12)
+      const value = price + this.int(-3, 6)
+      const id = this.decisionIds()
+      const jevValue = Math.round((0.55 + this.random() * 0.4) * 100) / 100
+      out.push(this.ev('agent.decision', decision(id, 'taker', 'accept_ask', {
+        item: ref, counterparty: who, price, value, status: 'done', jev: 'yes', jevValue, method: 'accept_offer',
+      }), 'taker'))
+      this.book(price, 1)
+      const edge = Math.round((value - price) * 10) / 10
+      this.scored.push([this.tick + 1, {
+        target: 'trade', subject: `settlement:${900 + id}`, decision: id, agent: 'taker', item: ref, counterparty: who, side: 'buy', price, value,
+        label: edge > 0 ? 'good' : edge < 0 ? 'bad' : 'ok', score: null, surplus: edge, jev: 'yes', jevRight: edge > 0,
+      }])
+      say('taker', 'accept_ask', {
+        item: this.ref(1, 8), counterparty: this.choice(TEAMS), price: this.int(9, 14), status: 'rejected', verdict: 'denied', rule: 'max_accepts_per_tick',
+        text: '1 accept(s) already this tick (max_accepts_per_tick)', jev: 'yes', jevValue: 0.71,
+      })
+    } else if (k === 2) {
+      const spent = this.spentThisHour()
+      const over = spent + 20 > MOCK_LIMITS.spendPerHour
+      say('taker', 'dealer_bid', {
+        item: 'sobre_barrio', counterparty: 'abuela', price: 20, value: 26, status: 'rejected', verdict: 'denied',
+        rule: over ? 'max_spend_per_game_hour' : 'max_packs_per_game_hour',
+        text: over ? `spend ${spent} + 20 > max_spend_per_game_hour ${MOCK_LIMITS.spendPerHour}` : '3 pack(s) bought this game hour (max_packs_per_game_hour 3)',
+      })
+    } else if (k === 3) {
+      say('taker', 'dealer_accept', {
+        item: 'MAL-09', counterparty: 'chato', price: 97, value: 88, status: 'rejected', verdict: 'denied', rule: 'max_price_rare',
+        text: 'price 97 > dealer final cap 96 (max_price_rare 80 lifted)', jev: 'yes', jevValue: 0.58,
+      })
+    } else {
+      say('taker', 'accept_ask', { item: 'LAT-04', counterparty: 't09', price: 11, value: 14, status: 'expired', jev: 'undecided', jevValue: 0 })
+    }
+    // The maker sits out one tick in three: the screen says so ("maker: no decision this tick").
+    if (this.tick % 3 === 1) {
+      say('maker', 'post_ask', { item: this.ref(1, 5), price: this.int(10, 16), value: 9, status: 'done', method: 'post_offer' })
+      this.book(0, 0, 1)
+    } else if (this.tick % 3 === 0) {
+      say('maker', 'post_ask', {
+        item: 'RET-04', price: 18, value: 22, status: 'rejected', verdict: 'denied', rule: 'protect_page_sets',
+        text: 'RET-04 is our only copy of a page card of a new page (protect_page_sets)',
+      })
+    }
+    // Duels: an id, a status, a rule id and Jev's verdict, never a price (the view keeps our limit out).
+    if (this.tick % 2 === 0) {
+      const duel = `duel:${this.duel?.id ?? 3}`
+      if (this.tick % 6 === 0) say('duels', 'duel_offer', { item: duel, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
+      else say('duels', 'duel_offer', { item: duel, status: 'done', jev: 'counter', method: 'duel_say' })
+    }
+    out.push(this.ev('agent.ledger', { ticks: this.ledger.filter((r) => r.t > this.tick / 240 - 2), limits: MOCK_LIMITS }))
+    return out
   }
 
   private observe(): GameEvent[] {
@@ -564,7 +663,7 @@ export class MockGame {
       if (this.negs.size < 3) out.push(...this.open())
       out.push(...this.ourBoard())
     } else if (at === 3) {
-      out.push(...this.venues(), ...this.luck())
+      out.push(...this.venues(), ...this.luck(), ...this.agents())
     } else if (at === 4) {
       out.push(this.ev('agent.phase', { phase: 'act' }), ...this.ourMove())
     } else if (at === 5 && this.tick % 2 === 0) {

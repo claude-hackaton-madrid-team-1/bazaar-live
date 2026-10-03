@@ -152,6 +152,47 @@ The server reads the four views every 10 s on its own one-connection pool and se
 `SHOW_DATABASE_URL` it answers `{enabled: false}`; a view not applied yet only blanks its panel. `?mock=1` shows a
 made-up memory around the mock game.
 
+### Our agents' decisions (`/agent`)
+
+The taker, the maker and the duels write every decision to the team's Postgres (`decisions`, `executions`,
+`outcomes`, `ledger`: bazaar `sql/schema.sql`). `/agent` reads them through the show's read-only role and answers:
+did each agent act this tick (and if not, which guardrail stopped it), which rule blocks most in the last game
+hour, where the money stands against GUARDRAILS.md, and whether each settled deal beat our value (and Jev was right).
+
+- `db/agent_decisions.sql` (applied by whoever holds the admin url, AFTER `db/show.sql`, never by this repo):
+  ```sh
+  psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql
+  psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/agent_decisions.sql
+  ```
+  It refuses to run before `show.sql`. `show.sql` converges the role on its own two views, so **re-running
+  `show.sql` drops these grants: run `agent_decisions.sql` again after it**. Three `security_barrier` views,
+  SELECT for `bazaar_live_reader`, no table grant, no new function:
+  - `show.agent_decisions`: one row per live decision of taker / maker / duels (dry runs and other writers left out):
+    `id, tick, agent, kind, item, counterparty, price, our_value, status, verdict, rule, rule_text, jev_verdict,
+    jev_value, exec_method, error_code, outcome_label, realized_surplus, jev_right`. `rule` is the guardrail id
+    `guardrails.check()` names in its denial (the first when several broke; `pause_file`, `sell_min_value_ratio`
+    are read from their text, anything else is `other`), `rule_text` the denial cut to 140 characters.
+  - `show.agent_outcomes`: scored trades, dealer threads and duels (`target, subject, decision_id, agent, tick,
+    item, counterparty, side, price, our_value, label, score, realized_surplus, jev_verdict, jev_right, scored_at`).
+  - `show.agent_ledger`: per tick `t_hours, spent` (net of refunds), `buys, accepts, listings`.
+  - Never selected: `candidates`, `chosen`, `reason`, `rag_context`, `state_digest` whole, Jev's reason and digest,
+    `executions.request/response`, `outcomes.explanation/details` whole, `ledger.item/source`, the writer token
+    (`owner`). A duel row keeps only its id, kind, status, rule id, Jev verdict and error code: its price, value,
+    rival and denial text carry our private limit (`duel_inside_limit` prints it). A duel outcome keeps its label,
+    never its surplus or score.
+- The server (`server/game/decisions.ts`) shares the transcript's pool (`SHOW_DATABASE_URL`) and needs the game
+  relay (`BAZAAR_KEY` or `BAZAAR_SIM=1`); without either it is off. Every 3 s it reads the decisions after the
+  last id (and re-reads the last 300 ids, whose status and request answer land later), the outcomes after the
+  last `scored_at`, and the ledger of the last two game hours, and publishes `agent.decision`, `agent.outcome`,
+  `agent.ledger` (`shared/decisions.ts`) into the game stream, behind `GAME_VIEW_TOKEN` like the rest. A missing
+  view (or a grant `show.sql` dropped) is logged once (`agent_decisions off view_missing`) and re-checked every
+  minute; the relay never notices.
+- The caps are not in the database: `GUARDRAIL_SPEND_PER_HOUR` (150), `GUARDRAIL_CASH_FLOOR` (50),
+  `GUARDRAIL_ACCEPTS_PER_TICK` (1) follow an edit of GUARDRAILS.md.
+- `?mock=1` plays decisions too: approved ones, blocks by several rules, an expired accept, the maker idle one
+  tick in three, scored deals and a ledger.
+- Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` runs `db/agent_decisions.test.ts` after `db/show.test.ts`.
+
 ## Real conversations (LIVE-T1)
 
 The show can narrate our real dealer threads and closed duels, read from Postgres through a read-only role.

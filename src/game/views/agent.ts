@@ -1,5 +1,6 @@
 import { LOG_ICON, PHASES, fmtP, isSuspicious, signed, topicText } from '../game.ts'
 import { priceOf, topicOf, type GameEvent, type Payload, type Phase, type State } from '../state.ts'
+import { decideSlots, decisionTicks, hasDecisions, type DecideSlot } from './decisions.ts'
 
 export type Lane = 'observe' | 'decide' | 'act' | 'result'
 
@@ -26,7 +27,8 @@ export type Line = {
   deal: boolean
 }
 
-export type TickCard = { tick: number; lanes: { lane: Lane; lines: Line[] }[]; gain: number; deals: number }
+/** `decide`: each agent's decisions of the tick, or why it has none (views/decisions.ts), shown in the Decide lane. */
+export type TickCard = { tick: number; lanes: { lane: Lane; lines: Line[] }[]; decide: DecideSlot[]; gain: number; deals: number }
 
 export type TimelineOptions = { limitTicks?: number; filter?: Filter; upToTick?: number | null }
 
@@ -249,14 +251,18 @@ export function timeline(s: State, { limitTicks = 40, filter = 'all', upToTick =
     else byTick.set(tick, [...lines])
   }
   const cards: TickCard[] = []
-  const ticks = [...byTick.keys()].filter((t) => upToTick == null || t <= upToTick).sort((a, b) => b - a)
+  // Once our agents' decisions arrive, the current tick always has a card: "did each agent act?" has an answer every tick.
+  const decided = hasDecisions(s)
+  const all = new Set([...byTick.keys(), ...(decided ? [...decisionTicks(s), s.tick] : [])])
+  const ticks = [...all].filter((t) => upToTick == null || t <= upToTick).sort((a, b) => b - a)
   for (const tick of ticks) {
     const all = byTick.get(tick) ?? []
     const shown = all.filter((l) => keep(filter, l))
-    if (!shown.length) continue
-    const lanes = LANES.map((lane) => ({ lane, lines: shown.filter((l) => l.lane === lane) })).filter((l) => l.lines.length)
+    const decide = filter === 'deals' ? [] : decideSlots(s, tick).filter((d) => filter === 'all' || d.kind === 'row')
+    if (!shown.length && !decide.some((d) => d.kind === 'row') && !(tick === s.tick && decide.length)) continue
+    const lanes = LANES.map((lane) => ({ lane, lines: shown.filter((l) => l.lane === lane) })).filter((l) => l.lines.length || (l.lane === 'decide' && decide.length))
     const settled = all.filter((l) => l.type === 'settlement')
-    cards.push({ tick, lanes, gain: settled.reduce((sum, l) => sum + (l.gain ?? 0), 0), deals: settled.length })
+    cards.push({ tick, lanes, decide, gain: settled.reduce((sum, l) => sum + (l.gain ?? 0), 0), deals: settled.length })
     if (cards.length >= limitTicks) break
   }
   return cards

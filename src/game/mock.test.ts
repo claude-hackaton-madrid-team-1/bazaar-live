@@ -51,6 +51,21 @@ describe('MockGame', () => {
     expect(s.packs.length).toBeGreaterThan(0)
   })
 
+  it('plays our three agents\' decisions: approved, blocked by several rules, expired, an idle agent, outcomes and a ledger', () => {
+    const s = createState()
+    play(8 * 12).forEach((e) => apply(s, e))
+    const all = [...s.agents.decisions.taker, ...s.agents.decisions.maker, ...s.agents.decisions.duels]
+    expect(new Set(all.map((d) => d.agent))).toEqual(new Set(['taker', 'maker', 'duels']))
+    expect(all.some((d) => d.status === 'done')).toBe(true)
+    expect(all.some((d) => d.status === 'expired')).toBe(true)
+    expect(new Set(all.filter((d) => d.verdict === 'denied').map((d) => d.rule)).size).toBeGreaterThanOrEqual(4)
+    expect(all.filter((d) => d.agent === 'duels').every((d) => d.price === null && d.text === null)).toBe(true)
+    const ticks = new Set(s.agents.decisions.maker.map((d) => d.tick))
+    expect([1, 2, 3, 4, 5, 6].some((tick) => !ticks.has(tick))).toBe(true)
+    expect(s.agents.outcomes.length).toBeGreaterThan(0)
+    expect(s.agents.ledger?.limits).toEqual({ spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 })
+  })
+
   it('is the same game for the same seed', () => {
     expect(play(120, 3)).toEqual(play(120, 3))
     expect(play(120, 3)).not.toEqual(play(120, 4))

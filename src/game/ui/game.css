@@ -665,6 +665,242 @@
   text-decoration-color: var(--gm-bad);
 }
 
+/* our agents' decisions: one row per decision in the Decide lane, and the tiles beside the timeline */
+
+.gm-agent-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(17rem, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.gm-agent-layout > * {
+  min-width: 0;
+}
+
+.gm-agent-side {
+  display: grid;
+  gap: var(--s-4);
+  align-content: start;
+}
+
+.gm-lane-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gm-decs {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-dec {
+  --c: var(--hairline);
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: 5px var(--s-2);
+  border-left: 3px solid var(--c);
+  border-radius: 6px;
+  background: var(--gm-well);
+  font-size: 0.8125rem;
+}
+
+.gm-dec[data-status='done'] {
+  --c: var(--gm-good);
+}
+
+.gm-dec[data-status='approved'],
+.gm-dec[data-status='claimed'] {
+  --c: var(--gm-us);
+}
+
+.gm-dec[data-status='rejected'],
+.gm-dec[data-status='failed'] {
+  --c: var(--gm-bad);
+}
+
+.gm-dec[data-status='expired'] {
+  --c: var(--gm-warn);
+}
+
+.gm-dec-idle {
+  display: block;
+  padding: 2px var(--s-2);
+  background: none;
+  font-style: italic;
+}
+
+.gm-dec-agent {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--gm-us);
+}
+
+.gm-dec-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gm-dec-what,
+.gm-dec-why {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  min-width: 0;
+}
+
+.gm-dec-why {
+  font-size: 0.75rem;
+}
+
+.gm-dec-rule,
+.gm-dec-item {
+  overflow-wrap: anywhere;
+}
+
+.gm-dec-price {
+  font-variant-numeric: tabular-nums;
+}
+
+.gm-dec-out {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.gm-rules {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-rule {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8125rem;
+}
+
+.gm-rule-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.gm-rule-head b {
+  overflow-wrap: anywhere;
+}
+
+.gm-rule-meta {
+  font-size: 0.72rem;
+}
+
+.gm-fill-bad,
+.gm-meter[data-level='bad'] .gm-fill {
+  background: linear-gradient(90deg, var(--seller-1), var(--seller-2));
+}
+
+.gm-meters {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+}
+
+.gm-meter dd {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+}
+
+.gm-meter-num {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gm-meter[data-level='warn'] .gm-fill {
+  background: var(--gm-warn);
+}
+
+.gm-meter[data-level='bad'] .gm-meter-num {
+  color: var(--gm-bad);
+}
+
+.gm-meter-note {
+  margin: var(--s-3) 0 0;
+  font-size: 0.8125rem;
+}
+
+.gm-deals {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-deal {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.gm-deal:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.gm-deal-head,
+.gm-deal-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  min-width: 0;
+}
+
+.gm-deal-head .gm-eid {
+  margin-left: auto;
+}
+
+.gm-deal-body {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 520px) {
+  /* a phone: the agent and the event link on top, the decision across the whole card below */
+  .gm-dec {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+
+  .gm-dec-body {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 960px) {
+  .gm-agent-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* the money and the blocks first: they are short, and they answer before the timeline scrolls */
+  .gm-agent-side {
+    order: -1;
+  }
+}
+
 @media (max-width: 760px) {
   .gm-now {
     grid-template-columns: minmax(0, 1fr);
