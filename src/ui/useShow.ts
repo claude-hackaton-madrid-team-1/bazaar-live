@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { AGENTS } from '../model/events'
 import { ENDPOINTS, POLL, type ShowConfig, type TtsChoice } from '../config'
-import { MockPlayer } from '../mock/player'
 import { EventFeed } from '../net/feed'
 import { fetchHealth, fetchState } from '../net/http'
 import { ShowEngine, type ShowState } from '../show/engine'
@@ -65,13 +64,23 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
   const { mock, speed, mockMode } = config
   useEffect(() => {
     if (mock) {
-      const refresh = () => AGENTS.forEach((a) => engine.setHealth(a, player.health(a)))
-      const player = new MockPlayer({ speed, mode: mockMode, onEvent: (e, replay) => engine.ingest(e, replay), onTick: refresh })
-      AGENTS.forEach((a) => engine.setFeed(a, 'open'))
-      refresh()
-      engine.syncBoard(player.state('maker')?.openOffers ?? [])
-      player.start()
-      return () => player.stop()
+      // The fixtures load only with ?mock=1: a normal visit never downloads them.
+      let player: { stop(): void } | null = null
+      let cancelled = false
+      void import('../mock/player').then(({ MockPlayer }) => {
+        if (cancelled) return
+        const mockPlayer = new MockPlayer({ speed, mode: mockMode, onEvent: (e, replay) => engine.ingest(e, replay), onTick: () => refresh() })
+        const refresh = () => AGENTS.forEach((a) => engine.setHealth(a, mockPlayer.health(a)))
+        AGENTS.forEach((a) => engine.setFeed(a, 'open'))
+        refresh()
+        engine.syncBoard(mockPlayer.state('maker')?.openOffers ?? [])
+        mockPlayer.start()
+        player = mockPlayer
+      })
+      return () => {
+        cancelled = true
+        player?.stop()
+      }
     }
 
     const feeds = AGENTS.map(

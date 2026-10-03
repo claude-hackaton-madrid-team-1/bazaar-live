@@ -92,9 +92,24 @@ export function availableProviders(config: ProviderConfig): ProviderId[] {
 
 const TIMEOUT_MS = 15_000
 
+type Json = Record<string, unknown>
+const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/**
+ * The provider's own error code (`quota_exceeded`, `PERMISSION_DENIED`), never its raw body: a body
+ * may echo request headers, and this message goes to the log.
+ */
+export function errorCode(body: unknown): string {
+  const obj = isRecord(body) ? body : {}
+  const nested = isRecord(obj.detail) ? obj.detail : isRecord(obj.error) ? obj.error : {}
+  const code = nested.status ?? nested.code ?? obj.status
+  const text = typeof code === 'string' || typeof code === 'number' ? String(code) : ''
+  return /^[A-Za-z0-9_.-]{1,40}$/.test(text) ? text : 'unknown'
+}
+
 async function failure(provider: ProviderId, res: Response): Promise<never> {
-  const detail = (await res.text().catch(() => '')).slice(0, 300)
-  throw new UpstreamError(provider, res.status, detail)
+  const body: unknown = await res.json().catch(() => null)
+  throw new UpstreamError(provider, res.status, errorCode(body))
 }
 
 export async function elevenLabs(config: NonNullable<ProviderConfig['elevenlabs']>, speaker: Speaker, text: string, fetchImpl: typeof fetch = fetch): Promise<Audio> {
@@ -120,8 +135,6 @@ export function geminiRequest(model: string, voice: string, speaker: Speaker, te
   }
 }
 
-type Json = Record<string, unknown>
-const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** The last audio block of an Interactions answer (base64), or null. */
 export function geminiAudioData(body: unknown): string | null {

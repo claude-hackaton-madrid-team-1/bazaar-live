@@ -258,3 +258,28 @@ describe('edge cases', () => {
     expect((await fetch(`${base}/%E0%A4%A`)).status).toBe(400)
   })
 })
+
+describe('audit follow-ups', () => {
+  it('logs the provider error code, never the upstream body', async () => {
+    const logs: string[] = []
+    const fake = (async () => Response.json({ detail: { status: 'quota_exceeded', echo: 'xi-api-key: k-secret' } }, { status: 401 })) as unknown as typeof fetch
+    const server = createServer(createApp({ config: readProviderConfig({ ELEVENLABS_API_KEY: 'k-secret' }), distDir: dist(), fetchImpl: fake, log: (e) => logs.push(JSON.stringify(e)) }))
+    servers.push(server)
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    expect((await tts(base, holdLine(7))).status).toBe(502)
+    expect(logs.join('\n')).toContain('quota_exceeded')
+    expect(logs.join('\n')).not.toContain('k-secret')
+  })
+
+  it('accepts only the application/json media type, and sends frame-ancestors and HSTS', async () => {
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, (async () => new Response(Buffer.from('mp3'))) as unknown as typeof fetch)
+    const sneaky = await fetch(`${base}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'text/plain; application/json', Origin: base }, body: JSON.stringify(holdLine(8)) })
+    expect(sneaky.status).toBe(415)
+    const ok = await fetch(`${base}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: base }, body: JSON.stringify(holdLine(8)) })
+    expect(ok.status).toBe(200)
+    const page = await fetch(`${base}/`)
+    expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    expect(page.headers.get('strict-transport-security')).toBe('max-age=31536000')
+  })
+})

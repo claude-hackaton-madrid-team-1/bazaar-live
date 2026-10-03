@@ -44,10 +44,13 @@ const CSP = [
   "font-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
 ].join('; ')
 
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'Content-Security-Policy': CSP,
+  'Strict-Transport-Security': 'max-age=31536000',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
@@ -152,7 +155,8 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
   async function tts(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'POST' })
     if (!sameOrigin(req)) return json(res, 403, { error: 'cross_origin' })
-    if (!String(req.headers['content-type'] ?? '').includes('application/json')) return json(res, 415, { error: 'json_only' })
+    const mediaType = String(req.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase()
+    if (mediaType !== 'application/json') return json(res, 415, { error: 'json_only' })
     const raw = await readBody(req, MAX_BODY)
     if (raw === null) {
       res.on('finish', () => req.socket.destroy())
