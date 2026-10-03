@@ -23,8 +23,9 @@ export const SQL = {
   threadBackfill: `select * from (select ${COLUMNS_THREAD} from show.thread_lines order by event_id desc limit $1) t order by event_id asc`,
   threadAfter: `select ${COLUMNS_THREAD} from show.thread_lines where event_id > $1 order by event_id asc limit $2`,
   // The monitor writes streamed events at once and polled gap-fills later, so an id below the mark can show up
-  // after it. A SECOND query looks back over the window (the store dedupes), so a burst never starves it.
-  threadGap: `select ${COLUMNS_THREAD} from show.thread_lines where event_id > $1 and event_id <= $2 order by event_id asc limit $3`,
+  // after it. A SECOND query looks back over the window, newest first (the store dedupes), so a burst never
+  // starves it and a late gap-fill near the mark is the last thing the cap can cut.
+  threadGap: `select ${COLUMNS_THREAD} from show.thread_lines where event_id > $1 and event_id <= $2 order by event_id desc limit $3`,
   duelHeadersFirst: `select * from (select ${COLUMNS_DUEL}, ${STAMP}, updated_at from show.duel_lines where kind = 'closed' order by updated_at desc, duel desc limit $1) t order by updated_at, duel`,
   // Keyset on (updated_at, duel): bazaar re-upserts every finished duel with one now(), so many rows share a stamp.
   duelHeadersAfter: `select ${COLUMNS_DUEL}, ${STAMP} from show.duel_lines where kind = 'closed' and (updated_at, duel) > ($1::timestamptz, $2::int) order by updated_at, duel limit $3`,

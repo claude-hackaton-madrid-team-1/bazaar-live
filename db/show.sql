@@ -84,7 +84,9 @@ select e.id as event_id,
 -- finished transcript lets a rival still negotiating with us compute our walk-away price. So NO duel is
 -- visible, in any session, until an admin switches the gate on after the last session (Duels III):
 --     update show.gate set open_all = true;
--- Then every CLOSED duel shows (a duel still marked live, a stale practice row, hides nothing else).
+-- Then every CLOSED duel shows, except beside a live sibling (same session or item) that is still within its
+-- deadline: a 'live' row whose deadline_tick is behind the feed's newest tick is stale (a practice leftover)
+-- and hides nothing. A live row with no deadline counts as live.
 -- The server keeps duels off the page too unless SHOW_DUELS is set; this is the second wall.
 create table if not exists show.gate (
   only_row boolean primary key default true check (only_row),
@@ -97,6 +99,10 @@ create or replace view show.duel_lines with (security_barrier = true) as
 with shown as (
   select d.* from public.duels d
    where d.status in ('deal', 'no_deal') and (select g.open_all from show.gate g)
+     and not exists (select 1 from public.duels l
+                      where l.status = 'live'
+                        and (l.session is not distinct from d.session or l.item is not distinct from d.item)
+                        and (l.deadline_tick is null or l.deadline_tick >= (select coalesce(max(f.tick), 0) from public.feed_events f)))
 )
 -- The outcome.
 select 'closed'::text as kind, d.duel, 0 as n, d.session, d.status, d.role, d.item, d.rival,
