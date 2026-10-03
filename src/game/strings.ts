@@ -111,7 +111,10 @@ export interface GameStrings {
     readonly book: string
     readonly total: string
     readonly dealsCount: (n: number) => string
-    readonly parts: Readonly<Record<'duel_points' | 'ladder_points' | 'neg_points' | 'mm_points', string>>
+    readonly parts: Readonly<Record<'duel_points' | 'ladder_points' | 'neg_points' | 'mm_points' | 'bench_points', string>>
+    readonly packs: string
+    readonly noPacks: string
+    readonly packsFoot: (kinds: number) => string
     readonly rarity: Readonly<Record<string, string>>
     readonly missing: string
     readonly spare: string
@@ -137,6 +140,25 @@ export interface GameStrings {
     readonly teamHead: readonly string[]
     readonly noBook: string
     readonly bookPrice: (p: string) => string
+    readonly book: string
+    readonly bookSub: (offers: number, venues: number) => string
+    readonly whose: string
+    readonly everyone: string
+    readonly ours: string
+    readonly noOffers: string
+    readonly noOurOffers: string
+    readonly bookHead: readonly string[]
+    readonly offers: (n: number) => string
+    readonly oursCount: (n: number) => string
+    readonly age: (n: number) => string
+    readonly venues: string
+    readonly venuesSub: (open: number) => string
+    readonly noVenues: string
+    readonly owner: string
+    readonly venueStatus: Readonly<Record<'open' | 'closing' | 'closed', string>>
+    readonly fee: (bps: number | null, perCard: number | null) => string
+    readonly noAnnouncement: string
+    readonly announcements: (n: number) => string
   }
   readonly debug: {
     readonly stream: string
@@ -271,7 +293,10 @@ const EN: GameStrings = {
     book: 'book',
     total: 'total',
     dealsCount: (n) => plural(n, 'deal', 'deals'),
-    parts: { duel_points: 'Duels', ladder_points: 'Ladder', neg_points: 'Negotiation', mm_points: 'Market-making' },
+    parts: { duel_points: 'Duels', ladder_points: 'Ladder', neg_points: 'Negotiation', mm_points: 'Market-making', bench_points: 'Bench' },
+    packs: 'Sealed packs',
+    noPacks: 'none sealed',
+    packsFoot: (kinds) => plural(kinds, 'kind', 'kinds'),
     rarity: { common: 'common', uncommon: 'uncommon', rare: 'rare', epic: 'epic', legendary: 'legendary' },
     missing: 'missing',
     spare: '×2 spare copies',
@@ -297,6 +322,25 @@ const EN: GameStrings = {
     teamHead: ['team', 'trades', 'volume', 'bought', 'sold', 'last tick'],
     noBook: 'no book price',
     bookPrice: (p) => `book ${p}`,
+    book: 'Order book',
+    bookSub: (offers, venues) => `${plural(offers, 'open offer', 'open offers')} · ${plural(venues, 'venue', 'venues')}`,
+    whose: 'Whose offers',
+    everyone: 'Everyone',
+    ours: 'Ours',
+    noOffers: 'No open offers on any board yet.',
+    noOurOffers: 'We have no open offers on any board.',
+    bookHead: ['card', 'best bid', 'best ask', 'bids / asks', 'book'],
+    offers: (n) => plural(n, 'offer', 'offers'),
+    oursCount: (n) => `${n} ours`,
+    age: (n) => `listed ${plural(n, 'tick', 'ticks')} ago`,
+    venues: 'Venues',
+    venuesSub: (open) => `${open} open`,
+    noVenues: 'No venue seen yet.',
+    owner: 'owner',
+    venueStatus: { open: 'open', closing: 'closing', closed: 'closed' },
+    fee: (bps, perCard) => [bps ? `${bps / 100}%` : '', perCard ? `${perCard} P/card` : ''].filter(Boolean).join(' + ') || 'no fee',
+    noAnnouncement: 'no announcement yet',
+    announcements: (n) => plural(n, 'announcement', 'announcements'),
   },
   debug: {
     stream: 'Event stream',
@@ -431,7 +475,10 @@ const ES: GameStrings = {
     book: 'libro',
     total: 'total',
     dealsCount: (n) => plural(n, 'trato', 'tratos'),
-    parts: { duel_points: 'Duelos', ladder_points: 'Escalera', neg_points: 'Negociación', mm_points: 'Creación de mercado' },
+    parts: { duel_points: 'Duelos', ladder_points: 'Escalera', neg_points: 'Negociación', mm_points: 'Creación de mercado', bench_points: 'Banco de pruebas' },
+    packs: 'Sobres cerrados',
+    noPacks: 'ninguno cerrado',
+    packsFoot: (kinds) => plural(kinds, 'tipo', 'tipos'),
     rarity: { common: 'común', uncommon: 'poco común', rare: 'rara', epic: 'épica', legendary: 'legendaria' },
     missing: 'falta',
     spare: '×2 copias repetidas',
@@ -457,6 +504,25 @@ const ES: GameStrings = {
     teamHead: ['equipo', 'tratos', 'volumen', 'compró', 'vendió', 'último turno'],
     noBook: 'sin precio de libro',
     bookPrice: (p) => `libro ${p}`,
+    book: 'Libro de órdenes',
+    bookSub: (offers, venues) => `${plural(offers, 'oferta abierta', 'ofertas abiertas')} · ${plural(venues, 'puesto', 'puestos')}`,
+    whose: 'De quién',
+    everyone: 'Todos',
+    ours: 'Nuestras',
+    noOffers: 'Aún no hay ofertas abiertas en ningún puesto.',
+    noOurOffers: 'No tenemos ofertas abiertas en ningún puesto.',
+    bookHead: ['carta', 'mejor puja', 'mejor oferta', 'pujas / ofertas', 'libro'],
+    offers: (n) => plural(n, 'oferta', 'ofertas'),
+    oursCount: (n) => `${n} nuestras`,
+    age: (n) => `publicada hace ${plural(n, 'turno', 'turnos')}`,
+    venues: 'Puestos',
+    venuesSub: (open) => `${open} abiertos`,
+    noVenues: 'Aún no se ha visto ningún puesto.',
+    owner: 'dueño',
+    venueStatus: { open: 'abierto', closing: 'cerrando', closed: 'cerrado' },
+    fee: (bps, perCard) => [bps ? `${bps / 100} %` : '', perCard ? `${perCard} P/carta` : ''].filter(Boolean).join(' + ') || 'sin comisión',
+    noAnnouncement: 'aún sin anuncios',
+    announcements: (n) => plural(n, 'anuncio', 'anuncios'),
   },
   debug: {
     stream: 'Flujo de eventos',

@@ -1,11 +1,11 @@
 import { assert, test } from 'vitest'
 import { apply, createState, type GameEvent, type Payload } from '../state.ts'
-import { cardStats, deltaText, deltaTone, marketTape, median, sparkEnd, sparkPath, teamStats } from './market.ts'
+import { cardStats, deltaText, deltaTone, marketTape, median, orderBook, sparkEnd, sparkPath, teamStats, venueRows } from './market.ts'
 
 let nextId = 1
 let nextSettlement = 900
 let nextAsset = 5000
-const ev = (type: string, payload: Payload = {}, tick = 10): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor: '', payload })
+const ev = (type: string, payload: Payload = {}, tick = 10, actor = ''): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor, payload })
 
 const trade = (seller: string, buyer: string, ref: string, price: number, { tick = 10, venue = 'rastro' as string | null, fee = 0, name = `Card ${ref}` } = {}) => {
   const persona = seller === 'abuela' ? 'abuela' : null
@@ -106,6 +106,62 @@ test('sparkline path spans the box, flat and short series are safe', () => {
 test('sparkline end dot sits on the last point', () => {
   assert.deepEqual(sparkEnd([0, 10], 60, 16), { x: 59, y: 1 })
   assert.strictEqual(sparkEnd([3], 60, 16), null)
+})
+
+let nextOffer = 1
+const list = (maker: string, ref: string, price: number, { side = 'ask' as 'ask' | 'bid', venue = 'rastro', tick = 10 } = {}) => {
+  const goods = side === 'ask' ? { cash: 0, assets: [{ id: nextAsset++, kind: 'card', ref, serial: 1 }], types: [] } : { cash: 0, assets: [], types: [`card:${ref}`] }
+  const cash = { cash: price, assets: [], types: [] }
+  return ev('offer.listed', {
+    venue,
+    offer: {
+      id: nextOffer++, maker, to: null, venue, thread: null, status: 'open', give: side === 'ask' ? goods : cash, want: side === 'ask' ? cash : goods,
+      expires_tick: tick + 20, created_tick: tick, final: false,
+    },
+  }, tick, maker)
+}
+
+test('order book: per venue and card, the cheapest ask and the dearest bid, with maker and age', () => {
+  const s = fresh()
+  apply(s, ev('clock', {}, 14))
+  apply(s, list('t07', 'LAT-03', 12, { tick: 10 }))
+  apply(s, list('t09', 'LAT-03', 11, { tick: 12 }))
+  apply(s, list('t02', 'LAT-03', 11, { tick: 13 }))
+  apply(s, list('t14', 'LAT-03', 8, { side: 'bid', tick: 11 }))
+  apply(s, list('t01', 'LAT-03', 9, { side: 'bid', tick: 14 }))
+  apply(s, list('t14', 'MAL-06', 18, { side: 'bid', tick: 9 }))
+  apply(s, list('t05', 'SAL-01', 7, { venue: 't07-puesto' }))
+  const books = orderBook(s)
+  assert.deepEqual(books.map((b) => [b.venue, b.offers, b.ours]), [['rastro', 6, 1], ['t07-puesto', 1, 0]])
+  const [lat, mal] = books[0]!.rows
+  assert.deepEqual([lat!.ref, lat!.bids, lat!.asks, lat!.book], ['LAT-03', 2, 3, 10])
+  assert.deepEqual([lat!.ask?.maker, lat!.ask?.price, lat!.ask?.age, lat!.ask?.ours], ['t09', 11, 2, false], 'a tie goes to the first listed')
+  assert.deepEqual([lat!.bid?.maker, lat!.bid?.price, lat!.bid?.age, lat!.bid?.ours], ['t01', 9, 0, true])
+  assert.deepEqual([mal!.ref, mal!.ask, mal!.bid?.price], ['MAL-06', null, 18])
+})
+
+test('order book: only ours on request, expired offers never show', () => {
+  const s = fresh()
+  apply(s, list('t07', 'LAT-03', 12))
+  apply(s, list('t01', 'MAL-06', 30))
+  apply(s, list('t01', 'SAL-01', 5, { venue: 't07-puesto', side: 'bid' }))
+  assert.deepEqual(orderBook(s, { whose: 'ours' }).map((b) => [b.venue, b.rows.map((r) => r.ref)]), [['rastro', ['MAL-06']], ['t07-puesto', ['SAL-01']]])
+  s.tick = 31
+  assert.deepEqual(orderBook(s), [])
+})
+
+test('venues: open first and busiest first, with fee, owner and last announcement', () => {
+  const s = fresh()
+  apply(s, list('t07', 'LAT-03', 12))
+  apply(s, list('t09', 'LAT-04', 12))
+  apply(s, ev('venue.opened', { venue: 'v-t01', name: 'Our stall', owner: 't01', fee_bps: 150, fee_per_card: 1 }))
+  apply(s, ev('venue.announcement', { venue: 'v-t01', text: 'Rares wanted' }, 11, 'v-t01'))
+  apply(s, ev('venue.opened', { venue: 'v-t05', name: 'Puesto 5', owner: 't05', fee_bps: 0, fee_per_card: 0 }))
+  apply(s, ev('venue.closing', { venue: 'v-t05' }))
+  const rows = venueRows(s)
+  assert.deepEqual(rows.map((r) => [r.id, r.status, r.offers, r.owner, r.ours]),
+    [['rastro', 'open', 2, null, false], ['v-t01', 'open', 0, 't01', true], ['v-t05', 'closing', 0, 't05', false]])
+  assert.deepEqual([rows[1]!.name, rows[1]!.feeBps, rows[1]!.feePerCard, rows[1]!.announcement?.text, rows[1]!.announcements], ['Our stall', 150, 1, 'Rares wanted', 1])
 })
 
 test('book delta reads as an arrow and percent, above book in red, below in green', () => {

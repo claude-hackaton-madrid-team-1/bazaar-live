@@ -172,6 +172,48 @@ test('duels: messages and results land in Result', () => {
   assert.match(lines[2]!.text, /deal at 47 P/)
 })
 
+const listing = (id: number, maker: string, side: 'ask' | 'bid', ref: string, price: number, tick: number) => {
+  const goods = side === 'ask' ? { cash: 0, assets: [{ id: 100 + id, kind: 'card', ref, serial: 1 }], types: [] } : { cash: 0, assets: [], types: [`card:${ref}`] }
+  const cash = { cash: price, assets: [], types: [] }
+  return ev('offer.listed', {
+    venue: 'rastro',
+    offer: { id, maker, to: null, venue: 'rastro', thread: null, status: 'open', give: side === 'ask' ? goods : cash, want: side === 'ask' ? cash : goods, expires_tick: tick + 20, created_tick: tick, final: false },
+  }, tick, maker)
+}
+
+test('the board: our listings are acts, their cancels, failures, packs, gifts and threads are results; others never show', () => {
+  const s = fresh()
+  feed(s, [
+    ev('clock', {}, 4),
+    ev('thread.opened', { thread: 80, kind: 'persona', team: 't01', with: 'abuela', topic: { buy: { pack: 'sobre_barrio' } } }, 4),
+    listing(23, 't01', 'ask', 'LAT-03', 11, 4),
+    listing(24, 't01', 'bid', 'MAL-06', 18, 4),
+    listing(25, 't07', 'ask', 'SAL-01', 9, 4),
+    ev('offer.cancelled', { offer: 23, venue: 'rastro', reason: 'expired' }, 4),
+    ev('settlement.failed', { offer: 24, reason: 'not enough cash' }, 4),
+    ev('pack.opened', { team: 't01', name: 'Team 1', pack: 'sobre_barrio', best: 'LAT-09' }, 4),
+    ev('pack.opened', { team: 't07', name: 'Team 7', pack: 'sobre_barrio', best: null }, 4),
+    ev('gift.given', { team: 't01', cash: 10, packs: [], cards: ['MAL-03'], reason: 'gift' }, 4, 'abuela'),
+    ev('thread.opened', { thread: 81, kind: 'team', team: 't05', with: 't01', topic: { sell: { assets: [12] } } }, 4),
+  ])
+  const [card] = timeline(s)
+  const act = card!.lanes.find((l) => l.lane === 'act')!.lines
+  assert.deepEqual(act.map((l) => [l.text, l.tone, l.action]), [
+    ['opened thread #80 with abuela · buy sobre_barrio', 'us', true],
+    ['list LAT-03 at 11 P on rastro', 'us', true],
+    ['bid 18 P for MAL-06 on rastro', 'us', true],
+  ])
+  const result = card!.lanes.find((l) => l.lane === 'result')!.lines
+  assert.deepEqual(result.map((l) => [l.text, l.tone]), [
+    ['ask #23 (LAT-03 at 11 P) expired on rastro', 'neutral'],
+    ['bid #24 (MAL-06 at 18 P) failed to settle: not enough cash', 'bad'],
+    ['opened sobre_barrio · best LAT-09', 'good'],
+    ['gift from abuela: 10 P, MAL-03', 'good'],
+    ['t05 opened thread #81 with us · sell #12', 'them'],
+  ])
+  assert.deepEqual([card!.deals, card!.gain], [0, 0], 'a failed settlement is not a deal')
+})
+
 test('filters: actions only keeps what our agent did, deals only keeps the negotiation', () => {
   const s = fullTick(fresh(), 5)
   feed(s, [ev('clock', {}, 6), ev('agent.thought', { text: 'nothing to do' }, 6)])

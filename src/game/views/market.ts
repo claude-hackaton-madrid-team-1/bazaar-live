@@ -1,5 +1,5 @@
 import { bookOf } from '../game.ts'
-import type { State, Trade } from '../state.ts'
+import type { BookOffer, State, Trade, Venue } from '../state.ts'
 
 export type Include = 'others' | 'all'
 
@@ -114,4 +114,93 @@ export const deltaText = (delta: number | null): string =>
 export const deltaTone = (delta: number | null): string => {
   const pct = delta == null ? 0 : Math.round(delta * 100)
   return pct > 0 ? 'bad' : pct < 0 ? 'good' : ''
+}
+
+// ---------------------------------------------------------------- the board
+
+export type Whose = 'all' | 'ours'
+
+/** The best offer on one side of a card: its price, who made it, how many ticks ago. */
+export type Quote = { id: number; eventId: number; maker: string; price: number; age: number | null; ours: boolean }
+
+export type BookRow = { ref: string; kind: string; bids: number; asks: number; bid: Quote | null; ask: Quote | null; book: number | null }
+
+export type VenueBook = { venue: string; name: string; owner: string | null; offers: number; ours: number; rows: BookRow[] }
+
+export type VenueRow = {
+  id: string
+  name: string
+  owner: string | null
+  status: Venue['status']
+  offers: number
+  /** The fee as the game charges it: basis points of the price, plus P per card. */
+  feeBps: number | null
+  feePerCard: number | null
+  announcement: Venue['announcement']
+  announcements: number
+  ours: boolean
+}
+
+const live = (s: State, o: BookOffer) => o.expiresTick == null || o.expiresTick >= s.tick
+
+const quote = (s: State, o: BookOffer): Quote => ({
+  id: o.id, eventId: o.eventId, maker: o.maker, price: o.price ?? 0,
+  age: o.createdTick == null ? null : Math.max(0, s.tick - o.createdTick), ours: o.maker === s.team,
+})
+
+/** The cheaper ask, the dearer bid; on a tie, the one listed first. */
+const better = (side: 'ask' | 'bid', a: BookOffer, b: BookOffer) => {
+  const d = (a.price ?? 0) - (b.price ?? 0)
+  return d ? (side === 'ask' ? d < 0 : d > 0) : a.id < b.id
+}
+
+/** Per venue, per card: the best bid and ask, and how deep each side is. Swaps count in the venue, not in a card's best. */
+export function orderBook(s: State, { whose = 'all' }: { whose?: Whose } = {}): VenueBook[] {
+  const venues: VenueBook[] = []
+  for (const [venue, offers] of s.book) {
+    const rows = new Map<string, BookRow>()
+    const best = new Map<string, { bid?: BookOffer; ask?: BookOffer }>()
+    let count = 0
+    let ours = 0
+    for (const o of offers.values()) {
+      if (!live(s, o) || (whose === 'ours' && o.maker !== s.team)) continue
+      count += 1
+      if (o.maker === s.team) ours += 1
+      if (o.side === 'swap') continue
+      let row = rows.get(o.ref)
+      if (!row) rows.set(o.ref, (row = { ref: o.ref, kind: o.kind, bids: 0, asks: 0, bid: null, ask: null, book: o.kind === 'card' ? bookOf(o.ref) : null }))
+      row[o.side === 'bid' ? 'bids' : 'asks'] += 1
+      const top = best.get(o.ref) ?? {}
+      const cur = top[o.side]
+      if (!cur || better(o.side, o, cur)) top[o.side] = o
+      best.set(o.ref, top)
+    }
+    if (!count) continue
+    for (const [ref, top] of best) {
+      const row = rows.get(ref)
+      if (!row) continue
+      row.bid = top.bid ? quote(s, top.bid) : null
+      row.ask = top.ask ? quote(s, top.ask) : null
+    }
+    const v = s.venues.get(venue)
+    venues.push({
+      venue, name: v?.name ?? venue, owner: v?.owner ?? null, offers: count, ours,
+      rows: [...rows.values()].sort((a, b) => b.bids + b.asks - (a.bids + a.asks) || a.ref.localeCompare(b.ref)),
+    })
+  }
+  return venues.sort((a, b) => b.offers - a.offers || a.venue.localeCompare(b.venue))
+}
+
+const STATUS_ORDER: Record<Venue['status'], number> = { open: 0, closing: 1, closed: 2 }
+
+/** Every venue seen: open ones first, the busiest board first. */
+export function venueRows(s: State): VenueRow[] {
+  return [...s.venues.values()]
+    .map((v) => ({
+      id: v.id, name: v.name, owner: v.owner, status: v.status,
+      offers: [...(s.book.get(v.id)?.values() ?? [])].filter((o) => live(s, o)).length,
+      feeBps: v.feeBps, feePerCard: v.feePerCard, announcement: v.announcement, announcements: v.announcements,
+      ours: Boolean(s.team) && v.owner === s.team,
+    }))
+    .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || b.offers - a.offers || a.id.localeCompare(b.id))
 }

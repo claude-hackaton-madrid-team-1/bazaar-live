@@ -41,6 +41,38 @@ test('summarize reads one line out of each payload', () => {
   assert.strictEqual(summarize(ev('agent.me', { cash: 412, score: { score: 18.4, rank: 9 }, assets: [{}, {}] })), '412 P · score 18.4 · rank 9 · 2 assets')
 })
 
+test('familyOf groups the board, venues, packs and gifts', () => {
+  assert.deepEqual(
+    ['offer.listed', 'offer.cancelled', 'settlement.failed', 'venue.announcement', 'pack.opened', 'gift.given', 'thread.opened', 'duel.closed'].map(familyOf),
+    ['offer', 'offer', 'settlement', 'venue', 'pack', 'gift', 'thread', 'duel'],
+  )
+})
+
+test('summarize reads the board, venues, packs and gifts as the game sent them', () => {
+  const offer = { id: 23, maker: 't07', to: null, venue: 'rastro', thread: null, status: 'open', expires_tick: 12, created_tick: 2, final: false }
+  const listed = (give: Payload, want: Payload) => ev('offer.listed', { venue: 'rastro', offer: { ...offer, give, want } }, 2, 't07')
+  assert.strictEqual(summarize(listed({ cash: 0, assets: [{ id: 100, kind: 'card', ref: 'LAT-03', serial: 5 }], types: [] }, { cash: 10, assets: [], types: [] })),
+    'offer 23 · t07 ask LAT-03 · 10 P · rastro · until t12')
+  assert.strictEqual(summarize(listed({ cash: 18, assets: [], types: [] }, { cash: 0, assets: [], types: ['card:MAL-06'] })),
+    'offer 23 · t07 bid MAL-06 · 18 P · rastro · until t12')
+  assert.strictEqual(summarize(ev('offer.cancelled', { offer: 2953, venue: 'rastro', reason: 'expired' })), 'offer 2953 expired · rastro')
+  assert.strictEqual(summarize(ev('offer.cancelled', { offer: 2953, venue: 'rastro' })), 'offer 2953 cancelled · rastro')
+  assert.strictEqual(summarize(ev('settlement.failed', { offer: 40, reason: 'match no longer crosses' })), 'offer 40 failed to settle · match no longer crosses')
+  assert.strictEqual(summarize(ev('thread.opened', { thread: 70, kind: 'persona', team: 't01', with: 'abuela', topic: { buy: { pack: 'sobre_barrio' } } })),
+    'thread 70 opened · t01 → abuela · persona · buy sobre_barrio')
+  assert.strictEqual(summarize(ev('pack.opened', { team: 't07', name: 'Team 7', pack: 'sobre_barrio', best: null })), 't07 opened sobre_barrio')
+  assert.strictEqual(summarize(ev('pack.opened', { team: 't07', pack: 'sobre_barrio', best: 'LAT-09' })), 't07 opened sobre_barrio · best LAT-09')
+  assert.strictEqual(summarize(ev('gift.given', { team: 't06', name: 'Team 6', cash: 0, packs: [], cards: ['MAL-03'], reason: 'gift from Abuela Carmen' }, 4, 'abuela')),
+    'gift abuela → t06 · MAL-03 · “gift from Abuela Carmen”')
+  assert.strictEqual(summarize(ev('venue.opened', { venue: 'v-t05', name: 'El Puesto', owner: 't05', fee_bps: 200, fee_per_card: 1, bond: 50 })),
+    'venue v-t05 opened · “El Puesto” · by t05 · fee 200 bps + 1 P/card')
+  assert.strictEqual(summarize(ev('venue.announcement', { venue: 'v-t05', name: 'El Puesto', text: 'Rares wanted' })), 'venue v-t05 · “Rares wanted”')
+  assert.strictEqual(summarize(ev('venue.fee_announced', { venue: 'v-t05', fee_bps: 100, fee_per_card: 0, effective_tick: 30 })), 'venue v-t05 · fee 100 bps + 0 P/card · from t30')
+  assert.strictEqual(summarize(ev('venue.fee_changed', { venue: 'v-t05', fee_bps: 100, fee_per_card: 0 })), 'venue v-t05 · fee 100 bps + 0 P/card')
+  assert.strictEqual(summarize(ev('venue.closing', { venue: 'v-t05', bond_back_tick: 40 })), 'venue v-t05 closing · bond back at t40')
+  assert.strictEqual(summarize(ev('venue.closed', { venue: 'v-t05', bond_returned: 50 })), 'venue v-t05 closed · 50 P bond returned')
+})
+
 test('summarize truncates thoughts and unknown payloads and survives junk', () => {
   const long = 'x'.repeat(300)
   const line = summarize(ev('agent.thought', { text: long }))

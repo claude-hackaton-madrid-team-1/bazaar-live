@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react'
 import { fmtP } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
-import { cardStats, deltaText, deltaTone, marketTape, teamStats, type CardStat, type Include, type TapeRow, type TeamStat } from '../views/market.ts'
-import { CardRef, Empty, EventLink, Panel, Seg, Sparkline } from './bits.tsx'
+import {
+  cardStats, deltaText, deltaTone, marketTape, orderBook, teamStats, venueRows,
+  type CardStat, type Include, type Quote, type TapeRow, type TeamStat, type VenueBook, type VenueRow, type Whose,
+} from '../views/market.ts'
+import { Badge, CardRef, Empty, EventLink, Panel, Seg, Sparkline } from './bits.tsx'
 
 /** Header cells; the indexes in `right` are numbers, aligned right. */
 function Head({ cells, right }: { cells: readonly string[]; right: readonly number[] }) {
@@ -112,17 +115,110 @@ function Teams({ teams }: { teams: TeamStat[] }) {
   )
 }
 
+/** The best offer on one side: price, maker and age, or a dash. */
+function QuoteCell({ q, team }: { q: Quote | null; team: string }) {
+  const t = useGameStrings()
+  if (!q) return <td className="gm-r gm-muted">—</td>
+  return (
+    <td className="gm-r gm-quote">
+      <b>{fmtP(q.price)}</b> <span data-tone={q.maker === team ? 'us' : undefined}>{q.maker}</span>{' '}
+      <span className="gm-muted" title={q.age == null ? undefined : t.market.age(q.age)}>
+        {q.age == null ? '' : `${q.age}t`}
+      </span>
+    </td>
+  )
+}
+
+function OrderBook({ books, team, whose }: { books: VenueBook[]; team: string; whose: Whose }) {
+  const t = useGameStrings()
+  if (!books.length) return <Empty>{whose === 'ours' ? t.market.noOurOffers : t.market.noOffers}</Empty>
+  return (
+    <div className="gm-scroll">
+      <table className="gm-table gm-book">
+        <Head cells={t.market.bookHead} right={[1, 2, 3, 4]} />
+        {books.map((v) => (
+          <tbody key={v.venue}>
+            <tr className="gm-group">
+              <td colSpan={5}>
+                <b>{v.name}</b>
+                {v.owner && <span data-tone={v.owner === team ? 'us' : undefined}> · {v.owner}</span>}
+                <span className="gm-muted">
+                  {' '}
+                  · {t.market.offers(v.offers)}
+                  {v.ours > 0 && whose === 'all' && ` · ${t.market.oursCount(v.ours)}`}
+                </span>
+              </td>
+            </tr>
+            {v.rows.map((r) => (
+              <tr key={r.ref} data-ours={r.bid?.ours || r.ask?.ours || undefined}>
+                <td>
+                  <CardRef code={r.ref} />
+                </td>
+                <QuoteCell q={r.bid} team={team} />
+                <QuoteCell q={r.ask} team={team} />
+                <td className="gm-r">
+                  {r.bids} / {r.asks}
+                </td>
+                <td className="gm-r gm-muted">{fmtP(r.book)}</td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
+    </div>
+  )
+}
+
+function Venues({ venues, team }: { venues: VenueRow[]; team: string }) {
+  const t = useGameStrings()
+  if (!venues.length) return <Empty>{t.market.noVenues}</Empty>
+  return (
+    <ul className="gm-venues">
+      {venues.map((v) => (
+        <li key={v.id} data-ours={v.ours || undefined}>
+          <div className="gm-venue-head">
+            <b>{v.name}</b>
+            {v.name !== v.id && <span className="gm-mono gm-muted">{v.id}</span>}
+            {v.ours && <Badge tone="us">{t.badge.ours}</Badge>}
+            <Badge tone={v.status === 'open' ? 'good' : v.status === 'closing' ? 'warn' : 'neutral'}>{t.market.venueStatus[v.status]}</Badge>
+          </div>
+          <div className="gm-venue-meta">
+            <span>
+              {t.market.owner} <span data-tone={v.owner === team ? 'us' : undefined}>{v.owner ?? '—'}</span>
+            </span>
+            <span>{t.market.offers(v.offers)}</span>
+            {(v.feeBps != null || v.feePerCard != null) && <span>{t.market.fee(v.feeBps, v.feePerCard)}</span>}
+          </div>
+          {v.announcement ? (
+            <p className="gm-venue-said" title={t.market.announcements(v.announcements)}>
+              “{v.announcement.text}” <span className="gm-muted">t{v.announcement.tick ?? '—'}</span> <EventLink id={v.announcement.eventId} />
+            </p>
+          ) : (
+            <p className="gm-venue-said gm-muted">{t.market.noAnnouncement}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function MarketScreen() {
   const { state, version } = useGame()
   const t = useGameStrings()
   const [include, setInclude] = useState<Include>('others')
   const [query, setQuery] = useState('')
+  const [whose, setWhose] = useState<Whose>('all')
   const view = useMemo(() => {
     const rows = marketTape(state, { include, query })
     return { rows, volume: rows.reduce((a, r) => a + r.price, 0), cards: cardStats(state, include), teams: teamStats(state, include) }
     // the state is mutated in place: the version is what changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, version, include, query])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const books = useMemo(() => orderBook(state, { whose }), [state, version, whose])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const venues = useMemo(() => venueRows(state), [state, version])
+  const offers = books.reduce((n, b) => n + b.offers, 0)
   const actions = (
     <>
       <Seg
@@ -139,6 +235,28 @@ export function MarketScreen() {
   )
   return (
     <>
+      <div className="gm-book-layout">
+        <Panel
+          title={t.market.book}
+          sub={t.market.bookSub(offers, books.length)}
+          actions={
+            <Seg
+              label={t.market.whose}
+              value={whose}
+              options={[
+                ['all', t.market.everyone],
+                ['ours', t.market.ours],
+              ]}
+              onChange={setWhose}
+            />
+          }
+        >
+          <OrderBook books={books} team={state.team} whose={whose} />
+        </Panel>
+        <Panel title={t.market.venues} sub={t.market.venuesSub(venues.filter((v) => v.status === 'open').length)}>
+          <Venues venues={venues} team={state.team} />
+        </Panel>
+      </div>
       <Panel title={t.market.tape} sub={t.market.tapeSub(view.rows.length, view.volume)} actions={actions}>
         <Tape rows={view.rows} team={state.team} />
       </Panel>

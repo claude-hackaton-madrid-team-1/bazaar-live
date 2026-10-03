@@ -52,3 +52,19 @@ export const fmtP = (v: number | null | undefined): string => (v == null ? '—'
 
 export const signed = (v: number | null | undefined): string =>
   v == null ? '' : `${v >= 0 ? '+' : '−'}${Math.abs(round1(v))} P`
+
+/** A thread's topic in a few words: `{buy: {pack}}`, `{buy: {card}}`, `{buy: {rarity, set}}` or `{sell: {assets}}`. */
+export function topicText(topic: unknown): string {
+  if (!topic || typeof topic !== 'object') return ''
+  const { buy, sell } = topic as { buy?: Record<string, unknown>; sell?: { assets?: unknown } }
+  if (buy && typeof buy === 'object') {
+    const what = buy.pack ?? buy.card ?? [buy.rarity, buy.set].filter(Boolean).join(' ')
+    return `buy ${String(what || '?')}`
+  }
+  if (sell && typeof sell === 'object') {
+    const ids = Array.isArray(sell.assets) ? sell.assets.map((id) => `#${String(id)}`) : []
+    return `sell ${ids.join(', ') || '?'}`
+  }
+  const json = JSON.stringify(topic)
+  return json.length > 60 ? `${json.slice(0, 59)}…` : json
+}
