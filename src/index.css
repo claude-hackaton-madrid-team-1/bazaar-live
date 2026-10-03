@@ -64,10 +64,10 @@
 
   /* item quality words (a card's rarity), as Apple's system colours */
   --q-common: #6e6e73;
-  --q-uncommon: #248a3d;
+  --q-uncommon: #1f7a35;
   --q-rare: #0062cc;
   --q-epic: #8e44c9;
-  --q-legendary: #c25e00;
+  --q-legendary: #a95400;
 
   /* shape: concentric, inner = outer - padding */
   --r-xl: 28px;
