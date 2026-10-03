@@ -315,13 +315,21 @@ export class ShowEngine {
     }
     // A late replay on slow Wi-Fi can arrive after the feed's replay window: an event several ticks
     // behind what the agent's /health reports is history, not a scene.
-    const agentTick = this.state.health[event.agent]?.tick ?? null
-    const stale = event.tick !== null && agentTick !== null && event.tick < agentTick - STALE_TICKS
-    const live = !(replay || stale)
+    const live = !(replay || this.isStale(event.agent, event.tick))
     const beat = toBeat(event, this.dialogue(live))
     if (!beat) return
     this.noticePage(event, live)
-    if (!live) {
+    this.ingestBeat(beat, !live)
+  }
+
+  private isStale(agent: AgentId, tick: number | null): boolean {
+    const agentTick = this.state.health[agent]?.tick ?? null
+    return tick !== null && agentTick !== null && tick < agentTick - STALE_TICKS
+  }
+
+  /** A beat from any source (an agent's event, a real conversation): history to the captions, or a scene. */
+  ingestBeat(beat: Beat, replay: boolean): void {
+    if (replay || this.isStale(beat.agent, beat.tick)) {
       this.set({ board: this.boardAfter(beat), transcript: this.appendLines(beat, 'history') })
       return
     }
@@ -464,7 +472,7 @@ export class ShowEngine {
   }
 
   private prefetch(beat: Beat | null): void {
-    beat?.lines.forEach((line, i) => this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, lang: this.lang, text: line.text }))
+    beat?.lines.forEach((line, i) => !line.silent && this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, lang: line.lang ?? this.lang, text: line.text }))
   }
 
   private async play(beat: Beat, generation: number): Promise<void> {
@@ -475,22 +483,23 @@ export class ShowEngine {
     const lang = this.lang
     const epoch = this.langEpoch
     const stale = () => !this.running || this.generation !== generation || this.langEpoch !== epoch
-    const utterance = (line: Line, i: number) => ({ id: `${beat.id}#${i}`, speaker: line.speaker, lang, text: line.text })
+    // A real line carries its own language; ours are all in the language the beat was built in.
+    const say = (line: Line, i: number): Promise<void> => (line.silent ? Promise.resolve() : this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, lang: line.lang ?? lang, text: line.text }))
     // The next line goes into the voice queue while the current one is still being said, so the queue
     // never waits for the stage and there is no silence between lines.
     let current: Promise<void> = Promise.resolve()
     for (const [i, line] of beat.lines.entries()) {
       if (stale()) return
       this.set({ line, transcript: this.appendLines(beat, 'played', line) })
-      if (i === 0) current = this.speech.say(utterance(line, 0))
+      if (i === 0) current = say(line, 0)
       const following = beat.lines[i + 1]
-      const next = following ? this.speech.say(utterance(following, i + 1)) : Promise.resolve()
-      // A voice sets the pace; the reading time only applies to a muted or silent stage.
-      const reading = this.speech.audible ? MIN_CAPTION_MS : readingMs(line.text, this.director.size + this.speech.backlog)
+      const next = following ? say(following, i + 1) : Promise.resolve()
+      // A voice sets the pace; the reading time only applies to a muted or silent stage (and to a line with no voice).
+      const reading = this.speech.audible && !line.silent ? MIN_CAPTION_MS : readingMs(line.text, this.director.size + this.speech.backlog)
       const started = Date.now()
       await Promise.all([current, this.sleep(reading)])
       // A voice that ends at once (none for this language, or it failed) leaves the caption its reading time.
-      if (this.speech.audible && Date.now() - started < INSTANT_VOICE_MS) await this.sleep(Math.max(0, readingMs(line.text, this.director.size) - MIN_CAPTION_MS))
+      if (!line.silent && this.speech.audible && Date.now() - started < INSTANT_VOICE_MS) await this.sleep(Math.max(0, readingMs(line.text, this.director.size) - MIN_CAPTION_MS))
       current = next
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)

@@ -12,6 +12,7 @@ import type { ProviderName } from '../tts/types'
 import { createWebSpeech, hasVoiceFor, webSpeechAvailable } from '../tts/webspeech'
 import type { Lang } from '../../shared/lang.ts'
 import { getLang, subscribeLang, useLang } from './lang'
+import { useTranscript } from './useTranscript'
 
 export interface SpeechControls {
   readonly muted: boolean
@@ -67,6 +68,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
     return () => engine.stop()
   }, [engine])
   useSources(engine, config)
+  useTranscript(engine, config)
 
   return { state, speech: { muted, setMuted, choice, setChoice, available, active, lastError, noVoiceFor } }
 }

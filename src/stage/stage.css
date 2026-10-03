@@ -287,8 +287,8 @@
 .bubble {
   position: absolute;
   z-index: 8;
-  max-width: 34cqw;
-  padding: 1.1cqw 1.8cqw 1.2cqw;
+  max-width: 38cqw;
+  padding: 0.8cqw 1.6cqw 0.9cqw;
   border-radius: 1.2cqw;
   background: linear-gradient(180deg, #fbf3da, var(--parchment) 60%, #ecdcae);
   border: 0.28cqw solid #8a5f1a;
@@ -296,41 +296,35 @@
   outline-offset: -0.7cqw;
   color: var(--ink);
   font-family: var(--serif);
-  font-size: max(16px, 2.2cqw);
+  font-size: max(16px, 2cqw);
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.2;
   text-wrap: pretty;
   box-shadow: 0 0.6cqw 1.6cqw rgb(0 0 0 / 0.55), inset 0 0 1.4cqw rgb(184 134 43 / 0.3);
 }
 
-/* the tail points at whoever is speaking */
+/* Bubbles sit in the street strip between the board and the counter, never over the board: the tail
+   points sideways at whoever is speaking. */
 .bubble::after {
   content: '';
   position: absolute;
-  bottom: -1.5cqw;
-  width: 2.6cqw;
-  height: 1.8cqw;
+  bottom: 2.2cqw;
+  width: 1.9cqw;
+  height: 2.8cqw;
   background: #ecdcae;
-  border: 0 solid #8a5f1a;
-  clip-path: polygon(0 0, 100% 0, 18% 100%);
-  filter: drop-shadow(0 0.2cqw 0 #8a5f1a);
+  filter: drop-shadow(0 0 0 #8a5f1a);
 }
 
-.bubble.seller::after {
-  left: 3.5cqw;
+.bubble.seller::after,
+.bubble.abuela::after,
+.bubble.chato::after {
+  left: -1.7cqw;
+  clip-path: polygon(100% 0, 100% 100%, 0 62%);
 }
 
 .bubble.buyer::after {
-  right: 3.5cqw;
-  clip-path: polygon(0 0, 100% 0, 82% 100%);
-}
-
-.bubble.abuela::after,
-.bubble.chato::after,
-.bubble.narrator::after {
-  left: 50%;
-  margin-left: -1.3cqw;
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  right: -1.7cqw;
+  clip-path: polygon(0 0, 0 100%, 100% 62%);
 }
 
 .bubble.narrator::after {
@@ -338,22 +332,20 @@
 }
 
 .bubble.seller {
-  left: 14cqw;
-  bottom: 39cqw;
+  left: 24cqw;
+  bottom: 12.2cqw;
 }
 
 .bubble.buyer {
-  right: 14cqw;
-  bottom: 39cqw;
+  right: 24cqw;
+  bottom: 12.2cqw;
 }
 
 .bubble.abuela,
-.bubble.chato,
-.bubble.narrator {
-  left: 50%;
-  translate: -50% 0;
-  bottom: 40cqw;
-  text-align: center;
+.bubble.chato {
+  left: 58cqw;
+  bottom: 12.2cqw;
+  max-width: 28cqw;
 }
 
 .bubble.abuela {
@@ -365,8 +357,10 @@
 }
 
 .bubble.narrator {
-  top: 12.5cqw;
-  bottom: auto;
+  left: 50%;
+  translate: -50% 0;
+  bottom: 12.2cqw;
+  text-align: center;
   font-style: italic;
 }
 
@@ -748,17 +742,23 @@
 
 @container (max-width: 560px) {
   .bubble {
-    max-width: 64cqw;
+    max-width: 84cqw;
     font-size: 13px;
     padding: 0.8cqw 2.2cqw;
   }
 
-  .bubble.seller {
-    left: 3cqw;
+  .bubble.seller,
+  .bubble.abuela,
+  .bubble.chato {
+    left: 2cqw;
   }
 
   .bubble.buyer {
-    right: 3cqw;
+    right: 2cqw;
+  }
+
+  .bubble::after {
+    display: none;
   }
 
   .nameplate small,

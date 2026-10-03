@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Lang } from '../../shared/lang.ts'
 import { PACKS, fill, NO_VALUES } from '../../shared/lines.ts'
 import { speakable, type Speaker } from '../../shared/tags.ts'
@@ -157,5 +157,57 @@ describe('createVoiceBook: Chrome loads its voices late', () => {
     const book = createVoiceBook(f.synth)
     expect(book('es')).toBe(book('es'))
     expect(book('en').seller?.name).toBe('Daniel')
+  })
+})
+
+// The default provider on the real `window.speechSynthesis` (stubbed), as the page builds it.
+interface StubVoice {
+  readonly lang: string
+  readonly localService: boolean
+  readonly name: string
+}
+
+function stubBrowser(voices: StubVoice[]) {
+  const spoken: { text: string; lang: string }[] = []
+  class Utter {
+    text: string
+    lang = ''
+    voice: StubVoice | null = null
+    pitch = 1
+    rate = 1
+    volume = 1
+    onend: (() => void) | null = null
+    onerror: ((e: { error: string }) => void) | null = null
+    constructor(text: string) {
+      this.text = text
+    }
+  }
+  const synth = {
+    getVoices: () => voices,
+    cancel: () => undefined,
+    speak: (x: Utter) => {
+      spoken.push({ text: x.text, lang: x.voice?.lang ?? x.lang })
+      x.onend?.()
+    },
+  }
+  vi.stubGlobal('window', { speechSynthesis: synth })
+  vi.stubGlobal('SpeechSynthesisUtterance', Utter)
+  return spoken
+}
+
+describe('Web Speech and a real line that names its language (the browser objects, stubbed)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const signal = () => new AbortController().signal
+
+  it('reads it with a voice of that language', async () => {
+    const spoken = stubBrowser([{ lang: 'en-GB', localService: true, name: 'a' }, { lang: 'es-ES', localService: true, name: 'b' }])
+    await createWebSpeech().speak({ id: '1', speaker: 'buyer', text: 'Ofrezco 24 primas.', lang: 'es' }, signal())
+    expect(spoken).toEqual([{ text: 'Ofrezco 24 primas.', lang: 'es-ES' }])
+  })
+
+  it('stays quiet rather than read it in another language when the browser has no such voice', async () => {
+    const spoken = stubBrowser([{ lang: 'en-GB', localService: true, name: 'a' }])
+    await createWebSpeech().speak({ id: '1', speaker: 'chato', text: 'Ofrezco 24 primas.', lang: 'es' }, signal())
+    expect(spoken).toEqual([])
   })
 })

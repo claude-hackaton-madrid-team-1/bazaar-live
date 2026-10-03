@@ -26,6 +26,8 @@ export interface ShowConfig {
   readonly mockDoors: 'open' | 'closed'
   /** `?idle=8`: seconds of quiet before the characters talk about the situation (default 22 to 35, by the situation). */
   readonly idleSeconds: number | null
+  /** `?quotes=speak`: voice a dealer's or rival's real words when they are in the selected language. Off: captions only. */
+  readonly speakQuotes: boolean
   /** `?mode=dry`: the mock's /health says dry run instead of live. */
   readonly mockMode: 'live' | 'dry'
 }
@@ -53,5 +55,6 @@ export function readConfig(search: string): ShowConfig {
     mockMode: params.get('mode') === 'dry' ? 'dry' : 'live',
     idleSeconds: idleSeconds(params.get('idle')),
     mockDoors: params.get('doors') === 'closed' ? 'closed' : 'open',
+    speakQuotes: params.get('quotes') === 'speak',
   }
 }
