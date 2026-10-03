@@ -202,28 +202,86 @@ button.rv-row:hover {
   white-space: nowrap;
 }
 
-/* one rival's album: our album's grid, a seen card ticked, an unseen one dashed and unknown */
-.rv-album .alb-page {
-  grid-template-columns: minmax(10rem, 14rem) minmax(0, 30rem);
+/* our album beside the rival's: one row per neighbourhood, our twelve cells next to theirs, slot by slot */
+.rv-cmp-cols,
+.rv-cmp-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-2) var(--s-5);
 }
 
-.rv-album-head {
-  margin: 0 0 var(--s-3);
-  font-size: 0.875rem;
+.rv-cmp-cols {
+  margin-bottom: var(--s-3);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.rv-cmp-col {
+  display: grid;
+  gap: 2px;
+  font-size: 0.8125rem;
   color: var(--text-2);
 }
 
-.rv-page-meta {
-  grid-template-columns: 3.5rem auto;
+.rv-cmp-col b {
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+.rv-cmp-col[data-side='us'] b {
+  color: var(--gm-us);
+}
+
+.rv-cmp-pages {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.rv-cmp-name {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.rv-cmp-side {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rv-cmp-side .alb-cells {
+  max-width: 30rem;
+}
+
+.rv-cmp-meta {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+/* the side's name repeats on each row only when the two sides stack */
+.rv-cmp-who {
+  display: none;
+  margin-right: 6px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .rv-cell {
   color: var(--text-3);
 }
 
+.rv-cell[data-ours] {
+  border: 0;
+  background: color-mix(in srgb, var(--gm-us) 24%, transparent);
+  box-shadow: inset 0 -3px 0 var(--r);
+  color: var(--text);
+}
+
 .rv-cell[data-known] {
   border: 0;
-  background: color-mix(in srgb, var(--gm-us) 22%, transparent);
+  background: color-mix(in srgb, var(--gm-them) 24%, transparent);
   box-shadow: inset 0 -3px 0 var(--r);
   color: var(--text);
 }
@@ -238,8 +296,12 @@ button.rv-row:hover {
   color: var(--gm-good);
 }
 
+.rv-swatch[data-ours] {
+  background: color-mix(in srgb, var(--gm-us) 24%, transparent);
+}
+
 .rv-swatch[data-known] {
-  background: color-mix(in srgb, var(--gm-us) 22%, transparent);
+  background: color-mix(in srgb, var(--gm-them) 24%, transparent);
 }
 
 .rv-swatch[data-need] {
@@ -254,8 +316,16 @@ button.rv-row:hover {
 }
 
 @media (max-width: 760px) {
-  .rv-album .alb-page {
+  .rv-cmp-page {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rv-cmp-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rv-cmp-who {
+    display: inline;
   }
 }
 
@@ -279,6 +349,7 @@ button.rv-row:hover {
 
 @media (forced-colors: active) {
   .rv-cell[data-known],
+  .rv-cell[data-ours],
   .rv-swatch {
     forced-color-adjust: none;
   }

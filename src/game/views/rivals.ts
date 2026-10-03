@@ -164,15 +164,21 @@ export interface RivalPage {
   readonly slots: readonly RivalSlot[]
 }
 
-/** A team's album as far as the public feed shows it: every set we know of, its fullest known page first. */
-export function rivalAlbum(snap: RivalsSnapshot, team: string, needs: readonly Need[] = []): RivalPage[] {
+/**
+ * A team's album as far as the public feed shows it: every set we know of, in `order` (our album's order) first, the
+ * sets we have no page of after it in the catalog's order.
+ */
+export function rivalAlbum(snap: RivalsSnapshot, team: string, needs: readonly Need[] = [], order: readonly string[] = []): RivalPage[] {
   const mine = new Map(snap.holdings.filter((h) => h.holder === team).map((h) => [h.card, h]))
   const wanted = new Set(needs.map((n) => n.ref))
-  const sets = new Set(snap.holdings.map((h) => h.set ?? h.card.split('-')[0] ?? ''))
+  const sets = new Set(order)
+  for (const h of snap.holdings) sets.add(h.set ?? h.card.split('-')[0] ?? '')
   for (const n of needs) sets.add(n.set)
-  const order = Object.keys(SETS)
+  const catalog = Object.keys(SETS)
+  const rank = (set: string) => (order.includes(set) ? order.indexOf(set) : order.length + catalog.indexOf(set))
   return [...sets]
     .filter((set) => set in SETS)
+    .sort((a, b) => rank(a) - rank(b))
     .map((set): RivalPage => {
       const slots = SLOT_RARITY.map((rarity, i): RivalSlot => {
         const ref = refFor(set, i)
@@ -191,7 +197,42 @@ export function rivalAlbum(snap: RivalsSnapshot, team: string, needs: readonly N
         slots,
       }
     })
-    .sort((a, b) => b.needs - a.needs || b.known - a.known || order.indexOf(a.set) - order.indexOf(b.set))
+}
+
+/** One card of our page, beside the rival's. */
+export interface OurSlot {
+  readonly ref: string
+  readonly rarity: Rarity
+  readonly color: string
+  readonly count: number
+}
+
+/** One neighbourhood, ours beside theirs: our page (null when we have none of the set) and what we know of theirs. */
+export interface ComparedPage {
+  readonly set: string
+  readonly name: string
+  readonly color: string
+  readonly ours: { readonly have: number; readonly of: number; readonly complete: boolean; readonly slots: readonly OurSlot[] } | null
+  readonly theirs: RivalPage
+}
+
+/**
+ * Our album beside a rival's, neighbourhood by neighbourhood, in the order of our Album screen (closest page to
+ * complete first), then the sets only the rival has cards of.
+ */
+export function compareAlbums(snap: RivalsSnapshot, s: State, team: string, needs: readonly Need[] = needsOf(s)): ComparedPage[] {
+  const rows = albumRows(s)
+  const ours = new Map(rows.map((r) => [r.set, r]))
+  return rivalAlbum(snap, team, needs, rows.map((r) => r.set)).map((theirs) => {
+    const row = ours.get(theirs.set)
+    return {
+      set: theirs.set,
+      name: row?.name ?? theirs.name,
+      color: theirs.color,
+      ours: row ? { have: row.have, of: row.of, complete: row.complete, slots: row.slots.map((c) => ({ ref: c.ref, rarity: c.rarity, color: c.color, count: c.count })) } : null,
+      theirs,
+    }
+  })
 }
 
 /** The team to show: the one asked for (case aside) when we have it, else the top-ranked rival holding most of our needs. */

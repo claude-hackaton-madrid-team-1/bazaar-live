@@ -6,6 +6,8 @@
 import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../../shared/decisions.ts'
 import type { HealthReport } from '../../shared/health.ts'
 import { rng } from '../stage/rng.ts'
+
+const TEAM_ID = /^t\d{1,3}$/
 import type { GameEvent, Payload } from './state.ts'
 
 const SETS: Readonly<Record<string, readonly [string, readonly string[]]>> = {
@@ -402,7 +404,8 @@ export class MockGame {
     }
     const tid = this.threadIds()
     this.negs.set(tid, neg)
-    const persona = neg.with === 'abuela'
+    // a dealer (abuela, chato, ...) is a persona thread; another team (t07) a team thread
+    const persona = !TEAM_ID.test(neg.with)
     const topic = neg.side === 'buy' ? { buy: { card: neg.ref } } : { sell: { assets: neg.asset ? [neg.asset.id] : [] } }
     return [
       this.ev('agent.thought', { text: `Open #${tid} with ${neg.with}: ${why}.` }),
@@ -427,7 +430,7 @@ export class MockGame {
   private message(tid: number, neg: Neg, ours: boolean, text: string | null = null, tactic: string | null = null): GameEvent {
     const sender = ours ? this.team : neg.with
     return this.ev('thread.message', {
-      thread: tid, kind: 'persona', message: this.messageIds(), sender, text, team: this.team, with: neg.with,
+      thread: tid, kind: TEAM_ID.test(neg.with) ? 'team' : 'persona', message: this.messageIds(), sender, text, team: this.team, with: neg.with,
       offer: this.offer(tid, neg, ours), ...(tactic ? { tactic } : {}),
     }, sender)
   }
