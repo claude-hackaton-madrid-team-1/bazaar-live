@@ -214,3 +214,37 @@ body {
   color: var(--gold-soft);
   letter-spacing: 0.08em;
 }
+
+/* phones: nothing may push the page wider than the screen */
+
+.app {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.header,
+.notice,
+.main > * {
+  min-width: 0;
+}
+
+.controls {
+  flex-wrap: wrap;
+}
+
+.brand {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 520px) {
+  .app {
+    padding: 8px;
+  }
+
+  .brand small {
+    display: none;
+  }
+
+  .control {
+    padding: 6px 10px;
+  }
+}
