@@ -53,6 +53,10 @@ export type Duel = {
   role: string
   /** The other side, as the game names it: an alias like "Rival Azul" (duels never name a team); null until known. */
   rival: string | null
+  /** The card at stake and the tick the duel ends by (from `duel.started`); null until known. */
+  item: string | null
+  deadlineTick: number | null
+  session: number | null
   ourPrice: number | null
   theirPrice: number | null
   ourDays: number | null
@@ -164,7 +168,7 @@ export type State = {
 
 export const KNOWN_TYPES = new Set([
   'agent.hello', 'clock', 'agent.phase', 'agent.thought', 'agent.action', 'agent.me',
-  'thread.message', 'thread.closed', 'settlement', 'duel.message', 'duel.result',
+  'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
   'agent.decision', 'agent.outcome', 'agent.ledger',
@@ -426,7 +430,7 @@ function settlementFailed(s: State, e: GameEvent, ours: boolean) {
 }
 
 const duelOf = (s: State, p: Payload): Duel => (s.duels[p.duel] ??= {
-  id: p.duel, role: p.role ?? '?', rival: null, ourPrice: null, theirPrice: null, ourDays: null, theirDays: null,
+  id: p.duel, role: p.role ?? '?', rival: null, item: null, deadlineTick: null, session: null, ourPrice: null, theirPrice: null, ourDays: null, theirDays: null,
   rounds: 0, status: 'open', dealPrice: null, points: null, lastEventId: null,
 })
 
@@ -434,6 +438,18 @@ const duelOf = (s: State, p: Payload): Duel => (s.duels[p.duel] ??= {
 function noteRival(s: State, d: Duel, p: Payload) {
   if (typeof p.rival === 'string' && p.rival) d.rival = p.rival
   else if (d.rival === null && typeof p.sender === 'string' && p.sender && p.sender !== s.team && p.sender !== 'rival') d.rival = p.sender
+}
+
+/** A duel opens: what is at stake and until when, so it shows while live even before anyone speaks. */
+function duelStarted(s: State, e: GameEvent) {
+  const p = e.payload
+  const d = duelOf(s, p)
+  noteRival(s, d, p)
+  if (typeof p.role === 'string' && p.role) d.role = p.role
+  if (typeof p.item === 'string' && p.item) d.item = p.item
+  if (typeof p.deadline_tick === 'number') d.deadlineTick = p.deadline_tick
+  if (typeof p.session === 'number') d.session = p.session
+  d.lastEventId ??= e.id
 }
 
 function duelMessage(s: State, e: GameEvent) {
@@ -567,6 +583,9 @@ export function apply(s: State, e: GameEvent): State {
     }
     case 'settlement':
       settlement(s, e)
+      break
+    case 'duel.started':
+      if (ours) duelStarted(s, e)
       break
     case 'duel.message':
       if (ours) duelMessage(s, e)

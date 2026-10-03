@@ -151,6 +151,9 @@ export function summarize(e: GameEvent): string {
       `${Array.isArray(p.assets) ? p.assets.length : 0} assets`,
     ]); break
     case 'clock': line = join([`tick ${or(e.tick)}`, text(p.day), p.tick_seconds != null && `${text(p.tick_seconds)}s`]); break
+    case 'duel.started': line = join([
+      `duel ${or(p.duel)} starts`, text(p.rival), text(p.role), text(p.item), p.deadline_tick != null && `ends t${text(p.deadline_tick)}`,
+    ]); break
     case 'duel.message': line = join([
       `duel ${or(p.duel)}`, text(p.sender), p.price != null && `${text(p.price)} P`, p.days != null && `${text(p.days)}d`,
     ]); break

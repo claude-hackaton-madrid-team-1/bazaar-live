@@ -212,8 +212,9 @@ describe('GameRelay', () => {
     w.duels = [duel]
     w.feed = [ev(1, 'duels.scheduled')]
     await relay.pollOnce()
-    expect(batches[0]!.map((e) => e.type)).toEqual(['clock', 'agent.hello', 'agent.me', 'duel.message', 'duels.scheduled'])
-    expect(batches[0]![3]).toMatchObject({ tick: 7, scope: 'team', actor: '', payload: { duel: 563, role: 'seller', rival: 'Rival Oro', sender: 'Rival Oro', price: 106, days: 0 } })
+    expect(batches[0]!.map((e) => e.type)).toEqual(['clock', 'agent.hello', 'agent.me', 'duel.started', 'duel.message', 'duels.scheduled'])
+    expect(batches[0]![3]).toMatchObject({ scope: 'team', payload: { duel: 563, role: 'seller', rival: 'Rival Oro' } })
+    expect(batches[0]![4]).toMatchObject({ tick: 7, scope: 'team', actor: '', payload: { duel: 563, role: 'seller', rival: 'Rival Oro', sender: 'Rival Oro', price: 106, days: 0 } })
     // Same tick: no second read.
     w.calls = []
     await relay.pollOnce()

@@ -189,3 +189,26 @@ test('rival summary: per rival its duels, live and finished, deals, no deals and
   ])
   assert.deepEqual(rivalSummary(fresh()), [])
 })
+
+test('a live duel shows from its start, before anyone speaks: rival, card at stake, ticks left to the deadline', () => {
+  const s = fresh(468)
+  apply(s, ev('duel.started', { duel: 2311, session: 2, role: 'buyer', rival: 'Rival Rojo', item: 'El Mesón de la Cava', deadline_tick: 484 }, 468))
+  const [row] = duelRows(s)
+  assert.deepEqual(
+    row && [row.id, row.status, row.role, row.rival, row.item, row.deadlineTick, row.session, row.ticksLeft, row.rounds],
+    [2311, 'open', 'buyer', 'Rival Rojo', 'El Mesón de la Cava', 484, 2, 16, 0],
+  )
+  // Words and the end keep what the start said; a finished duel has no ticks left.
+  apply(s, ev('duel.message', { duel: 2311, role: 'buyer', rival: 'Rival Rojo', sender: 'Rival Rojo', price: 62 }, 470))
+  apply(s, ev('duel.result', { duel: 2311, rival: 'Rival Rojo', deal: true, price: 60, points: null }, 471))
+  const [done] = duelRows(s)
+  assert.deepEqual(done && [done.item, done.status, done.ticksLeft], ['El Mesón de la Cava', 'deal', null])
+})
+
+test('a started event read after the words still fills in the duel', () => {
+  const s = fresh(10)
+  apply(s, ev('duel.message', { duel: 9, role: 'seller', sender: 't01', price: 80 }))
+  apply(s, ev('duel.started', { duel: 9, session: 1, role: 'seller', rival: 'Rival Sol', item: 'Palacio de Cristal', deadline_tick: 12 }))
+  const [row] = duelRows(s)
+  assert.deepEqual(row && [row.rival, row.item, row.ticksLeft, row.ourPrice], ['Rival Sol', 'Palacio de Cristal', 2, 80])
+})

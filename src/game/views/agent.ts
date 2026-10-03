@@ -101,6 +101,11 @@ function duelLine(s: State, e: GameEvent): Line {
   // Whom we duel: the event's own rival, else what the duel learnt (an older event, or a result read before it).
   const rival: string | null = typeof p.rival === 'string' && p.rival ? p.rival : s.duels[p.duel]?.rival ?? null
   const duel = `duel #${p.duel}${rival ? ` vs ${rival}` : ''}`
+  if (e.type === 'duel.started') {
+    const stake = [p.role, p.item].filter((v) => typeof v === 'string' && v).join(' · ')
+    const text = `${duel} starts${stake ? ` · ${stake}` : ''}${typeof p.deadline_tick === 'number' ? ` · ends by tick ${p.deadline_tick}` : ''}`
+    return base(e, 'result', text, { icon: LOG_ICON.open, who: rival, deal: true })
+  }
   if (e.type === 'duel.result') {
     const text = p.deal
       ? `${duel} deal at ${fmtP(p.price)}${p.points != null ? ` · ${signedNum(p.points)} pts` : ''}`
@@ -225,6 +230,7 @@ function linesOf(s: State, e: GameEvent, w: Walk): Line[] {
     }
     case 'settlement':
       return settlementLines(s, e)
+    case 'duel.started':
     case 'duel.message':
     case 'duel.result':
       return [duelLine(s, e)]

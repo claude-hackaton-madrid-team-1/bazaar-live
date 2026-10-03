@@ -64,13 +64,14 @@ describe('row translation', () => {
   it('turns duel rows into the relay\'s duel events, with no points (the view never has our gain)', () => {
     const events = duelRowEvents([DUEL_NO_DEAL, DUEL_DEAL], 't01', 50)
     expect(events.map((e) => [e.id, e.type])).toEqual([
-      [duelEventId(274, 0), 'duel.message'], [duelEventId(274, 1), 'duel.message'], [duelEventId(274, 2), 'duel.message'], [duelEventId(274, 999), 'duel.result'],
-      [duelEventId(280, 0), 'duel.message'], [duelEventId(280, 999), 'duel.result'],
+      [duelEventId(274, 998), 'duel.started'], [duelEventId(274, 0), 'duel.message'], [duelEventId(274, 1), 'duel.message'], [duelEventId(274, 2), 'duel.message'], [duelEventId(274, 999), 'duel.result'],
+      [duelEventId(280, 998), 'duel.started'], [duelEventId(280, 0), 'duel.message'], [duelEventId(280, 999), 'duel.result'],
     ])
-    expect(events[0]?.payload).toEqual({ duel: 274, role: 'buyer', rival: 'Rival Rojo', sender: 't01', price: 59, days: null })
-    expect(events[1]?.payload.sender).toBe('Rival Rojo')
-    expect(events[3]).toMatchObject({ tick: 153, scope: 'team', payload: { duel: 274, rival: 'Rival Rojo', deal: true, price: 103, points: null } })
-    expect(events[5]?.payload).toEqual({ duel: 280, rival: 'Rival Noche', deal: false, price: null, points: null })
+    expect(events[0]).toMatchObject({ tick: 151, scope: 'team', payload: { duel: 274, session: 1, role: 'buyer', rival: 'Rival Rojo', item: 'Plaza de Olavide', deadline_tick: 163 } })
+    expect(events[1]?.payload).toEqual({ duel: 274, role: 'buyer', rival: 'Rival Rojo', sender: 't01', price: 59, days: null })
+    expect(events[2]?.payload.sender).toBe('Rival Rojo')
+    expect(events[4]).toMatchObject({ tick: 153, scope: 'team', payload: { duel: 274, rival: 'Rival Rojo', deal: true, price: 103, points: null } })
+    expect(events[7]?.payload).toEqual({ duel: 280, rival: 'Rival Noche', deal: false, price: null, points: null })
   })
 })
 
@@ -101,7 +102,7 @@ describe('GameDbSource', () => {
     const source = new GameDbSource({ db, hub, log: () => {} })
     await source.pollOnce()
     const first = batches[0] ?? []
-    expect(first.map((e) => e.type)).toEqual(['clock', 'agent.hello', 'agent.me', 'duel.message', 'duel.message', 'duel.message', 'duel.result', 'offer.listed', 'thread.message'])
+    expect(first.map((e) => e.type)).toEqual(['clock', 'agent.hello', 'agent.me', 'duel.started', 'duel.message', 'duel.message', 'duel.message', 'duel.result', 'offer.listed', 'thread.message'])
     expect(first[0]).toMatchObject({ tick: 401, scope: 'team', payload: { day: 'Saturday · Gran Vía', tick_seconds: 30 } })
     expect(first[1]?.payload).toEqual({ team: 't01', name: 'Team 1' })
     expect(JSON.stringify(first)).not.toMatch(/collection_value|sk-never/)

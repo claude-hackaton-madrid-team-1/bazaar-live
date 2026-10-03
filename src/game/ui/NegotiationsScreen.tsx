@@ -257,7 +257,10 @@ function DuelsTable({ rows }: { rows: DuelRow[] }) {
         <tbody>
           {rows.map((d) => (
             <tr key={d.id} data-live={d.status === 'open' || undefined}>
-              <td>#{d.id}</td>
+              <td>
+                #{d.id}
+                {d.item && <span className="gm-duel-item">{d.item}</span>}
+              </td>
               <td className="gm-rival-cell" data-tone="them" title={d.rival ?? undefined}>
                 {d.rival ?? '—'}
               </td>
@@ -274,6 +277,7 @@ function DuelsTable({ rows }: { rows: DuelRow[] }) {
               <td className="gm-r">{d.rounds}</td>
               <td>
                 <Badge tone={d.tone}>{t.neg.duelStatus[d.status]}</Badge>
+                {d.ticksLeft !== null && <span className="gm-duel-left">{t.neg.ticksLeft(d.ticksLeft)}</span>}
               </td>
               <td className="gm-r">{fmtP(d.dealPrice)}</td>
               <td className="gm-r">{d.points ?? '—'}</td>
