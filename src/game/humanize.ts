@@ -6,6 +6,9 @@
  */
 import { nameOfRef } from './cards.ts'
 import { setOf } from './game.ts'
+import type { State } from './state.ts'
+import type { GameStrings } from './strings.ts'
+import { AGENTS, type AgentName } from '../../shared/decisions.ts'
 
 /** A guardrail's denial taken apart: the three shapes guardrails.check() prints, numbers kept. */
 export type Denial =
@@ -102,3 +105,27 @@ export const spaced = (id: string): string => id.replace(/_/g, ' ')
 
 /** A label from a table, or the id with spaces: an id we have not seen yet still reads as words. */
 export const labelOf = (table: Readonly<Record<string, string>>, id: string): string => table[id] ?? spaced(id)
+
+const isAgent = (a: string): a is AgentName => (AGENTS as readonly string[]).includes(a)
+
+/** "Buyer" for `taker`, in the page's language; an id we do not know stays as written. */
+export const agentName = (t: GameStrings, agent: string): string => (isAgent(agent) ? t.hum.agents[agent] : agent)
+
+export const ruleName = (t: GameStrings, rule: string | null): string => labelOf(t.hum.rules, rule ?? 'other')
+
+export const kindName = (t: GameStrings, kind: string): string => labelOf(t.hum.kinds, kind)
+
+/** "El Chato" for `chato`, "Team 6" for `t06`. */
+export const whoName = (t: GameStrings, id: string): string => t.hum.who(whoOf(id))
+
+/** Why a guardrail said no, as a sentence when its text has numbers we read, else the rule's name. */
+export const denialText = (t: GameStrings, rule: string | null, text: string | null): string => {
+  const d = parseDenial(text)
+  return d ? t.hum.denial(d) : ruleName(t, rule)
+}
+
+/** A duel's rival by name, for a `duel:NNNN` item. */
+export const rivalOf = (t: GameStrings, s: State) => (id: number): string | null => {
+  const rival = s.duels[id]?.rival
+  return rival ? whoName(t, rival) : null
+}

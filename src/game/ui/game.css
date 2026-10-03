@@ -538,18 +538,25 @@
   min-width: 0;
 }
 
-.gm-card b {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
+/* The card's name first; its code is a small token after it (or alone, mono, when the catalog has no name). */
 .gm-card-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 14rem;
-  color: var(--text-2);
+  font-weight: 600;
+}
+
+.gm-card-code {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-3);
+}
+
+.gm-card-code[data-alone] {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: inherit;
 }
 
 .gm-ref {
@@ -560,6 +567,12 @@
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 600;
+}
+
+/* A card's name in the chip: the text's own font, not a code's. */
+.gm-ref[data-name] {
+  font-family: inherit;
+  font-size: 0.8125rem;
 }
 
 .gm-spark path,
@@ -1878,7 +1891,7 @@
 
 /* prices of our cards: on a phone, the code, our value, last and median fit without scrolling */
 @media (max-width: 600px) {
-  .mkt-prices .gm-card-name,
+  .mkt-prices .gm-card-code,
   .mkt-prices th:nth-child(n + 5),
   .mkt-prices td:nth-child(n + 5) {
     display: none;

@@ -1,5 +1,6 @@
 /** The small pieces every game screen shares: a panel, an empty state, badges, a segmented control, event links. */
 import type { ReactNode } from 'react'
+import { nameOfRef } from '../cards.ts'
 import { fmtP, setOf } from '../game.ts'
 import { freshness, type ApiPage, type PagePush } from '../fresh.ts'
 import { useGameStrings } from '../strings.ts'
@@ -80,14 +81,15 @@ export function EventLink({ id, children }: { id: number | null | undefined; chi
   )
 }
 
-/** A card code with its barrio's colour, and its name when there is one. */
+/** A card by its name with its barrio's colour, its code a small token after it (the code alone when the catalog has no name). */
 export function CardRef({ code, name }: { code: string; name?: string }) {
   const set = setOf(code)
+  const label = name && name !== code ? name : nameOfRef(code)
   return (
-    <span className="gm-card" title={set ? `${set.name} · ${name ?? code}` : (name ?? code)}>
+    <span className="gm-card" title={set ? `${set.name} · ${code}` : code}>
       <i className="gm-swatch" style={{ background: set?.color ?? 'var(--text-3)' }} />
-      <b>{code}</b>
-      {name && name !== code && <span className="gm-card-name">{name}</span>}
+      {label && <b className="gm-card-name">{label}</b>}
+      <span className="gm-card-code" data-alone={label ? undefined : true}>{code}</span>
     </span>
   )
 }
@@ -106,11 +108,13 @@ export function Sparkline({ values, w = 64, h = 18 }: { values: number[]; w?: nu
   )
 }
 
+/** A card (or a thread's topic) as a chip in its barrio's colour: the card's name, its code and barrio on hover. */
 export function RefChip({ topic }: { topic: string }) {
   const set = setOf(topic)
+  const name = nameOfRef(topic)
   return (
-    <span className="gm-ref" style={set ? { borderLeftColor: set.color } : undefined} title={set?.name ?? topic}>
-      {topic}
+    <span className="gm-ref" data-name={name ? true : undefined} style={set ? { borderLeftColor: set.color } : undefined} title={set ? `${set.name} · ${topic}` : topic}>
+      {name ?? topic}
     </span>
   )
 }

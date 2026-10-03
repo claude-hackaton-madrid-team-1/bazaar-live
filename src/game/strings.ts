@@ -56,7 +56,9 @@ export interface GameStrings {
     readonly who: (w: Who) => string
     readonly item: (i: ItemOf) => string
     readonly jev: (verdict: string, percent: number | null) => string
-    readonly duelStart: (rival: string | null, role: string | null, card: string | null, ends: string | null) => string
+    /** A length of game time: "~6 min", or ticks without the clock's tick length. */
+    readonly span: (ticks: number, seconds: number | null) => string
+    readonly duelStart: (rival: string | null, role: string | null, card: string | null, lasts: string | null) => string
     readonly duelEnd: (rival: string | null, deal: boolean, price: string | null) => string
   }
   readonly nav: Readonly<Record<Route, string>>
@@ -148,9 +150,9 @@ export interface GameStrings {
   /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agent names, kinds and rule ids stay as written. */
   readonly agt: {
     readonly agents: string
-    readonly agentsSub: (silence: Silence) => string
+    readonly agentsSub: (silence: Silence, names: Readonly<Record<AgentName, string>>) => string
     readonly state: Readonly<Record<'none' | 'silent' | 'quiet' | 'stuck' | 'ok', string>>
-    readonly ago: (n: number) => string
+    readonly ago: (n: number, seconds: number | null) => string
     readonly never: string
     readonly noLog: string
     readonly last: string
@@ -158,7 +160,7 @@ export interface GameStrings {
     readonly noBlocks: string
     readonly ofHour: (blocks: number, decisions: number) => string
     readonly inARow: (n: number) => string
-    readonly restarted: (n: number, tick: number) => string
+    readonly restarted: (n: number, when: string) => string
     readonly money: string
     readonly acceptsTick: (n: number, cap: number) => string
     readonly idle: string
@@ -531,7 +533,7 @@ export interface GameStrings {
 }
 
 /** A span as a person says it, rounded: 40 s, 3 min, 1 h 5 min. */
-const roughly = (s: number): string => (s < 90 ? `${Math.max(1, Math.round(s / 10) * 10)} s` : span(s))
+const roughly = (s: number): string => (s < 55 ? `${Math.max(10, Math.round(s / 10) * 10)} s` : s < 3570 ? `${Math.round(s / 60)} min` : span(s))
 
 const RARITY_PL_EN: Readonly<Record<string, string>> = { common: 'commons', uncommon: 'uncommons', rare: 'rares', epic: 'epics', legendary: 'legendaries' }
 const RARITY_PL_ES: Readonly<Record<string, string>> = { common: 'comunes', uncommon: 'poco comunes', rare: 'raras', epic: 'épicas', legendary: 'legendarias' }
@@ -553,7 +555,7 @@ const HUM_EN: GameStrings['hum'] = {
     accept_ask: 'buy off the board', team_open: 'open a deal with a team', post_ask: 'list for sale', cancel_ask: 'take off sale',
     dealer_sell: 'sell to a dealer', dealer_bid: 'bid to a dealer', dealer_open: 'open with a dealer', dealer_opened: 'dealer thread opened',
     dealer_closed: 'dealer thread closed', dealer_accept: "take the dealer's price", dealer_walk: 'walk away from the dealer', pack_open: 'open a pack',
-    duel_offer: 'offer in a duel', duel_hold: 'hold in a duel', duel_accept: 'accept a duel', process_started: 'restart (deploy)',
+    duel_offer: 'offer', duel_hold: 'hold', duel_accept: 'accept', process_started: 'restart (deploy)',
   },
   jevVerdicts: JEV_EN,
   denial: (d) => {
@@ -571,8 +573,9 @@ const HUM_EN: GameStrings['hum'] = {
   who: (w) => (w.kind === 'team' ? `Team ${w.n}` : w.kind === 'venue' ? `venue ${w.n}` : w.name),
   item: (i) => (i.kind === 'card' ? i.name ?? i.ref : i.kind === 'duel' ? (i.rival ? `duel with ${i.rival}` : `duel #${i.id}`) : i.kind === 'pack' ? `${i.pack} pack` : i.text),
   jev: (verdict, pct) => `Jev: ${labelOf(JEV_EN, verdict)}${pct == null ? '' : ` (${pct}%)`}`,
-  duelStart: (rival, role, card, ends) =>
-    `Duel with ${rival ?? 'a rival'} starts${role ? ` · we ${role === 'seller' ? 'sell' : 'buy'}` : ''}${card ? ` ${card}` : ''}${ends ? ` · ends ${ends}` : ''}`,
+  span: (ticks, seconds) => (seconds == null ? plural(ticks, 'tick', 'ticks') : `~${roughly(seconds)}`),
+  duelStart: (rival, role, card, lasts) =>
+    `Duel with ${rival ?? 'a rival'} starts${role ? ` · we ${role === 'seller' ? 'sell' : 'buy'}` : ''}${card ? ` ${card}` : ''}${lasts ? ` · lasts ${lasts}` : ''}`,
   duelEnd: (rival, deal, price) => `Duel with ${rival ?? 'a rival'}: ${deal ? `deal${price ? ` at ${price}` : ''}` : 'no deal'}`,
 }
 
@@ -593,7 +596,7 @@ const HUM_ES: GameStrings['hum'] = {
     accept_ask: 'comprar del tablón', team_open: 'abrir trato con un equipo', post_ask: 'poner a la venta', cancel_ask: 'retirar de la venta',
     dealer_sell: 'vender a un tratante', dealer_bid: 'pujar a un tratante', dealer_open: 'abrir trato con un tratante', dealer_opened: 'trato con tratante abierto',
     dealer_closed: 'trato con tratante cerrado', dealer_accept: 'aceptar el precio del tratante', dealer_walk: 'dejar al tratante', pack_open: 'abrir un sobre',
-    duel_offer: 'ofertar en un duelo', duel_hold: 'esperar en un duelo', duel_accept: 'aceptar un duelo', process_started: 'reinicio (despliegue)',
+    duel_offer: 'ofertar', duel_hold: 'esperar', duel_accept: 'aceptar', process_started: 'reinicio (despliegue)',
   },
   jevVerdicts: JEV_ES,
   denial: (d) => {
@@ -611,8 +614,9 @@ const HUM_ES: GameStrings['hum'] = {
   who: (w) => (w.kind === 'team' ? `Equipo ${w.n}` : w.kind === 'venue' ? `puesto ${w.n}` : w.name),
   item: (i) => (i.kind === 'card' ? i.name ?? i.ref : i.kind === 'duel' ? (i.rival ? `duelo con ${i.rival}` : `duelo #${i.id}`) : i.kind === 'pack' ? `sobre de ${i.pack}` : i.text),
   jev: (verdict, pct) => `Jev: ${labelOf(JEV_ES, verdict)}${pct == null ? '' : ` (${pct} %)`}`,
-  duelStart: (rival, role, card, ends) =>
-    `Empieza un duelo con ${rival ?? 'un rival'}${role ? ` · ${role === 'seller' ? 'vendemos' : 'compramos'}` : ''}${card ? ` ${card}` : ''}${ends ? ` · acaba ${ends}` : ''}`,
+  span: (ticks, seconds) => (seconds == null ? plural(ticks, 'turno', 'turnos') : `~${roughly(seconds)}`),
+  duelStart: (rival, role, card, lasts) =>
+    `Empieza un duelo con ${rival ?? 'un rival'}${role ? ` · ${role === 'seller' ? 'vendemos' : 'compramos'}` : ''}${card ? ` ${card}` : ''}${lasts ? ` · dura ${lasts}` : ''}`,
   duelEnd: (rival, deal, price) => `Duelo con ${rival ?? 'un rival'}: ${deal ? `trato${price ? ` a ${price}` : ''}` : 'sin trato'}`,
 }
 
@@ -698,7 +702,7 @@ const EN: GameStrings = {
     jev: 'Jev',
     error: (code) => `error ${code}`,
     blocks: 'Blocks by rule',
-    blocksSub: (fromTick) => `last game hour, since tick ${fromTick}`,
+    blocksSub: () => 'last game hour',
     noBlocks: 'No guardrail blocked anything in the last game hour.',
     times: (n) => `${n}×`,
     ledger: 'Ledger',
@@ -722,9 +726,9 @@ const EN: GameStrings = {
   },
   agt: {
     agents: 'Agents',
-    agentsSub: (x) => `silent after ${plural(x.taker.silent, 'tick', 'ticks')} without a decision · maker quiet first, silent after ${x.maker.silent} · duels after ${x.duels.silent}`,
+    agentsSub: (x, n) => `${n.taker} silent after ${plural(x.taker.silent, 'tick', 'ticks')} without deciding · ${n.maker} after ${x.maker.silent} · ${n.duels} after ${x.duels.silent}`,
     state: { none: 'NO LOG', silent: 'SILENT', quiet: 'QUIET', stuck: 'BLOCKED', ok: 'OK' },
-    ago: (n) => (n === 0 ? 'decided this tick' : `last decision ${plural(n, 'tick', 'ticks')} ago`),
+    ago: (n, sec) => (n === 0 ? 'decided this tick' : `last decision ${HUM_EN.ago(n, sec)}`),
     never: 'never decided',
     noLog: 'no decision log from this source',
     last: 'last',
@@ -732,7 +736,7 @@ const EN: GameStrings = {
     noBlocks: 'nothing blocked this game hour',
     ofHour: (blocks, decisions) => `${blocks} of ${plural(decisions, 'decision', 'decisions')} this game hour`,
     inARow: (n) => `×${n} in a row`,
-    restarted: (n, tick) => (n > 1 ? `restarted ×${n} this game hour` : `restarted at tick ${tick}`),
+    restarted: (n, when) => (n > 1 ? `restarted ×${n} this game hour` : `restarted ${when}`),
     money: 'Money',
     acceptsTick: (n, cap) => `accepts this tick ${n} / ${cap}`,
     idle: 'no decisions',
@@ -1249,7 +1253,7 @@ const ES: GameStrings = {
     jev: 'Jev',
     error: (code) => `error ${code}`,
     blocks: 'Bloqueos por regla',
-    blocksSub: (fromTick) => `última hora de juego, desde el turno ${fromTick}`,
+    blocksSub: () => 'última hora de juego',
     noBlocks: 'Ningún límite ha bloqueado nada en la última hora de juego.',
     times: (n) => `${n}×`,
     ledger: 'Libro de gastos',
@@ -1273,9 +1277,9 @@ const ES: GameStrings = {
   },
   agt: {
     agents: 'Agentes',
-    agentsSub: (x) => `en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · el maker primero callado, en silencio tras ${x.maker.silent} · duelos tras ${x.duels.silent}`,
+    agentsSub: (x, n) => `${n.taker} en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · ${n.maker} tras ${x.maker.silent} · ${n.duels} tras ${x.duels.silent}`,
     state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', quiet: 'CALLADO', stuck: 'BLOQUEADO', ok: 'OK' },
-    ago: (n) => (n === 0 ? 'ha decidido este turno' : `última decisión hace ${plural(n, 'turno', 'turnos')}`),
+    ago: (n, sec) => (n === 0 ? 'ha decidido este turno' : `última decisión ${HUM_ES.ago(n, sec)}`),
     never: 'nunca ha decidido',
     noLog: 'esta fuente no trae registro de decisiones',
     last: 'última',
@@ -1283,7 +1287,7 @@ const ES: GameStrings = {
     noBlocks: 'nada bloqueado esta hora de juego',
     ofHour: (blocks, decisions) => `${blocks} de ${plural(decisions, 'decisión', 'decisiones')} esta hora de juego`,
     inARow: (n) => `×${n} seguidas`,
-    restarted: (n, tick) => (n > 1 ? `reiniciado ×${n} esta hora de juego` : `reiniciado en el turno ${tick}`),
+    restarted: (n, when) => (n > 1 ? `reiniciado ×${n} esta hora de juego` : `reiniciado ${when}`),
     money: 'Dinero',
     acceptsTick: (n, cap) => `aceptaciones este turno ${n} / ${cap}`,
     idle: 'sin decisiones',
