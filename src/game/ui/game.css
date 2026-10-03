@@ -1808,3 +1808,22 @@
 .gm-table tr[data-live] td:first-child {
   box-shadow: inset 2px 0 0 var(--gm-warn);
 }
+
+/* A duel's card at stake under its id, and the ticks left beside a live duel's status. */
+.gm-table .gm-duel-item {
+  display: block;
+  max-width: 12rem;
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gm-table .gm-duel-left {
+  margin-left: 0.4rem;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--gm-warn);
+  white-space: nowrap;
+}

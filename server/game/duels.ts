@@ -5,7 +5,9 @@
  * `duel.message {duel, role, rival, sender, price, days}` (sender: our team for "you", else the rival's alias) and
  * each finished duel one `duel.result {duel, rival, deal, price, points}`, the same payloads as the mock's. `rival`
  * is the duel's `rival`, the only name the game gives the other side (an alias like "Rival Azul", not a team id,
- * so there is no team to look up); null when missing. Nothing else
+ * so there is no team to look up); null when missing. Every duel also opens with one
+ * `duel.started {duel, session, role, rival, item, deadline_tick}`, so a live duel shows before anyone has
+ * spoken, with what is at stake and until when. Nothing else
  * of a duel leaves: not our limit, our days weight, our gain or share (they reveal our limits), nor the words.
  */
 export type Payload = Record<string, unknown>
@@ -13,7 +15,7 @@ export type Payload = Record<string, unknown>
 export interface DuelEvent {
   readonly id: number
   readonly tick: number | null
-  readonly type: 'duel.message' | 'duel.result'
+  readonly type: 'duel.started' | 'duel.message' | 'duel.result'
   readonly payload: Payload
 }
 
@@ -23,7 +25,7 @@ const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isSaf
 
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
-/** Room for a duel's messages; its result takes the last slot. */
+/** Room for a duel's messages; its start takes the slot before the last, its result the last. */
 const SLOTS = 1000
 
 /** Below every feed id (positive) and every made-up one (counting down from -1). */
@@ -42,11 +44,19 @@ function closedTick(d: Payload, last: number | null): number | null {
 /** The rival's alias, trimmed and bounded; null when the duel has none. */
 const rivalOf = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 40) : null)
 
+/** The card at stake (a name like "El Mesón de la Cava"), trimmed and bounded; null when missing. */
+const itemOf = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : null)
+
 function eventsOf(d: Payload, duel: number, team: string): DuelEvent[] {
   const role = typeof d.role === 'string' ? d.role : null
   const rival = rivalOf(d.rival)
-  const out: DuelEvent[] = []
-  const messages = Array.isArray(d.messages) ? d.messages.slice(0, SLOTS - 1) : []
+  const messages = Array.isArray(d.messages) ? d.messages.slice(0, SLOTS - 2) : []
+  const firstTick = messages.map((m: unknown) => (isRecord(m) && isInt(m.tick) ? m.tick : null)).find((t) => t !== null) ?? null
+  const started = {
+    duel, session: isInt(d.session) ? d.session : null, role, rival, item: itemOf(d.item),
+    deadline_tick: isInt(d.deadline_tick) ? d.deadline_tick : null,
+  }
+  const out: DuelEvent[] = [{ id: duelEventId(duel, SLOTS - 2), tick: firstTick ?? (isInt(d.tick) ? d.tick : null), type: 'duel.started', payload: started }]
   let last: number | null = null
   messages.forEach((m: unknown, n) => {
     if (!isRecord(m)) return

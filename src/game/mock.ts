@@ -101,6 +101,12 @@ interface MockDuel {
 /** The aliases the game gives our duel rivals; a duel's rival is `RIVALS[id % 3]`. */
 const RIVALS = ['Rival Oro', 'Rival Noche', 'Rival Azul'] as const
 
+/** The cards a duel is fought over, as the game names them; a duel's item is `DUEL_ITEMS[id % 3]`. */
+const DUEL_ITEMS = ['El Mesón de la Cava', 'Palacio de Cristal', 'Mercado de la Paz'] as const
+
+/** How long a mock duel may run before its deadline. */
+const DUEL_TICKS = 12
+
 /** GUARDRAILS.md's caps, as the server sends them with the ledger (server/game/decisions.ts). */
 const MOCK_LIMITS = { spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 }
 
@@ -542,15 +548,17 @@ export class MockGame {
 
   /** Two duels already over when we start (one deal, one no deal), so the duel screens open with history. */
   private pastDuels(): GameEvent[] {
+    const start = (duel: number, role: string) =>
+      this.ev('duel.started', { duel, session: 1, role, rival: RIVALS[duel % RIVALS.length], item: DUEL_ITEMS[duel % DUEL_ITEMS.length], deadline_tick: this.tick + DUEL_TICKS })
     const msg = (duel: number, role: string, ours: boolean, price: number, days: number) => {
       const rival = RIVALS[duel % RIVALS.length]
       return this.ev('duel.message', { duel, role, rival, sender: ours ? this.team : rival, price, days }, ours ? '' : rival)
     }
     this.score.duel_points = Math.round((this.score.duel_points + 1.3) * 10) / 10
     return [
-      msg(1, 'buyer', false, 58, 6), msg(1, 'buyer', true, 40, 3), msg(1, 'buyer', false, 49, 5), msg(1, 'buyer', true, 46, 4),
+      start(1, 'buyer'), msg(1, 'buyer', false, 58, 6), msg(1, 'buyer', true, 40, 3), msg(1, 'buyer', false, 49, 5), msg(1, 'buyer', true, 46, 4),
       this.ev('duel.result', { duel: 1, rival: RIVALS[1], deal: true, price: 47, points: 1.3 }),
-      msg(2, 'seller', true, 66, 2), msg(2, 'seller', false, 38, 8), msg(2, 'seller', true, 61, 3),
+      start(2, 'seller'), msg(2, 'seller', true, 66, 2), msg(2, 'seller', false, 38, 8), msg(2, 'seller', true, 61, 3),
       this.ev('duel.result', { duel: 2, rival: RIVALS[2], deal: false, price: null, points: 0 }),
     ]
   }
@@ -559,6 +567,9 @@ export class MockGame {
     if (!this.duel) {
       const id = this.duelIds()
       this.duel = { id, role: this.choice(['seller', 'buyer'] as const), rival: RIVALS[id % RIVALS.length] ?? 'rival', ours: null, theirs: null, round: 0, limit: this.int(35, 55) }
+      // A live duel shows before anyone speaks: what is at stake and until when.
+      const started = { duel: id, session: 2, role: this.duel.role, rival: this.duel.rival, item: DUEL_ITEMS[id % DUEL_ITEMS.length], deadline_tick: this.tick + DUEL_TICKS }
+      return [this.ev('duel.started', started)]
     }
     const d = this.duel
     const seller = d.role === 'seller'

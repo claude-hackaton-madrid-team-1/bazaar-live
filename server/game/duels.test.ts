@@ -28,13 +28,16 @@ describe('duelEvents', () => {
   it('translates messages and results into the payloads the page reads, oldest duel first', () => {
     const events = duelEvents({ duels: [live, noDeal, deal] }, 't01', 20)
     expect(events.map((e) => [e.type, e.tick, e.payload])).toEqual([
+      ['duel.started', 2990, { duel: 540, session: 34, role: 'buyer', rival: 'Rival Azul', item: null, deadline_tick: 3000 }],
       ['duel.message', 2990, { duel: 540, rival: 'Rival Azul', role: 'buyer', sender: 'Rival Azul', price: 80, days: null }],
       ['duel.message', 2991, { duel: 540, rival: 'Rival Azul', role: 'buyer', sender: 't01', price: 70, days: null }],
       ['duel.message', 2992, { duel: 540, rival: 'Rival Azul', role: 'buyer', sender: 'Rival Azul', price: 70, days: null }],
       ['duel.result', 2993, { duel: 540, rival: 'Rival Azul', deal: true, price: 70, points: 4.42 }],
+      ['duel.started', 3076, { duel: 546, session: 35, role: 'buyer', rival: 'Rival Noche', item: null, deadline_tick: 3078 }],
       ['duel.message', 3076, { duel: 546, rival: 'Rival Noche', role: 'buyer', sender: 'Rival Noche', price: 100, days: null }],
       ['duel.message', 3077, { duel: 546, rival: 'Rival Noche', role: 'buyer', sender: 'Rival Noche', price: 98, days: null }],
       ['duel.result', 3078, { duel: 546, rival: 'Rival Noche', deal: false, price: null, points: 0 }],
+      ['duel.started', 3180, { duel: 563, session: 37, role: 'seller', rival: 'Rival Oro', item: 'El Instituto', deadline_tick: 3190 }],
       ['duel.message', 3180, { duel: 563, rival: 'Rival Oro', role: 'seller', sender: 'Rival Oro', price: 106, days: 0 }],
       ['duel.message', 3181, { duel: 563, rival: 'Rival Oro', role: 'seller', sender: 't01', price: 120, days: 2 }],
     ])
@@ -48,15 +51,16 @@ describe('duelEvents', () => {
   it('ids are negative, stable across reads, and never meet a feed or made-up id', () => {
     const a = duelEvents({ duels: [live] }, 't01', 20).map((e) => e.id)
     const b = duelEvents({ duels: [{ ...live, messages: [...live.messages, { tick: 3182, from: 'Rival Oro', price: 108, days: 0 }] }] }, 't01', 20).map((e) => e.id)
-    expect(b.slice(0, 2)).toEqual(a)
-    expect(a).toEqual([duelEventId(563, 0), duelEventId(563, 1)])
+    expect(b.slice(0, 3)).toEqual(a)
+    expect(a).toEqual([duelEventId(563, 998), duelEventId(563, 0), duelEventId(563, 1)])
     expect(a.every((id) => Number.isSafeInteger(id) && id < -1e12)).toBe(true)
     expect(duelEventId(563, 999)).not.toBe(duelEventId(564, 0))
   })
 
   it('keeps the newest duels only, and skips what it cannot read', () => {
     expect(new Set(duelEvents({ duels: [live, noDeal, deal] }, 't01', 1).map((e) => e.payload.duel))).toEqual(new Set([563]))
-    expect(duelEvents({ duels: [null, { duel: 'x' }, { duel: 9, status: 'live', messages: [null, 3] }] }, 't01', 20)).toEqual([])
+    // A live duel whose messages cannot be read still shows that it started.
+    expect(duelEvents({ duels: [null, { duel: 'x' }, { duel: 9, status: 'live', messages: [null, 3] }] }, 't01', 20).map((e) => e.type)).toEqual(['duel.started'])
     expect(duelEvents({}, 't01', 20)).toEqual([])
     expect(duelEvents(null, 't01', 20)).toEqual([])
   })
@@ -64,16 +68,27 @@ describe('duelEvents', () => {
   it('carries the rival on every message and result, trimmed and bounded, null when missing', () => {
     const events = duelEvents({ duels: [live, noDeal, deal] }, 't01', 20)
     expect(events.map((e) => [e.payload.duel, e.type, e.payload.rival])).toEqual([
-      [540, 'duel.message', 'Rival Azul'], [540, 'duel.message', 'Rival Azul'], [540, 'duel.message', 'Rival Azul'], [540, 'duel.result', 'Rival Azul'],
-      [546, 'duel.message', 'Rival Noche'], [546, 'duel.message', 'Rival Noche'], [546, 'duel.result', 'Rival Noche'],
-      [563, 'duel.message', 'Rival Oro'], [563, 'duel.message', 'Rival Oro'],
+      [540, 'duel.started', 'Rival Azul'], [540, 'duel.message', 'Rival Azul'], [540, 'duel.message', 'Rival Azul'], [540, 'duel.message', 'Rival Azul'], [540, 'duel.result', 'Rival Azul'],
+      [546, 'duel.started', 'Rival Noche'], [546, 'duel.message', 'Rival Noche'], [546, 'duel.message', 'Rival Noche'], [546, 'duel.result', 'Rival Noche'],
+      [563, 'duel.started', 'Rival Oro'], [563, 'duel.message', 'Rival Oro'], [563, 'duel.message', 'Rival Oro'],
     ])
-    const odd = (rival: unknown) => duelEvents({ duels: [{ duel: 1, status: 'deal', rival, messages: [] }] }, 't01', 20)[0]?.payload.rival
+    const odd = (rival: unknown) => duelEvents({ duels: [{ duel: 1, status: 'deal', rival, messages: [] }] }, 't01', 20).at(-1)?.payload.rival
     expect([odd('  Rival Luna '), odd('x'.repeat(60)), odd(''), odd(7), odd(undefined)]).toEqual(['Rival Luna', 'x'.repeat(40), null, null, null])
+  })
+
+  it('a live duel shows before anyone speaks: its start carries the card at stake and the deadline, never the limit', () => {
+    const quiet = { duel: 2311, session: 2, tick: 468, status: 'live', role: 'buyer', item: 'El Mesón de la Cava', rival: 'Rival Rojo', deadline_tick: 484, your_limit: 70, messages: [] }
+    expect(duelEvents({ duels: [quiet] }, 't01', 20)).toEqual([{
+      id: duelEventId(2311, 998), tick: 468, type: 'duel.started',
+      payload: { duel: 2311, session: 2, role: 'buyer', rival: 'Rival Rojo', item: 'El Mesón de la Cava', deadline_tick: 484 },
+    }])
   })
 
   it('a finished duel without words still has its result, at its deadline', () => {
     expect(duelEvents({ duels: [{ duel: 7, status: 'no_deal', role: 'seller', deadline_tick: 50, messages: [] }] }, 't01', 20))
-      .toEqual([{ id: duelEventId(7, 999), tick: 50, type: 'duel.result', payload: { duel: 7, rival: null, deal: false, price: null, points: null } }])
+      .toEqual([
+        { id: duelEventId(7, 998), tick: null, type: 'duel.started', payload: { duel: 7, session: null, role: 'seller', rival: null, item: null, deadline_tick: 50 } },
+        { id: duelEventId(7, 999), tick: 50, type: 'duel.result', payload: { duel: 7, rival: null, deal: false, price: null, points: null } },
+      ])
   })
 })

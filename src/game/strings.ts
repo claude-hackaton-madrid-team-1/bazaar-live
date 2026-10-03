@@ -136,6 +136,7 @@ export interface GameStrings {
     readonly against: string
     readonly unknownRival: string
     readonly rivalDuels: (duels: number, finished: number) => string
+    readonly ticksLeft: (ticks: number) => string
     readonly rivalDeals: (deals: number, noDeals: number) => string
     readonly rivalPoints: (points: number | null) => string
     readonly rivalPointsNone: string
@@ -404,6 +405,7 @@ const EN: GameStrings = {
     against: 'Dueling against',
     unknownRival: 'unknown rival',
     rivalDuels: (n, done) => `${n} ${n === 1 ? 'duel' : 'duels'} · ${done} finished`,
+    ticksLeft: (n) => (n === 0 ? 'ends this tick' : `${n} ${n === 1 ? 'tick' : 'ticks'} left`),
     rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'deal' : 'deals'} · ${none} no deal`,
     rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
     rivalPointsNone: 'No points recorded for these duels (our database does not keep them)',
@@ -686,6 +688,7 @@ const ES: GameStrings = {
     against: 'En duelo contra',
     unknownRival: 'rival desconocido',
     rivalDuels: (n, done) => `${n} ${n === 1 ? 'duelo' : 'duelos'} · ${done} ${done === 1 ? 'terminado' : 'terminados'}`,
+    ticksLeft: (n) => (n === 0 ? 'acaba este turno' : `quedan ${n} ${n === 1 ? 'turno' : 'turnos'}`),
     rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'trato' : 'tratos'} · ${none} sin trato`,
     rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
     rivalPointsNone: 'Sin puntos registrados para estos duelos (nuestra base de datos no los guarda)',

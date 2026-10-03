@@ -48,7 +48,8 @@ export type Rail = { us: RailPoint[]; them: RailPoint[]; grid: { y: number; labe
 
 export type Box = { w: number; h: number; pad: { l: number; r: number; t: number; b: number } }
 
-export type DuelRow = Duel & { gap: number | null; tone: 'neutral' | 'good' | 'bad' }
+/** `ticksLeft`: until the deadline, for a live duel whose deadline we know; null otherwise. */
+export type DuelRow = Duel & { gap: number | null; tone: 'neutral' | 'good' | 'bad'; ticksLeft: number | null }
 
 const lastEvent = (th: Thread): number => th.offers.at(-1)?.eventId ?? th.id
 
@@ -123,13 +124,16 @@ export function rail(bubbles: Bubble[], box: Box): Rail {
   return { us: points('us'), them: points('them'), grid: labels.map((label) => ({ y: y(label), label })), lo, hi }
 }
 
+const ticksLeftOf = (d: Duel, tick: number): number | null =>
+  d.status === 'open' && d.deadlineTick !== null && tick > 0 ? Math.max(0, d.deadlineTick - tick) : null
+
 const toneOf = (d: Duel): DuelRow['tone'] => (d.status === 'deal' ? 'good' : d.status === 'no deal' ? 'bad' : 'neutral')
 
 export function duelRows(s: State): DuelRow[] {
   const all = Object.values(s.duels)
   const order = (a: Duel, b: Duel) => b.id - a.id
   return [...all.filter((d) => d.status === 'open').sort(order), ...all.filter((d) => d.status !== 'open').sort(order)]
-    .map((d) => ({ ...d, gap: gapOf(d.ourPrice, d.theirPrice), tone: toneOf(d) }))
+    .map((d) => ({ ...d, gap: gapOf(d.ourPrice, d.theirPrice), tone: toneOf(d), ticksLeft: ticksLeftOf(d, s.tick) }))
 }
 
 export type RivalRow = {
