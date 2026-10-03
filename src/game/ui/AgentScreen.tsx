@@ -46,6 +46,10 @@ function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
       ) : isWrite(run.kind) ? (
         <Badge tone={STATUS_TONE[run.status]}>{t.decide.status[run.status]}</Badge>
       ) : null}
+      {/* no guardrail said no: when Jev did not back it, that is why it was turned down */}
+      {run.status === 'rejected' && run.verdict !== 'denied' && run.last.jev && run.last.jev !== 'yes' && (
+        <span className="gm-muted">{t.hum.jev(run.last.jev, percent(run.last.jevValue))}</span>
+      )}
       {run.rows.length > 1 && <Badge tone={run.verdict === 'denied' ? 'bad' : 'neutral'}>×{run.rows.length}</Badge>}
     </>
   )
