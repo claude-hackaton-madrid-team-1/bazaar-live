@@ -128,7 +128,9 @@ export function InjectionsView({ state, t, className, max, allHref, onAll }: Vie
       <p className="inj-note">{t.note}</p>
       {notice && <p className="inj-status">{notice}</p>}
       {rows.length === 0 ? (
-        (status === 'mock' || (status === 'live' && snapshot.ready)) && <p className="inj-empty">{t.empty}</p>
+        (status === 'mock' || (status === 'live' && snapshot.ready)) && (
+          <p className="inj-empty">{!weak && snapshot.counts.weak > 0 ? t.emptyWeak(snapshot.counts.weak) : t.empty}</p>
+        )
       ) : (
         <ol className="inj-list">
           {rows.map((r) => (
