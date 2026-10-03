@@ -1,72 +1,69 @@
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import type { Ref } from 'react'
 import type { BoardCard } from '../show/engine'
 import { useStrings } from '../ui/lang'
+import { appear, EASE_OUT } from './calm'
+import { hoodColor, setOf } from './hoods'
 
-const HOOD_COLORS: Readonly<Record<string, string>> = {
-  LAV: '#e76f51',
-  MAL: '#9b5de5',
-  LAT: '#f4a261',
-  SAL: '#2a9d8f',
-  RET: '#52b788',
-  CHA: '#457b9d',
-}
-
-function setOf(ref: string): string {
-  return ref.slice(0, 3).toUpperCase()
-}
-
-/** A price tag whose number rolls to the new value and flashes on every reprice. */
+/** A price capsule: the number rolls to the new value and the capsule glows once on every reprice. */
 export function PriceTag({ price, version }: { readonly price: number | null; readonly version: number }) {
+  const reduce = useReducedMotion()
   const label = price === null ? '¿?' : `${price} P`
   return (
-    <motion.div
-      className="price-tag"
-      key={version}
-      initial={version > 0 ? { scale: 1.35, backgroundColor: '#ffd166' } : false}
-      animate={{ scale: 1, backgroundColor: '#f6bd60' }}
-      transition={{ type: 'spring', stiffness: 400, damping: 12 }}
-    >
-      <AnimatePresence mode="popLayout" initial={false}>
-        <motion.span
-          key={label}
-          initial={{ y: '-110%', opacity: 0 }}
-          animate={{ y: '0%', opacity: 1 }}
-          exit={{ y: '110%', opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-        >
-          {label}
-        </motion.span>
-      </AnimatePresence>
-    </motion.div>
+    <span className="price-tag">
+      {version > 0 && !reduce && (
+        <motion.span key={version} className="price-glow" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ duration: 1.6, ease: 'easeOut' }} aria-hidden="true" />
+      )}
+      {reduce ? (
+        <span className="price-num">{label}</span>
+      ) : (
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={label}
+            className="price-num"
+            initial={{ y: '-100%', opacity: 0 }}
+            animate={{ y: '0%', opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
+            transition={{ duration: 0.42, ease: EASE_OUT }}
+          >
+            {label}
+          </motion.span>
+        </AnimatePresence>
+      )}
+    </span>
   )
 }
 
-function OfferCard({ card }: { readonly card: BoardCard }) {
+function OfferCard({ card, ref }: { readonly card: BoardCard; readonly ref?: Ref<HTMLDivElement> }) {
   const t = useStrings()
-  const set = setOf(card.ref)
+  const reduce = useReducedMotion()
   return (
     <motion.div
+      ref={ref}
       layout
       className={`card ${card.side}`}
-      initial={{ x: '-260%', y: '60%', rotate: -25, scale: 0.5, opacity: 0 }}
-      animate={{ x: 0, y: 0, rotate: card.side === 'bid' ? 2 : -2, scale: 1, opacity: 1 }}
-      exit={{ x: '-260%', y: '-40%', rotate: 30, scale: 0.4, opacity: 0, transition: { duration: 0.5 } }}
-      transition={{ type: 'spring', stiffness: 120, damping: 15 }}
+      style={{ ['--hood' as string]: hoodColor(card.ref) }}
+      {...appear(reduce, {
+        initial: { opacity: 0, y: 12, scale: 0.96 },
+        animate: { opacity: 1, y: 0, scale: 1 },
+        exit: { opacity: 0, scale: 0.94, transition: { duration: 0.24 } },
+        transition: { duration: 0.5, ease: EASE_OUT },
+      })}
       aria-label={`${card.side === 'bid' ? t.bidFor : t.askFor} ${card.ref}, ${card.price ?? t.cardPrivate} ${t.primas}`}
     >
-      <span className="pin" />
-      <div className="band" style={{ background: HOOD_COLORS[set] ?? '#8d99ae' }} />
-      <div className="ref">{card.ref}</div>
-      <div className="hood">{card.side === 'bid' ? `${t.wanted} · ` : ''}{t.hoods[set] ?? 'Madrid'}</div>
+      <span className="card-ref">{card.ref}</span>
+      <span className="card-hood">{t.hoods[setOf(card.ref)] ?? 'Madrid'}</span>
+      {card.side === 'bid' && <span className="card-wanted">{t.wanted}</span>}
       <PriceTag price={card.price} version={card.version} />
     </motion.div>
   )
 }
 
+/** The board: a frosted tray between the two orbs, with our open offers as crisp tiles. */
 export function Board({ cards }: { readonly cards: readonly BoardCard[] }) {
   const t = useStrings()
   return (
-    <div className="board" aria-label={t.boardLabel}>
+    <div className="board material" aria-label={t.boardLabel}>
       <AnimatePresence mode="popLayout">
         {cards.map((card) => (
           <OfferCard key={card.key} card={card} />

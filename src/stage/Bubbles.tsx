@@ -3,7 +3,9 @@ import { Fragment } from 'react'
 import type { AgentId } from '../model/events'
 import type { Line } from '../show/beat'
 import { verdictFamily, verdictHue } from '../show/jev'
+import type { Strings } from '../ui/strings'
 import { useStrings } from '../ui/lang'
+import { appear, EASE_OUT } from './calm'
 
 const TAG = /\[([a-z][a-z ]{0,30})\]/gi
 
@@ -51,21 +53,45 @@ export function Spoken({ text }: { readonly text: string }) {
   )
 }
 
-/** The line being spoken, on a parchment scroll over the head of whoever says it. */
+function speakerName(t: Strings, speaker: Line['speaker']): string {
+  switch (speaker) {
+    case 'buyer':
+      return t.buyer
+    case 'seller':
+      return t.seller
+    case 'abuela':
+      return t.dealers.abuela
+    case 'chato':
+      return t.dealers.chato
+    case 'narrator':
+      return t.narrator
+  }
+}
+
+/** The line being spoken, as a Liquid Glass caption on the side of whoever says it, marked with their light. */
 export function SpeechBubble({ line, id }: { readonly line: Line | null; readonly id: string }) {
+  const t = useStrings()
+  const reduce = useReducedMotion()
   return (
     <AnimatePresence mode="wait">
       {line && (
         <motion.div
           key={id}
-          className={`bubble ${line.speaker}`}
-          initial={{ opacity: 0, scale: 0.7, y: 18 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: -8, transition: { duration: 0.15 } }}
-          transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+          className="caption glass"
+          data-voice={line.speaker}
+          {...appear(reduce, {
+            initial: { opacity: 0, y: 10, scale: 0.985 },
+            animate: { opacity: 1, y: 0, scale: 1 },
+            exit: { opacity: 0, y: -4, transition: { duration: 0.15 } },
+            transition: { duration: 0.36, ease: EASE_OUT },
+          })}
           aria-hidden="true"
         >
-          <span className="bubble-text">
+          <span className="caption-who">
+            <i className="caption-dot" />
+            {speakerName(t, line.speaker)}
+          </span>
+          <span className="caption-text">
             <Spoken text={line.text} />
           </span>
         </motion.div>
@@ -80,7 +106,7 @@ export interface JevFx {
   readonly agent: AgentId
 }
 
-/** Jev's verdict as a glowing orb: its colour is the verdict, a ring of sparks circles it, a meter lists the options. */
+/** Jev's verdict on a small glass card: a violet orb tinted by the verdict, the word, and a meter of the options. */
 export function JevOrb({ jev }: { readonly jev: JevFx | null }) {
   const reduce = useReducedMotion()
   const t = useStrings()
@@ -89,61 +115,52 @@ export function JevOrb({ jev }: { readonly jev: JevFx | null }) {
       {jev && (
         <motion.div
           key={jev.n}
-          className={`jev ${jev.agent}`}
+          className={`jev glass ${jev.agent}`}
           style={{ ['--hue' as string]: verdictHue(jev.verdict) }}
-          initial={{ opacity: 0, scale: 0.3, y: 30 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.2 } }}
-          transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+          {...appear(reduce, {
+            initial: { opacity: 0, y: -8, scale: 0.97 },
+            animate: { opacity: 1, y: 0, scale: 1 },
+            exit: { opacity: 0, scale: 0.98, transition: { duration: 0.2 } },
+            transition: { duration: 0.42, ease: EASE_OUT },
+          })}
           role="status"
           aria-label={`${t.jevSr}: ${jev.verdict}`}
         >
-          <div className="orb-wrap">
-            <motion.div className="orb-halo" animate={reduce ? undefined : { scale: [1, 1.25, 1], opacity: [0.55, 0.9, 0.55] }} transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }} />
-            <motion.div className="orb-sparks" animate={reduce ? undefined : { rotate: 360 }} transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}>
-              <i />
-              <i />
-              <i />
-            </motion.div>
-            <motion.div className="orb" animate={reduce ? undefined : { y: [0, -4, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
-              <motion.span className="orb-swirl" animate={reduce ? undefined : { rotate: -360 }} transition={{ duration: 9, repeat: Infinity, ease: 'linear' }} />
-            </motion.div>
+          <div className="jev-head">
+            <span className="jev-orb" aria-hidden="true" />
+            <span className="jev-words">
+              <span className="jev-title">{t.jevThinks}</span>
+              <span className="jev-verdict">{jev.verdict === 'undecided' ? t.undecided : jev.verdict.replace(/_/g, ' ')}</span>
+            </span>
           </div>
-          <div className="jev-plaque">
-            <span className="jev-title">{t.jevThinks}</span>
-            <span className="jev-verdict">{jev.verdict === 'undecided' ? t.undecided : jev.verdict.replace(/_/g, ' ')}</span>
-          </div>
-          <Meter verdict={jev.verdict} />
+          <Meter verdict={jev.verdict} reduce={reduce} />
         </motion.div>
       )}
     </AnimatePresence>
   )
 }
 
-function Meter({ verdict }: { readonly verdict: string }) {
+/** The options Jev weighed, as a segmented capsule: the one it picked fills with the verdict's light. */
+function Meter({ verdict, reduce }: { readonly verdict: string; readonly reduce: boolean | null }) {
   const family = verdictFamily(verdict)
   const chosen = family.indexOf(verdict.toLowerCase())
   return (
-    <>
-      <div className="meter" aria-hidden="true">
-        {family.map((option, i) => (
-          <div key={option} className="meter-seg">
-            <motion.div
-              className="meter-fill"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: i === chosen ? 1 : 0.12 }}
-              transition={{ delay: 0.25 + i * 0.12, type: 'spring', stiffness: 140, damping: 16 }}
-            />
-          </div>
-        ))}
-      </div>
-      <div className="meter-labels" aria-hidden="true">
-        {family.map((option, i) => (
-          <span key={option} className={i === chosen ? 'on' : undefined}>
-            {option.replace(/_/g, ' ')}
-          </span>
-        ))}
-      </div>
-    </>
+    <div className="meter" aria-hidden="true" style={{ ['--n' as string]: family.length }}>
+      {family.map((option, i) => (
+        <span key={option} className="meter-seg">
+          <motion.span
+            className="meter-fill"
+            initial={reduce ? false : { scaleX: 0 }}
+            animate={{ scaleX: i === chosen ? 1 : 0 }}
+            transition={reduce ? { duration: 0 } : { delay: 0.2 + i * 0.1, duration: 0.5, ease: EASE_OUT }}
+          />
+        </span>
+      ))}
+      {family.map((option, i) => (
+        <span key={option} className={i === chosen ? 'meter-label on' : 'meter-label'}>
+          {option.replace(/_/g, ' ')}
+        </span>
+      ))}
+    </div>
   )
 }

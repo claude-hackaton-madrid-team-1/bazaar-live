@@ -1,31 +1,39 @@
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { DealerId } from '../show/beat'
 import { useStrings } from '../ui/lang'
-import { Merchant, type Pose } from './Merchant'
-
-const POSE: Readonly<Record<string, Pose>> = { open: 'greet', bid: 'haggle', accept: 'triumph', walk: 'grumble' }
+import { appear } from './calm'
+import { DEALER_POSE } from './poses'
+import { Bars, Voice } from './Voice'
 
 /**
- * A dealer steps up behind the counter for dealer_* moves, as a full merchant: Abuela Carmen with her
- * lantern, or El Chato in his flat cap. The move sets the gesture: greet, haggle, triumph, or grumble
- * and turn away.
+ * A dealer joins the room for dealer_* moves as a third, smaller orb that glides up from the floor:
+ * Abuela Carmen in rose, El Chato in indigo. The move sets its light (greet, haggle, triumph, grumble)
+ * and is written beside it; a dealer who walks away drifts off to its side.
  */
 export function Dealer({ dealer, speaking }: { readonly dealer: { readonly id: DealerId; readonly move: string } | null; readonly speaking: boolean }) {
   const t = useStrings()
+  const reduce = useReducedMotion()
   return (
     <AnimatePresence>
       {dealer && (
         <motion.div
           key={dealer.id}
-          className={`dealer ${dealer.id}`}
-          initial={{ y: '40%', opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={dealer.move === 'walk' ? { x: dealer.id === 'chato' ? '60%' : '-60%', opacity: 0, transition: { duration: 0.6 } } : { y: '40%', opacity: 0, transition: { duration: 0.35 } }}
-          transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+          className="dealer"
+          data-voice={dealer.id === 'chato' ? 'chato' : 'abuela'}
+          {...appear(reduce, {
+            initial: { y: '60%', opacity: 0 },
+            animate: { y: '0%', opacity: 1 },
+            exit:
+              dealer.move === 'walk'
+                ? { x: dealer.id === 'chato' ? '30%' : '-30%', opacity: 0, transition: { duration: 0.6 } }
+                : { y: '40%', opacity: 0, transition: { duration: 0.3 } },
+            transition: { type: 'spring', stiffness: 170, damping: 24 },
+          })}
           aria-label={`${t.dealers[dealer.id]}: ${t.moves[dealer.move] ?? dealer.move}`}
         >
-          <Merchant role={dealer.id === 'chato' ? 'chato' : 'abuela'} pose={POSE[dealer.move] ?? 'idle'} talking={speaking} label={t.dealers[dealer.id]} />
+          <Voice role={dealer.id === 'chato' ? 'chato' : 'abuela'} className="small" pose={DEALER_POSE[dealer.move] ?? 'idle'} talking={speaking} label={t.dealers[dealer.id]} />
           <div className="dealer-plaque">
+            <Bars talking={speaking} />
             <span className="dealer-name">{t.dealers[dealer.id]}</span>
             <span className="dealer-move">{t.moves[dealer.move] ?? dealer.move}</span>
           </div>
