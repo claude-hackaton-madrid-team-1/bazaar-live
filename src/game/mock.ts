@@ -85,6 +85,16 @@ interface Neg {
   final: boolean
   closing?: boolean
   asset?: Asset
+  /** What the card is worth to us when `limit` is held lower by a guardrail cap. */
+  value?: number
+  /** The guardrail cap on our price (`rule`), as its denial text prints it. */
+  cap?: number
+  rule?: string
+  /** Ticks an offer of this thread stays open (2 when unset). */
+  ttl?: number
+  /** A seeded thread's own lines, said in turn: it draws nothing from the game's random stream. */
+  lines?: readonly string[]
+  said?: number
 }
 
 interface MockDuel {
@@ -153,6 +163,10 @@ export class MockGame {
   private scored: [number, OutcomePayload][] = []
   /** The decision scenario's own draws: the game's stream stays what it was, so a seed is still the same game. */
   private readonly scenario: () => number
+  /** The prices each live thread's last taker call was made at (negDecisions). */
+  private readonly negSaid = new WeakMap<Neg, string>()
+  /** The seeded live threads (seedThreads): played like the others, kept apart so the random game around them stays the same. */
+  private readonly scripted = new Map<number, Neg>()
 
   constructor(seed = 1, team = 't01', name = 'Team 1') {
     this.random = rng(seed)
@@ -358,7 +372,7 @@ export class MockGame {
     const [give, want] = buyerIsMaker ? [cash, goods] : [goods, cash]
     return {
       id: this.offerIds(), maker, to, venue: null, thread: tid, status: 'open', give, want,
-      expires_tick: this.tick + 2, created_tick: this.tick, final: neg.final && !ours,
+      expires_tick: this.tick + (neg.ttl ?? 2), created_tick: this.tick, final: neg.final && !ours,
     }
   }
 
@@ -372,7 +386,7 @@ export class MockGame {
 
   private ourMove(): GameEvent[] {
     const out: GameEvent[] = []
-    for (const [tid, neg] of [...this.negs]) {
+    for (const [tid, neg] of this.live()) {
       if (neg.closing) continue
       let mine = neg.ours
       const theirs = neg.their
@@ -394,9 +408,11 @@ export class MockGame {
           this.ev('agent.action', { kind: 'walk', summary: `close #${tid}, no deal` }),
           this.ev('thread.closed', { thread: tid }),
         )
-        this.negs.delete(tid)
+        this.drop(tid)
         continue
       }
+      // at our cap with their price past it there is nothing new to say: we wait for them to come down
+      if (neg.cap != null && mine !== null && mine >= neg.limit && theirs !== null && theirs > neg.cap) continue
       if (mine === null) {
         mine = Math.round((theirs ?? 0) * 0.55)
       } else if (theirs !== null) {
@@ -414,8 +430,10 @@ export class MockGame {
 
   private theirMove(): GameEvent[] {
     const out: GameEvent[] = []
-    for (const [tid, neg] of this.negs) {
+    for (const [tid, neg] of this.live()) {
       if (neg.closing || (neg.ours === null && neg.their !== null)) continue
+      // a dealer at its floor facing our capped bid only repeats its price now and then, which keeps the thread alive
+      if (neg.cap != null && neg.their === neg.floor && (neg.ours ?? 0) >= neg.limit && this.tick % 10 !== 0) continue
       const mine = neg.ours ?? 0
       const buy = neg.side === 'buy'
       let theirs: number
@@ -429,7 +447,10 @@ export class MockGame {
       neg.patience -= 1
       neg.final = neg.patience <= 0
       let line: string
-      if (neg.with === 'abuela') {
+      if (neg.lines) {
+        neg.said = (neg.said ?? 0) + 1
+        line = fill(neg.lines[neg.said % neg.lines.length] ?? '{p} P', theirs)
+      } else if (neg.with === 'abuela') {
         line = neg.final ? `Final offer, hijo: ${theirs} P. Take it or leave it.` : fill(this.choice(ABUELA_LINES), theirs)
       } else {
         line = fill(this.random() < 0.15 ? INJECTION : this.choice(TEAM_LINES), theirs)
@@ -442,13 +463,29 @@ export class MockGame {
     return out
   }
 
+  /** Every live thread: the game's own and the seeded ones. */
+  private live(): [number, Neg][] {
+    return [...this.negs, ...this.scripted]
+  }
+
+  private drop(tid: number): void {
+    this.negs.delete(tid)
+    this.scripted.delete(tid)
+  }
+
+  /** A copy with no random serial, for the seeded threads. */
+  private fixedCard(ref: string): Asset {
+    const rarity = RARITY[slot(ref)] ?? 'common'
+    return { id: this.assetIds(), kind: 'card', ref, serial: 1, set: setCode(ref), rarity, print_run: PRINT_RUN[rarity] ?? 300 }
+  }
+
   private settle(): GameEvent[] {
     const out: GameEvent[] = []
     for (const [tid, neg, price] of this.pending) {
       const ref = neg.ref
       const buy = neg.side === 'buy'
       const [seller, buyer] = buy ? [neg.with, this.team] : [this.team, neg.with]
-      const asset = buy ? this.mint(ref) : this.give(ref)
+      const asset = buy ? (neg.lines ? this.fixedCard(ref) : this.mint(ref)) : this.give(ref)
       if (buy) this.take(asset)
       out.push(this.ev('settlement', {
         settlement: this.settlementIds(), kind: 'trade', parties: [seller, buyer], venue: null,
@@ -461,10 +498,10 @@ export class MockGame {
       this.score.neg_points = Math.round((this.score.neg_points + Math.max(gain, 0) * 0.08) * 10) / 10
       if (neg.with === 'abuela') this.score.ladder_points = Math.round((this.score.ladder_points + 0.6) * 10) / 10
       out.push(this.ev('thread.closed', { thread: tid }))
-      this.negs.delete(tid)
+      this.drop(tid)
     }
     if (this.pending.length) {
-      this.score.rank = Math.max(1, this.score.rank - this.choice([0, 0, 1]))
+      if (this.pending.some(([, n]) => !n.lines)) this.score.rank = Math.max(1, this.score.rank - this.choice([0, 0, 1]))
       out.push(this.me())
     }
     this.pending = []
@@ -781,7 +818,110 @@ export class MockGame {
     const duel = `duel:${this.duel?.id ?? 3}`
     if (this.tick === 2) say('duels', 'duel_offer', { item: duel, status: 'done', jev: 'counter', method: 'duel_say' })
     if (this.tick === 4) say('duels', 'duel_offer', { item: duel, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
+    out.push(...this.negDecisions())
     out.push(this.ev('agent.ledger', { ticks: this.ledger.filter((r) => r.t > this.tick / 240 - 2), limits: MOCK_LIMITS }))
+    return out
+  }
+
+  /**
+   * The taker's call on each live thread this tick, with the value it decided with: the next bid or ask, or,
+   * when their price is past our cap, the accept the guardrail denies (so the screen can say "our cap < their ask").
+   */
+  private negDecisions(): GameEvent[] {
+    const out: GameEvent[] = []
+    for (const [, neg] of this.live()) {
+      // The taker's dealer threads are buys (a sell is valued on /me). The game's own threads get one call, the open
+      // with its value (the feed stays mostly board, like the real one); the seeded ones one per change of prices.
+      const said = neg.lines ? `${neg.their}|${neg.ours}` : 'open'
+      if (neg.closing || neg.side !== 'buy' || this.negSaid.get(neg) === said) continue
+      this.negSaid.set(neg, said)
+      const value = neg.value ?? neg.limit
+      const base = { item: neg.ref, counterparty: neg.with, value }
+      if (!neg.lines) {
+        out.push(this.ev('agent.decision', decision(this.decisionIds(), 'taker', 'dealer_open', { ...base, status: 'done', method: 'open_thread' }), 'taker'))
+      } else if (neg.cap != null && neg.their != null && neg.their > neg.cap) {
+        const rule = neg.rule ?? 'max_price'
+        out.push(this.ev('agent.decision', decision(this.decisionIds(), 'taker', 'dealer_accept', {
+          ...base, price: neg.their, status: 'rejected', verdict: 'denied', rule, text: `price ${neg.their} > ${rule} ${neg.cap}`,
+        }), 'taker'))
+      } else if (neg.ours != null) {
+        out.push(this.ev('agent.decision', decision(this.decisionIds(), 'taker', 'dealer_bid', { ...base, price: neg.ours, status: 'approved' }), 'taker'))
+      }
+    }
+    return out
+  }
+
+  /**
+   * The threads the screen starts with: two that ended before the mock started (a deal under our value with
+   * Abuela, a walk-away from El Chato) and two live ones the game plays on: El Chato holding above our rare cap
+   * (stuck), and Abuela a few primas from our bid (closing).
+   */
+  private seedThreads(): GameEvent[] {
+    const out: GameEvent[] = []
+    const say = (kind: string, fields: Partial<DecisionPayload>) => out.push(this.ev('agent.decision', decision(this.decisionIds(), 'taker', kind, { status: 'done', verdict: 'allowed', ...fields }), 'taker'))
+    const open = (tid: number, neg: Neg) => {
+      out.push(this.ev('thread.opened', { thread: tid, kind: 'persona', team: this.team, with: neg.with, topic: { buy: { card: neg.ref } } }, this.team))
+      say('dealer_open', { item: neg.ref, counterparty: neg.with, value: neg.value ?? neg.limit, method: 'open_thread' })
+    }
+    const move = (tid: number, neg: Neg, ours: boolean, price: number, text: string | null = null) => {
+      if (ours) neg.ours = price
+      else neg.their = price
+      out.push(this.message(tid, neg, ours, text))
+    }
+    const score = (tid: number, neg: Neg, price: number | null) => {
+      const value = neg.value ?? neg.limit
+      out.push(this.ev('agent.outcome', {
+        target: 'dealer', subject: `thread:${tid}`, decision: null, agent: 'taker', item: neg.ref, counterparty: neg.with, side: 'buy', price, value: null,
+        label: price != null && price < value ? 'good' : 'bad', score: null, surplus: null, jev: null, jevRight: null,
+      } satisfies OutcomePayload, 'taker'))
+    }
+
+    // cards none of opening()'s offers and trades touch: the worst set's uncommon and rare, the third's rare
+    const [best = 'LAV', , third = 'MAL', worst = 'LAT'] = this.bySetValue()
+
+    // ended: Abuela came down from 29 to 25 and we took it, well under our value
+    const won: Neg = { with: 'abuela', ref: `${worst}-07`, side: 'buy', their: null, ours: null, limit: 55.2, patience: 0, final: false }
+    const wonId = this.threadIds()
+    open(wonId, won)
+    move(wonId, won, false, 29, `Ay, hijo, ${card(won.ref)} te la dejo en 29 primas, cariño.`)
+    move(wonId, won, true, 10)
+    move(wonId, won, false, 25, 'No te pongas así, cariño: por ser tú, 25 primas.')
+    say('dealer_accept', { item: won.ref, counterparty: won.with, price: 25, value: won.limit, method: 'accept' })
+    const asset = this.fixedCard(won.ref)
+    out.push(this.ev('settlement', {
+      settlement: this.settlementIds(), kind: 'trade', parties: [won.with, this.team], venue: null, persona: won.with, fee: 0, price: 25,
+      your_value: won.limit, items: [{ ...asset, name: card(won.ref), frm: won.with, to: this.team }],
+    }))
+    out.push(this.ev('thread.closed', { thread: wonId }))
+
+    // ended: El Chato would not go under 96 for a rare worth 70 to us, so we walked
+    const walked: Neg = { with: 'chato', ref: `${worst}-10`, side: 'buy', their: null, ours: null, limit: 70, patience: 0, final: false }
+    const walkedId = this.threadIds()
+    open(walkedId, walked)
+    move(walkedId, walked, false, 97, `${card(walked.ref)}. 97. Buena carta, precio justo.`)
+    move(walkedId, walked, true, 60)
+    move(walkedId, walked, false, 96, 'Subiste nada. Yo bajo una. 96.')
+    say('dealer_walk', { item: walked.ref, counterparty: walked.with, method: 'close_thread' })
+    out.push(this.ev('thread.closed', { thread: walkedId }))
+    score(walkedId, walked, null)
+
+    // live: El Chato holds at 93 for a rare worth 112 to us, but our rare cap is 80, so our bid stops there
+    const stuck: Neg = { with: 'chato', ref: `${third}-09`, side: 'buy', their: null, ours: null, floor: 93, limit: 80, patience: 60, final: false, value: 112, cap: 80, rule: 'max_price_rare', ttl: 12,
+      lines: ['{p}. Así funciona conmigo.', 'Yo no bajo de {p}, chaval.', '{p}. Hoy, mañana, el mes que viene: el mismo precio.'] }
+    const stuckId = this.threadIds()
+    this.scripted.set(stuckId, stuck)
+    open(stuckId, stuck)
+    move(stuckId, stuck, false, 97, `${card(stuck.ref)}, 97 primas. Hoy, mañana, el mes que viene: el mismo precio.`)
+    move(stuckId, stuck, true, 74)
+
+    // live: Abuela a few primas above our bid, well inside our value
+    const ref = [`${best}-07`, `${best}-06`, `${best}-08`].find((r) => !this.count(r)) ?? `${best}-07`
+    const close: Neg = { with: 'abuela', ref, side: 'buy', their: null, ours: null, floor: 20, limit: Math.max(this.value(ref, 1), 36), patience: 6, final: false, lines: ABUELA_LINES }
+    const closeId = this.threadIds()
+    this.scripted.set(closeId, close)
+    open(closeId, close)
+    move(closeId, close, false, 28, fill(ABUELA_LINES[0] ?? '{p} P', 28))
+    move(closeId, close, true, 22)
     return out
   }
 
@@ -800,7 +940,7 @@ export class MockGame {
     const out: GameEvent[] = []
     if (this.n === 0) {
       const past = this.pastDuels()
-      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.duelStep(), ...this.openingBoard())
+      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.duelStep(), ...this.openingBoard(), ...this.seedThreads())
     }
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {

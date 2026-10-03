@@ -1,211 +1,149 @@
-import { useEffect, useRef, useState } from 'react'
 import { setParam, useParam } from '../../ui/route'
 import { fmtP } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
-import { conversation, duelRows, rail, rivalSummary, selectedThreadId, threadList, type Bubble, type Conversation, type DuelRow, type RailPoint, type RivalRow, type ThreadRow } from '../views/negotiations.ts'
-import { Badge, Empty, EventLink, Expiry, Injection, Panel, RefChip } from './bits.tsx'
+import {
+  conversation, duelColumns, duelRows, negRows, rivalSummary, selectedThreadId,
+  type Bubble, type Conversation, type DuelRow, type NegRow, type NegStatus, type RivalRow,
+} from '../views/negotiations.ts'
+import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
 
-const RAIL_H = 120
-const PAD = { l: 34, r: 40, t: 10, b: 18 }
-
-const path = (pts: RailPoint[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('')
-
-function PriceRail({ bubbles, threadId, theirLabel, ourLabel }: { bubbles: Bubble[]; threadId: number; theirLabel: string; ourLabel: string }) {
+function Pill({ state }: { state: NegStatus }) {
   const t = useGameStrings()
-  const ref = useRef<HTMLDivElement>(null)
-  const [w, setW] = useState(480)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(([entry]) => {
-      if (entry) setW(Math.max(220, Math.round(entry.contentRect.width)))
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  const r = rail(bubbles, { w, h: RAIL_H, pad: PAD })
-  const empty = !r.us.length && !r.them.length
-  const series: [string, RailPoint[]][] = [
-    ['them', r.them],
-    ['us', r.us],
-  ]
   return (
-    <div className="gm-rail-wrap" ref={ref}>
-      {!empty && (
-        <>
-          <div className="gm-rail-legend">
-            <span data-tone="them">{t.neg.their(theirLabel)}</span>
-            <span data-tone="us">{t.neg.our(ourLabel)}</span>
-          </div>
-          <svg className="gm-rail" viewBox={`0 0 ${w} ${RAIL_H}`} width={w} height={RAIL_H} role="img" aria-label={t.neg.railLabel(threadId)}>
-            {r.grid.map((g) => (
-              <g key={g.label}>
-                <line className="gm-rail-grid" x1={PAD.l} x2={w - PAD.r} y1={g.y} y2={g.y} />
-                <text x={PAD.l - 4} y={g.y + 3} textAnchor="end">
-                  {g.label}
-                </text>
-              </g>
-            ))}
-            <text x={PAD.l} y={RAIL_H - 3}>
-              {t.neg.roundsAxis}
-            </text>
-            {series.map(([side, pts]) => {
-              const last = pts.at(-1)
-              if (!last) return null
-              return (
-                <g key={side} data-tone={side}>
-                  <path className="gm-rail-line" d={path(pts)} />
-                  {pts.map((p) => (
-                    <circle key={p.eventId} className="gm-rail-dot" data-final={p.final || undefined} cx={p.x} cy={p.y} r={p.final ? 5 : 3.5}>
-                      <title>{`r${p.round} · ${side} ${p.price} P${p.final ? ' · FINAL' : ''}`}</title>
-                    </circle>
-                  ))}
-                  <text x={last.x + 8} y={last.y + 3}>
-                    {last.price}
-                  </text>
-                </g>
-              )
-            })}
-          </svg>
-        </>
-      )}
+    <span className="neg-pill" data-state={state} title={t.neg.statusTitle[state]}>
+      {t.neg.status[state]}
+    </span>
+  )
+}
+
+function Fig({ label, value, tone, title, warn }: { label: string; value: number | null; tone?: 'us' | 'them'; title?: string; warn?: boolean }) {
+  return (
+    <div className="neg-fig" title={title} data-warn={warn || undefined}>
+      <span className="neg-fig-label">{label}</span>
+      <b data-tone={tone}>{fmtP(value)}</b>
     </div>
   )
 }
 
-function ThreadList({ rows, selected, onSelect }: { rows: ThreadRow[]; selected: number | null; onSelect: (id: number) => void }) {
+/** One live negotiation: who, what, the prices against our value and cap, the verdict, and the agent's last call. */
+function NegCard({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSelect: () => void }) {
   const t = useGameStrings()
-  const label = (l: 'ask' | 'bid') => t.neg[l]
+  const n = r.next
+  const blocked = n?.status === 'rejected'
+  const capWarn = r.cap != null && r.theirPrice != null && r.theirPrice > r.cap.cap
   return (
-    <ul className="gm-threads" aria-label={t.neg.ourThreads}>
-      {rows.map((r) => (
-        <li key={r.id}>
-          <button type="button" className="gm-thread" data-closed={r.status === 'closed' || undefined} aria-current={r.id === selected ? 'true' : undefined} onClick={() => onSelect(r.id)}>
-            <span className="gm-row">
-              <span className="gm-tid">#{r.id}</span>
-              <span className="gm-who" title={r.with}>
-                {r.with}
-              </span>
-              <Badge tone={r.side === 'buy' ? 'us' : 'them'}>{r.side === 'buy' ? t.badge.buy : t.badge.sell}</Badge>
-              <RefChip topic={r.topic} />
-              <span className="gm-spacer" />
-              {r.final && r.status === 'open' && <Badge tone="warn">{t.badge.final}</Badge>}
-              {r.status === 'closed' ? <Badge>{t.badge.closed}</Badge> : <Expiry left={r.expiresIn} />}
+    <li>
+      <button type="button" className="neg-card" data-state={r.state} aria-current={selected ? 'true' : undefined} onClick={onSelect}>
+        <span className="neg-head">
+          <Pill state={r.state} />
+          <span className="neg-who" title={r.with}>
+            {r.with}
+          </span>
+          <span className="neg-side">{r.side === 'buy' ? t.neg.buying : t.neg.selling}</span>
+          <RefChip topic={r.topic} />
+          {r.set && <span className="gm-muted neg-set">{r.set.name}</span>}
+          <span className="gm-spacer" />
+          {r.final && <Badge tone="warn">{t.badge.final}</Badge>}
+          <Injection on={r.suspicious} />
+          {r.ticksLeft != null && (
+            <Badge tone={r.ticksLeft <= 1 ? 'warn' : 'neutral'} title={t.neg.leftTitle}>
+              {t.neg.left(Math.max(0, r.ticksLeft))}
+            </Badge>
+          )}
+        </span>
+        <span className="neg-figs">
+          <span className="neg-deal">
+            <Fig label={t.neg.their(t.neg[r.theirLabel])} value={r.theirPrice} tone="them" />
+            <span className="neg-arrow" aria-hidden="true">
+              →
             </span>
-            <span className="gm-row gm-prices">
-              <span>
-                {label(r.theirLabel)} <b data-tone="them">{fmtP(r.theirPrice)}</b>
-              </span>
-              <span>
-                {label(r.ourLabel)} <b data-tone="us">{fmtP(r.ourPrice)}</b>
-              </span>
-              <span>
-                {t.neg.gap} <b>{fmtP(r.gap)}</b>
-              </span>
-              <span className="gm-spacer" />
-              <span>r{r.rounds}</span>
-              <Injection on={r.suspicious} />
+            <Fig label={t.neg.our(t.neg[r.ourLabel])} value={r.ourPrice} tone="us" />
+            <span className="neg-gap">
+              {t.neg.gap} {fmtP(r.gap)}
             </span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function BubbleItem({ b, label }: { b: Bubble; label: string }) {
-  const t = useGameStrings()
-  return (
-    <li className="gm-bubble" data-side={b.side}>
-      <div className="gm-bubble-head">
-        <span className="gm-price">{fmtP(b.price)}</span>
-        <span className="gm-muted">
-          {b.side === 'us' ? t.neg.we : b.maker} · {label}
+          </span>
+          <Fig label={t.neg.value} value={r.value} title={t.neg.valueTitle} />
+          {r.cap && <Fig label={t.neg.cap} value={r.cap.cap} title={t.neg.capTitle(r.cap.rule, r.cap.own)} warn={capWarn} />}
         </span>
-        {b.final && <Badge tone="warn">{t.badge.final}</Badge>}
-        <Injection on={b.suspicious} />
-      </div>
-      {b.text != null && <blockquote className="gm-bubble-text">“{b.text}”</blockquote>}
-      <div className="gm-bubble-meta">
-        <span>r{b.round}</span>
-        <span>
-          {t.tick} {b.tick ?? '—'}
+        <span className="neg-verdict" data-state={r.state}>
+          {t.neg.verdict(r.verdict, r.side)}
         </span>
-        <span>o{b.offerId ?? '—'}</span>
-        <span>m{b.messageId ?? '—'}</span>
-        <span>
-          {b.maker} → {b.to}
-        </span>
-        <span>
-          t{b.createdTick ?? '—'} → exp t{b.expiresTick ?? '—'}
-        </span>
-        {b.assets.length > 0 && <span>assets {b.assets.map((a) => `#${a}`).join(' ')}</span>}
-        <EventLink id={b.eventId} />
-      </div>
+        {n && (
+          <span className="neg-next" data-blocked={blocked || undefined}>
+            <span className="neg-next-label">{t.neg.agent}</span>
+            <b>
+              {t.neg.action[n.action]}
+              {n.price != null && ` ${fmtP(n.price)}`}
+            </b>
+            <span>{blocked && n.rule ? t.neg.blockedBy(n.rule) : t.neg.decision[n.status]}</span>
+            {blocked && n.text && <span className="neg-next-why">{n.text}</span>}
+          </span>
+        )}
+      </button>
     </li>
   )
 }
 
-function ThreadDetail({ convo }: { convo: Conversation | null }) {
+/** An ended thread in one line: how it ended against our value, and how far the dealer came down. */
+function EndedLine({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSelect: () => void }) {
   const t = useGameStrings()
-  if (!convo) return <Empty>{t.neg.noThread}</Empty>
-  const { thread: th, bubbles, lastText } = convo
-  const last = bubbles.at(-1)
-  const their = t.neg[th.theirLabel]
-  const our = t.neg[th.ourLabel]
+  const first = r.ended?.firstAsk
   return (
-    <div className="gm-detail">
-      <div className="gm-row gm-detail-head">
-        <span className="gm-tid">#{th.id}</span>
-        <span className="gm-who">{th.with}</span>
-        <Badge tone={th.side === 'buy' ? 'us' : 'them'}>{th.side === 'buy' ? t.badge.buy : t.badge.sell}</Badge>
-        <RefChip topic={th.topic} />
-        {th.set && <span className="gm-muted">{th.set.name}</span>}
-        {th.final && th.status === 'open' && <Badge tone="warn">{t.badge.final}</Badge>}
-        {th.status === 'closed' ? <Badge>{t.badge.closed}</Badge> : <Expiry left={th.expiresIn} />}
-        <span className="gm-spacer" />
-        {last && <EventLink id={last.eventId}>{t.neg.last(last.eventId)}</EventLink>}
-      </div>
-      <dl className="gm-stats">
-        <div>
-          <dt className="eyebrow">{t.neg.their(their)}</dt>
-          <dd data-tone="them">{fmtP(th.theirPrice)}</dd>
-        </div>
-        <div>
-          <dt className="eyebrow">{t.neg.our(our)}</dt>
-          <dd data-tone="us">{fmtP(th.ourPrice)}</dd>
-        </div>
-        <div>
-          <dt className="eyebrow">{t.neg.gap}</dt>
-          <dd>{fmtP(th.gap)}</dd>
-        </div>
-        <div>
-          <dt className="eyebrow">{t.neg.rounds}</dt>
-          <dd>{th.rounds}</dd>
-        </div>
-      </dl>
-      {lastText != null && (
-        <div className="gm-row">
-          <Injection on={th.suspicious} />
-          <blockquote className="gm-quote-block">“{lastText}”</blockquote>
-        </div>
-      )}
-      <PriceRail bubbles={bubbles} threadId={th.id} theirLabel={their} ourLabel={our} />
-      {bubbles.length === 0 ? (
-        <Empty>{t.neg.noOffers}</Empty>
-      ) : (
-        <ol className="gm-convo" aria-label={t.neg.convoLabel(th.id)}>
-          {bubbles.map((b) => (
-            <BubbleItem key={b.eventId} b={b} label={b.side === 'us' ? our : their} />
-          ))}
-        </ol>
-      )}
-    </div>
+    <li>
+      <button type="button" className="neg-ended" aria-current={selected ? 'true' : undefined} onClick={onSelect}>
+        <Pill state={r.state} />
+        <span className="neg-who" title={r.with}>
+          {r.with}
+        </span>
+        <RefChip topic={r.topic} />
+        <span className="neg-ended-text" data-state={r.state}>
+          {t.neg.verdict(r.verdict, r.side)}
+        </span>
+        <span className="neg-ended-meta">
+          {first != null && `${t.neg.opened(first)} · `}
+          {t.neg.rounds(r.rounds)}
+        </span>
+      </button>
+    </li>
   )
 }
 
-const days = (d: number | null) => (d == null ? '' : ` · ${d}d`)
+function BubbleItem({ b, who }: { b: Bubble; who: string }) {
+  const t = useGameStrings()
+  return (
+    <li className="neg-msg" data-side={b.side}>
+      <div className="neg-msg-body">
+        <span className="neg-chip" data-side={b.side}>
+          {fmtP(b.price)}
+        </span>
+        {b.final && <Badge tone="warn">{t.badge.final}</Badge>}
+        <Injection on={b.suspicious} />
+        {b.text != null ? <span className="neg-msg-text">{b.text}</span> : <span className="neg-msg-who">{who}</span>}
+      </div>
+      <details className="neg-msg-details">
+        <summary>{t.neg.details}</summary>
+        <span>
+          {t.neg.detailsLine(b)} <EventLink id={b.eventId} />
+        </span>
+      </details>
+    </li>
+  )
+}
+
+function ConversationView({ convo }: { convo: Conversation | null }) {
+  const t = useGameStrings()
+  if (!convo) return <Empty>{t.neg.noThread}</Empty>
+  const { thread: th, bubbles } = convo
+  if (!bubbles.length) return <Empty>{t.neg.noOffers}</Empty>
+  return (
+    <ol className="neg-convo" aria-label={t.neg.convoLabel(th.id)}>
+      {bubbles.map((b) => (
+        <BubbleItem key={b.eventId} b={b} who={b.side === 'us' ? t.neg.we : b.maker} />
+      ))}
+    </ol>
+  )
+}
 
 function Rivals({ rows }: { rows: RivalRow[] }) {
   const t = useGameStrings()
@@ -238,20 +176,28 @@ function Rivals({ rows }: { rows: RivalRow[] }) {
   )
 }
 
+const days = (d: number | null) => (d == null ? '' : ` · ${d}d`)
+
 function DuelsTable({ rows }: { rows: DuelRow[] }) {
   const t = useGameStrings()
   if (!rows.length) return <Empty>{t.neg.noDuels}</Empty>
-  const right = new Set([3, 4, 5, 6, 8, 9])
+  const show = duelColumns(rows)
+  const c = t.neg.duelCol
   return (
     <div className="gm-scroll">
       <table className="gm-table">
         <thead>
           <tr>
-            {t.neg.duelHead.map((h, i) => (
-              <th key={h} className={right.has(i) ? 'gm-r' : undefined}>
-                {h}
-              </th>
-            ))}
+            <th>{c.duel}</th>
+            <th>{c.rival}</th>
+            {show.role && <th>{c.role}</th>}
+            <th className="gm-r">{c.us}</th>
+            <th className="gm-r">{c.them}</th>
+            <th className="gm-r">{c.gap}</th>
+            <th className="gm-r">{c.rounds}</th>
+            <th>{c.status}</th>
+            <th className="gm-r">{c.deal}</th>
+            {show.points && <th className="gm-r">{c.points}</th>}
           </tr>
         </thead>
         <tbody>
@@ -264,14 +210,14 @@ function DuelsTable({ rows }: { rows: DuelRow[] }) {
               <td className="gm-rival-cell" data-tone="them" title={d.rival ?? undefined}>
                 {d.rival ?? '—'}
               </td>
-              <td>{d.role}</td>
+              {show.role && <td>{d.role}</td>}
               <td className="gm-r" data-tone="us">
                 {fmtP(d.ourPrice)}
-                {days(d.ourDays)}
+                {show.days && days(d.ourDays)}
               </td>
               <td className="gm-r" data-tone="them">
                 {fmtP(d.theirPrice)}
-                {days(d.theirDays)}
+                {show.days && days(d.theirDays)}
               </td>
               <td className="gm-r">{fmtP(d.gap)}</td>
               <td className="gm-r">{d.rounds}</td>
@@ -280,10 +226,7 @@ function DuelsTable({ rows }: { rows: DuelRow[] }) {
                 {d.ticksLeft !== null && <span className="gm-duel-left">{t.neg.ticksLeft(d.ticksLeft)}</span>}
               </td>
               <td className="gm-r">{fmtP(d.dealPrice)}</td>
-              <td className="gm-r">{d.points ?? '—'}</td>
-              <td>
-                <EventLink id={d.lastEventId} />
-              </td>
+              {show.points && <td className="gm-r">{d.points ?? '—'}</td>}
             </tr>
           ))}
         </tbody>
@@ -296,20 +239,42 @@ export function NegotiationsScreen() {
   const { state } = useGame()
   const t = useGameStrings()
   const requested = useParam('id')
-  const rows = threadList(state)
+  const rows = negRows(state)
+  const live = rows.filter((r) => r.status === 'open')
+  const ended = rows.filter((r) => r.status !== 'open')
   const selected = selectedThreadId(state, requested)
   const convo = selected == null ? null : conversation(state, selected)
   const duels = duelRows(state)
-  const open = rows.filter((r) => r.status === 'open').length
+  const select = (id: number) => setParam('id', String(id))
+  const won = ended.filter((r) => r.state === 'won').length
   return (
     <>
-      <div className="gm-split">
-        <Panel title={t.neg.threads} sub={t.neg.threadsSub(open, rows.length - open)}>
-          {rows.length ? <ThreadList rows={rows} selected={selected} onSelect={(id) => setParam('id', String(id))} /> : <Empty>{t.neg.noThreads}</Empty>}
+      <Panel title={t.neg.live} sub={t.neg.liveSub(live.length)}>
+        {!rows.length ? (
+          <Empty>{t.neg.noThreads}</Empty>
+        ) : live.length ? (
+          <ul className="neg-list" aria-label={t.neg.ourThreads}>
+            {live.map((r) => (
+              <NegCard key={r.id} r={r} selected={r.id === selected} onSelect={() => select(r.id)} />
+            ))}
+          </ul>
+        ) : (
+          <Empty>{t.neg.noLive}</Empty>
+        )}
+      </Panel>
+      <div className="gm-split neg-split">
+        <Panel title={t.neg.conversation} sub={convo ? t.neg.with(convo.thread.with, convo.thread.topic) : undefined}>
+          <ConversationView convo={convo} />
         </Panel>
-        <Panel title={t.neg.conversation} sub={convo ? t.neg.with(convo.thread.id, convo.thread.with) : undefined}>
-          <ThreadDetail convo={convo} />
-        </Panel>
+        {ended.length > 0 && (
+          <Panel title={t.neg.ended} sub={t.neg.endedSub(won, ended.length - won)}>
+            <ul className="neg-ended-list">
+              {ended.map((r) => (
+                <EndedLine key={r.id} r={r} selected={r.id === selected} onSelect={() => select(r.id)} />
+              ))}
+            </ul>
+          </Panel>
+        )}
       </div>
       <Panel title={t.neg.duels} sub={t.neg.duelsSub(duels.filter((d) => d.status === 'open').length)}>
         <Rivals rows={rivalSummary(state)} />
