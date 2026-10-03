@@ -1,4 +1,5 @@
 /** Small helpers that turn refs, items and numbers into words the characters can say. */
+import { ERROR_WORDS, KINDS, UNKNOWN_ERROR, UNKNOWN_KIND, VERDICTS } from '../../shared/lines.ts'
 import type { DealerId } from './beat'
 
 const NEIGHBOURHOODS: Readonly<Record<string, string>> = {
@@ -50,16 +51,22 @@ export function primas(value: number | undefined | null): string | null {
 
 const LABEL = /^[a-z0-9_]{1,30}$/
 
-/** A machine label (`quick_sale`, `brand_new_move`) as words, or null when it is not a plain label. */
+/** A machine label (`not_approved`) as words for the stage chip, or null when it is not a plain label. */
 export function labelWords(label: string | null | undefined): string | null {
   const v = (label ?? '').toLowerCase()
   return LABEL.test(v) ? v.replace(/_/g, ' ').trim() || null : null
 }
 
-/** Jev's verdict as words for a line (`quick sale`); null unless it is a plain lower-case label. */
+/** A decision kind as words, from the documented list only (the TTS proxy accepts nothing else). */
+export function kindWords(kind: string | null | undefined): string {
+  const v = (kind ?? '').toLowerCase()
+  return KINDS.includes(v) ? v.replace(/_/g, ' ') : UNKNOWN_KIND
+}
+
+/** Jev's verdict as words (`quick sale`), from its known options only; null otherwise. */
 export function verdictWords(verdict: string | null | undefined): string | null {
-  const words = labelWords(verdict)
-  return words && /^[a-z][a-z ]{0,23}$/.test(words) ? words : null
+  const v = (verdict ?? '').toLowerCase()
+  return VERDICTS.includes(v) ? v.replace(/_/g, ' ') : null
 }
 
 export function dealerId(name: string | undefined): DealerId {
@@ -75,20 +82,8 @@ export const DEALER_NAMES: Readonly<Record<DealerId, string>> = {
   other: 'the dealer',
 }
 
-const ERRORS: Readonly<Record<string, string>> = {
-  insufficient_cash: 'not enough cash',
-  wait_for_tick: 'wait for the next tick',
-  rate_limited: 'slow down',
-  persona_quota: 'quota is full this hour',
-  cooloff: 'cool off for a while',
-  sold_out: 'sold out',
-  asset_locked: 'that card is locked',
-  not_owner: 'not ours to sell',
-  venue_not_live: 'that market is not open',
-}
-
 export function errorWords(code: string): string {
-  return ERRORS[code] ?? labelWords(code) ?? 'an unknown error'
+  return ERROR_WORDS[code] ?? UNKNOWN_ERROR
 }
 
 /** FNV-1a: a stable 32-bit seed per event, so the same event always gets the same line. */

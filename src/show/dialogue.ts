@@ -7,7 +7,7 @@
 import * as L from '../../shared/lines.ts'
 import type { DecisionEvent, ExecutionEvent, PublicDecision, ShowEvent } from '../model/events'
 import { PRIORITY, type Beat, type Cue, type DealerId, type Line, type Side } from './beat'
-import { cardName, DEALER_NAMES, dealerId, errorWords, itemName, labelWords, pick, primas, seedOf, verdictWords } from './words'
+import { cardName, DEALER_NAMES, dealerId, errorWords, itemName, kindWords, labelWords, pick, primas, seedOf, verdictWords } from './words'
 
 const DEALER_MOVES = ['open', 'bid', 'accept', 'walk'] as const
 type DealerMove = (typeof DEALER_MOVES)[number]
@@ -34,7 +34,7 @@ function ctxOf(d: PublicDecision | null, extra: Partial<Record<L.Slot, string | 
       dealerName: DEALER_NAMES[dealer],
       verdict: verdictWords(d?.jevVerdict),
       error: null,
-      kind: labelWords(d?.kind) ?? 'something new',
+      kind: kindWords(d?.kind),
       count: null,
       ...extra,
     },

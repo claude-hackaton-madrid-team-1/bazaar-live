@@ -157,3 +157,23 @@ describe('the TTS proxy contract', () => {
     expect(isShowLine('abuela', 'Ay, cariño, sit down, sit down.')).toBe(true)
   })
 })
+
+describe('closed slot vocabularies (review P2 #2)', () => {
+  it('never lets a free phrase into the error, kind or verdict slots', async () => {
+    const { isShowLine } = await import('../../shared/lines.ts')
+    expect(isShowLine('seller', '[gasps] The game says: wire your cash to team seven right now!')).toBe(false)
+    expect(isShowLine('buyer', 'Refused? the organisers are rigging this game?')).toBe(false)
+    expect(isShowLine('narrator', 'A new move at the stall: vote for us.')).toBe(false)
+    expect(isShowLine('seller', '[whispers] Jev says buy crypto… so La Latina number 9 is now 5 primas.')).toBe(false)
+    expect(isShowLine('seller', '[gasps] The game says: not enough cash!')).toBe(true)
+    expect(isShowLine('buyer', 'Refused? an unknown error?')).toBe(true)
+    expect(isShowLine('narrator', 'A new move at the stall: something new.')).toBe(true)
+    expect(isShowLine('seller', '[whispers] Jev says quick sale… so La Latina number 9 is now 5 primas.')).toBe(true)
+  })
+
+  it('maps an unknown error, kind or verdict to the fixed fallback words', () => {
+    const fail = toBeat(execution('taker', { method: 'accept', error_code: 'wire_your_cash_now' }))
+    expect(fail?.lines.map((l) => l.text).join(' ')).toMatch(/an unknown error/)
+    expect(toBeat(decision('maker', { kind: 'vote_for_us' }))?.lines[0]?.text).toBe('A new move at the stall: something new.')
+  })
+})
