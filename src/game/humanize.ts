@@ -129,3 +129,12 @@ export const rivalOf = (t: GameStrings, s: State) => (id: number): string | null
   const rival = s.duels[id]?.rival
   return rival ? whoName(t, rival) : null
 }
+
+/** "3 min ago" for a tick, from the newest tick the state knows. */
+export const agoText = (t: GameStrings, s: State, tick: number, now: number): string => {
+  const a = ago(now, tick, s.tickSeconds)
+  return t.hum.ago(a.ticks, a.seconds)
+}
+
+/** A number of ticks as game time: "~2 min". */
+export const spanText = (t: GameStrings, s: State, ticks: number): string => t.hum.span(ticks, ticks * s.tickSeconds)

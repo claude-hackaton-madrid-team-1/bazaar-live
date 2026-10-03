@@ -2,7 +2,11 @@ import { useDuelStrings } from '../duelStrings.ts'
 import { fmtP } from '../game.ts'
 import { useGame } from '../store.ts'
 import { duelHealth, duelRecord, finishedDuels, liveDuels, type DuelHealth, type DuelRecord, type FinishedDuel, type LiveDuel, type Tally } from '../views/duels.ts'
+import { agoText, ruleName, spanText } from '../humanize.ts'
+import { useGameStrings } from '../strings.ts'
+import { nowTick } from '../views/decisions.ts'
 import { Badge, Empty, Panel } from './bits.tsx'
+import { Ago } from './words.tsx'
 
 function Pill({ r }: { r: LiveDuel }) {
   const t = useDuelStrings()
@@ -40,6 +44,9 @@ function Fig({ label, value, tone, title, days }: { label: string; value: number
 /** One live duel: is their price inside our limit, how far apart, what the rounds cost, how long is left, what the agent did. */
 function LiveCard({ r }: { r: LiveDuel }) {
   const t = useDuelStrings()
+  const g = useGameStrings()
+  const { state } = useGame()
+  const now = nowTick(state)
   const n = r.decision
   const blocked = n?.status === 'rejected'
   const failed = n?.status === 'failed'
@@ -56,7 +63,7 @@ function LiveCard({ r }: { r: LiveDuel }) {
         <span className="gm-spacer" />
         {r.ticksLeft != null && r.deadlineTick != null && (
           <Badge tone={r.ticksLeft <= 2 ? 'warn' : 'neutral'} title={t.leftTitle(r.deadlineTick)}>
-            {t.left(r.ticksLeft)}
+            {t.left(r.ticksLeft, spanText(g, state, r.ticksLeft))}
           </Badge>
         )}
       </span>
@@ -92,15 +99,17 @@ function LiveCard({ r }: { r: LiveDuel }) {
               {t.action[n.action]}
               {n.price != null && ` ${fmtP(n.price)}`}
             </b>
-            <span>{blocked && n.rule ? t.blockedBy(n.rule) : failed && n.error ? t.failedWith(n.error) : t.decision[n.status]}</span>
-            <span className="duel-tick">{t.atTick(n.tick)}</span>
+            <span>{blocked && n.rule ? t.blockedBy(ruleName(g, n.rule)) : failed && n.error ? t.failedWith(n.error) : t.decision[n.status]}</span>
+            <span className="duel-tick">
+              <Ago tick={n.tick} />
+            </span>
           </>
         ) : (
           <span>{t.noDecision}</span>
         )}
         {r.acceptBy != null && n?.action !== 'accept' && (
           <span className="duel-plan" title={t.acceptPlanTitle}>
-            {t.acceptPlan(r.acceptBy)}
+            {t.acceptPlan(g.hum.within(Math.max(0, r.acceptBy - now), Math.max(0, r.acceptBy - now) * state.tickSeconds))}
           </span>
         )}
       </span>
@@ -115,6 +124,8 @@ function LiveCard({ r }: { r: LiveDuel }) {
 /** The duels agent in one line: alive or silent since when, and what blocks it most. Loud only when it matters. */
 function Health({ h, label = false }: { h: DuelHealth; label?: boolean }) {
   const t = useDuelStrings()
+  const g = useGameStrings()
+  const { state } = useGame()
   const s = h.status
   if (!s) return null
   const tone = s.state === 'ok' ? 'good' : s.state === 'none' ? 'neutral' : s.state === 'quiet' || h.live === 0 ? 'warn' : 'bad'
@@ -123,9 +134,9 @@ function Health({ h, label = false }: { h: DuelHealth; label?: boolean }) {
       {label && <span className="neg-next-label">{t.health}</span>}
       <Badge tone={tone}>{t.healthState[s.state]}</Badge>
       {s.state !== 'none' && (
-        <span>{s.state === 'silent' || s.state === 'quiet' ? t.silentSince(h.lastTick, s.silentFor) : h.lastTick != null ? t.decidedAt(h.lastTick) : t.silentSince(null, null)}</span>
+        <span>{h.lastTick == null ? t.silentSince(null) : s.state === 'silent' || s.state === 'quiet' ? t.silentSince(agoText(g, state, h.lastTick, nowTick(state))) : t.decidedAt(agoText(g, state, h.lastTick, nowTick(state)))}</span>
       )}
-      {s.state !== 'none' && <span className="duel-health-block">{s.topBlock ? t.topBlock(s.topBlock.rule, s.topBlock.count) : t.noBlock}</span>}
+      {s.state !== 'none' && <span className="duel-health-block">{s.topBlock ? t.topBlock(ruleName(g, s.topBlock.rule), s.topBlock.count) : t.noBlock}</span>}
     </div>
   )
 }
@@ -218,7 +229,11 @@ function FinishedLine({ d }: { d: FinishedDuel }) {
         {d.gain != null && d.deal && <b className="gm-good">{t.kept(d.gain)}</b>}
         {d.points != null && <span>{t.pts(d.points)}</span>}
         <span>{t.rounds(d.rounds)}</span>
-        {d.tick != null && d.tick > 0 && <span>{t.endedAt(d.tick)}</span>}
+        {d.tick != null && d.tick > 0 && (
+          <span>
+            <Ago tick={d.tick} />
+          </span>
+        )}
       </span>
     </li>
   )
