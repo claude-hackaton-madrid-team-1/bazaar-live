@@ -141,9 +141,14 @@ export const topicOf = (offer: Payload): string => {
 
 export const priceOf = (offer: Payload): number | null => offer.want?.cash || offer.give?.cash || null
 
+// The relay's own events (clock, /me, our /api/duels) are `team`; the feed's are `public`.
+const fromRelay = (e: GameEvent): boolean => e.scope === 'team'
+
 export function isOurs(s: State, e: GameEvent): boolean {
   const p = e.payload ?? {}
-  if (e.type.startsWith('agent.') || e.type === 'clock' || e.type.startsWith('duel.')) return true
+  if (e.type.startsWith('agent.') || e.type === 'clock') return true
+  // The feed's `duel.closed` is every team's: a duel event is ours when it came from our duel list, or names one of ours.
+  if (e.type.startsWith('duel.')) return fromRelay(e) || p.duel in s.duels
   if (e.type === 'thread.message') return p.team === s.team
   if (e.type === 'thread.closed') return p.thread in s.threads
   if (e.type === 'settlement') return (p.parties ?? []).includes(s.team)
@@ -209,12 +214,14 @@ function settlement(s: State, e: GameEvent) {
   }
 }
 
+const duelOf = (s: State, p: Payload): Duel => (s.duels[p.duel] ??= {
+  id: p.duel, role: p.role ?? '?', ourPrice: null, theirPrice: null, ourDays: null, theirDays: null,
+  rounds: 0, status: 'open', dealPrice: null, points: null, lastEventId: null,
+})
+
 function duelMessage(s: State, e: GameEvent) {
   const p = e.payload
-  const d = (s.duels[p.duel] ??= {
-    id: p.duel, role: p.role ?? '?', ourPrice: null, theirPrice: null, ourDays: null, theirDays: null,
-    rounds: 0, status: 'open', dealPrice: null, points: null, lastEventId: null,
-  })
+  const d = duelOf(s, p)
   if (p.sender === s.team) [d.ourPrice, d.ourDays] = [p.price ?? null, p.days ?? null]
   else [d.theirPrice, d.theirDays] = [p.price ?? null, p.days ?? null]
   d.rounds += 1
@@ -222,8 +229,7 @@ function duelMessage(s: State, e: GameEvent) {
 }
 
 function duelResult(s: State, e: GameEvent) {
-  const d = s.duels[e.payload.duel]
-  if (!d) return
+  const d = duelOf(s, e.payload)
   d.status = e.payload.deal ? 'deal' : 'no deal'
   d.dealPrice = e.payload.price ?? null
   d.points = e.payload.points ?? null
@@ -257,7 +263,8 @@ export function apply(s: State, e: GameEvent): State {
     const old = s.events.shift()
     if (old && s.byId.get(old.id) === old && !s.mine.includes(old)) s.byId.delete(old.id)
   }
-  if (isOurs(s, e)) {
+  const ours = isOurs(s, e)
+  if (ours) {
     s.mine.push(e)
     while (s.mine.length > LIMITS.mine) {
       const old = s.mine.shift()
@@ -299,10 +306,10 @@ export function apply(s: State, e: GameEvent): State {
       settlement(s, e)
       break
     case 'duel.message':
-      duelMessage(s, e)
+      if (ours) duelMessage(s, e)
       break
     case 'duel.result':
-      duelResult(s, e)
+      if (ours) duelResult(s, e)
       break
   }
   return s

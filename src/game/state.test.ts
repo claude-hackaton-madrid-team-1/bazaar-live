@@ -2,7 +2,8 @@ import { assert, test } from 'vitest'
 import { apply, createState, isOurs, KNOWN_TYPES, LIMITS, type GameEvent, type Payload } from './state.ts'
 
 let nextId = 1
-const ev = (type: string, payload: Payload = {}, tick = 10, actor = ''): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor, payload })
+// Duel messages and results only reach us from the relay's /api/duels read, which sends them as `team`.
+const ev = (type: string, payload: Payload = {}, tick = 10, actor = ''): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: type.startsWith('duel.') ? 'team' : 'public', actor, payload })
 
 const offer = ({ id = 7, maker, to, giveCash = 0, wantCash = 0, giveTypes = [] as string[], wantTypes = [] as string[], giveAssets = [] as Payload[], final = false, expires = 12, created = 10 }: Payload) => ({
   id, maker, to, venue: null, thread: 61, status: 'open',
@@ -150,6 +151,26 @@ test('duels track both sides and the result', () => {
     ['seller', 60, 41, 4, 7, 2, 'deal', 47, 1.2])
 })
 
+test('a result for a duel we never heard a word of still makes a row', () => {
+  const s = fresh()
+  apply(s, ev('duel.result', { duel: 7, deal: false, price: null, points: 0 }))
+  assert.deepEqual([s.duels[7]!.status, s.duels[7]!.rounds], ['no deal', 0])
+})
+
+test('the feed\'s public duel.closed is ours only for a duel of ours; a public duel message builds no row', () => {
+  const s = fresh()
+  const pub = (type: string, payload: Payload): GameEvent => ({ ...ev(type, payload), scope: 'public' })
+  apply(s, ev('duel.message', { duel: 3, role: 'seller', sender: 'Rival Oro', price: 41 }))
+  const theirs = pub('duel.closed', { duel: 9, session: 4, status: 'deal', item: 'El Instituto' })
+  const ours = pub('duel.closed', { duel: 3, session: 4, status: 'no_deal', item: 'El Instituto' })
+  apply(s, theirs)
+  apply(s, ours)
+  assert.deepEqual([s.mine.includes(theirs), s.mine.includes(ours)], [false, true])
+  apply(s, pub('duel.message', { duel: 12, role: 'buyer', sender: 't05', price: 30 }))
+  apply(s, pub('duel.result', { duel: 13, deal: true, price: 30 }))
+  assert.deepEqual(Object.keys(s.duels), ['3'])
+})
+
 test('every event lands in the bounded stream and the id index, unknown types change nothing else', () => {
   const s = fresh()
   const before = JSON.stringify({ ...s, events: [], byId: null, mine: [] })
@@ -164,7 +185,7 @@ test('every event lands in the bounded stream and the id index, unknown types ch
   assert.ok(KNOWN_TYPES.has('settlement') && !KNOWN_TYPES.has('egg.found'))
 })
 
-test('isOurs: our agent, our threads, our settlements and duels; nothing else', () => {
+test('isOurs: our agent, our threads, our settlements and duels (from our duel list); nothing else', () => {
   const s = fresh()
   apply(s, message('abuela', offer({ maker: 'abuela', to: 't01', wantCash: 30 })))
   const yes = [
@@ -175,6 +196,7 @@ test('isOurs: our agent, our threads, our settlements and duels; nothing else', 
     ev('duel.message', { duel: 1, sender: 'rival' }), ev('duel.result', { duel: 1 }),
   ]
   const no = [
+    { ...ev('duel.closed', { duel: 1 }), scope: 'public' }, { ...ev('duel.message', { duel: 2, sender: 'rival' }), scope: 'public' },
     ev('thread.message', { thread: 70, team: 't07', sender: 'abuela' }), ev('thread.closed', { thread: 70 }),
     ev('settlement', { parties: ['t02', 't03'], items: [] }), ev('egg.found'), ev('announcement', { text: 'hi' }),
   ]

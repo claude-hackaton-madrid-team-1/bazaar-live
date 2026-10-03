@@ -3,7 +3,8 @@ import { apply, createState, type GameEvent, type Payload, type State } from '..
 import { now, timeline, type TickCard } from './agent.ts'
 
 let nextId = 1
-const ev = (type: string, payload: Payload = {}, tick = 10, actor = ''): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor, payload })
+// Duel messages and results only reach us from the relay's /api/duels read, which sends them as `team`.
+const ev = (type: string, payload: Payload = {}, tick = 10, actor = ''): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: type.startsWith('duel.') ? 'team' : 'public', actor, payload })
 
 const offer = ({ id = 7, maker, to, thread = 61, giveCash = 0, wantCash = 0, giveTypes = [] as string[], wantTypes = [] as string[], giveAssets = [] as Payload[], final = false, expires = 12, created = 10 }: Payload) => ({
   id, maker, to, venue: null, thread, status: 'open',
