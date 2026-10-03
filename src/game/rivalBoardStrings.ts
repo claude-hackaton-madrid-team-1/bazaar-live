@@ -37,8 +37,8 @@ export interface RivalBoardStrings {
   readonly moveKind: Readonly<Record<MoveKind, string>>
   readonly moveTitle: (give: number, get: number) => string
   readonly move: (m: MoveView) => string
-  /** A guarded team we may still trade with: why the board allows it (`ourRankKnown` false: every team is guarded). */
-  readonly guardedTrade: (reason: GuardReason, ourRankKnown: boolean) => string
+  /** A guarded team we may still trade with: why it is guarded (top 5, our rank unknown, above us, close) and why the board allows it. */
+  readonly guardedTrade: (reason: GuardReason, rank: number, ourRank: number | null) => string
   readonly title: (team: string) => string
   readonly sub: (tick: number) => string
   readonly versusUs: string
@@ -163,8 +163,8 @@ const EN: RivalBoardStrings = {
   moveKind: { swap: 'Swap', sell: 'Sell', buy: 'Buy', hold: 'Hold', watch: 'Watch' },
   moveTitle: (give, get) => `our move · ${plural(give, 'spare', 'spares')} of ours they want · ${plural(get, 'card', 'cards')} of theirs we miss`,
   move: moveEn,
-  guardedTrade: (reason, ourRankKnown) =>
-    `${reason === 'top5' ? 'A top-5 rival' : ourRankKnown ? 'Close to us in the ranking' : 'Guarded while our own rank is unknown'}, but by the board's estimate (theirs at book × their best set multiplier, page bonus not counted) we gain at least twice what they do.`,
+  guardedTrade: (reason, rank, ourRank) =>
+    `${reason === 'top5' ? 'A top-5 rival' : ourRank === null ? 'Guarded while our own rank is unknown' : ourRank - rank > 3 ? 'Ranked above us' : 'Close to us in the ranking'}, but by the board's estimate (theirs at book × their best set multiplier, page bonus not counted) we gain at least twice what they do.`,
   title: (team) => `Our move with ${team}`,
   sub: (tick) => `private: our spares, the cards we miss and our estimates · leaderboard of tick ${tick}`,
   versusUs: 'Against us',
@@ -204,8 +204,8 @@ const ES: RivalBoardStrings = {
   moveTitle: (give, get) =>
     `nuestra jugada · ${plural(give, 'repetido nuestro', 'repetidos nuestros')} que buscan · ${plural(get, 'carta suya', 'cartas suyas')} que nos faltan`,
   move: moveEs,
-  guardedTrade: (reason, ourRankKnown) =>
-    `${reason === 'top5' ? 'Rival del top 5' : ourRankKnown ? 'Cerca de nosotros en la clasificación' : 'Protegido mientras no sabemos nuestro puesto'}, pero según la estimación del tablero (lo suyo a valor de libro × su mejor multiplicador, sin bonus de página) ganamos al menos el doble que ellos.`,
+  guardedTrade: (reason, rank, ourRank) =>
+    `${reason === 'top5' ? 'Rival del top 5' : ourRank === null ? 'Protegido mientras no sabemos nuestro puesto' : ourRank - rank > 3 ? 'Por encima de nosotros en la clasificación' : 'Cerca de nosotros en la clasificación'}, pero según la estimación del tablero (lo suyo a valor de libro × su mejor multiplicador, sin bonus de página) ganamos al menos el doble que ellos.`,
   title: (team) => `Nuestra jugada con ${team}`,
   sub: (tick) => `privado: nuestros repetidos, las cartas que nos faltan y nuestras estimaciones · clasificación del turno ${tick}`,
   versusUs: 'Frente a nosotros',

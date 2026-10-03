@@ -59,14 +59,24 @@ describe('moveOf and its words', () => {
     expect(es.move(moveOf(r))).not.toContain(r.suggestedMove)
   })
 
-  it('a guarded trade says why the rule lets it through, as an estimate, and why the team is guarded', () => {
-    expect(en.guardedTrade('top5', true)).toBe(
+  it('a guarded trade says why the team is guarded and why the rule lets it through, as an estimate', () => {
+    expect(en.guardedTrade('top5', 2, 11)).toBe(
       "A top-5 rival, but by the board's estimate (theirs at book × their best set multiplier, page bonus not counted) we gain at least twice what they do.",
     )
-    expect(en.guardedTrade('near', true)).toMatch(/^Close to us in the ranking, but/)
-    expect(en.guardedTrade('near', false)).toMatch(/^Guarded while our own rank is unknown, but/)
-    expect(es.guardedTrade('near', false)).toMatch(/^Protegido mientras no sabemos nuestro puesto, pero/)
-    expect(es.guardedTrade('top5', true)).toContain('valor de libro × su mejor multiplicador')
+    expect(en.guardedTrade('near', 9, 11)).toMatch(/^Close to us in the ranking, but/)
+    expect(en.guardedTrade('near', 6, 14)).toMatch(/^Ranked above us, but/)
+    expect(en.guardedTrade('near', 9, null)).toMatch(/^Guarded while our own rank is unknown, but/)
+    expect(es.guardedTrade('near', 6, 14)).toMatch(/^Por encima de nosotros en la clasificación, pero/)
+    expect(es.guardedTrade('near', 9, null)).toMatch(/^Protegido mientras no sabemos nuestro puesto, pero/)
+    expect(es.guardedTrade('top5', 2, 11)).toContain('valor de libro × su mejor multiplicador')
+  })
+
+  it('the panel names the board\'s leaderboard tick, and the guard titles say who is guarded', () => {
+    expect(en.sub(860)).toBe('private: our spares, the cards we miss and our estimates · leaderboard of tick 860')
+    expect(es.sub(860)).toContain('clasificación del turno 860')
+    expect(en.guardTitle.near).toContain('ranked above us')
+    expect(es.guardTitle.near).toContain('por encima de nosotros')
+    expect(en.guardTitle.top5).toMatch(/^a top-5 team/)
   })
 })
 
