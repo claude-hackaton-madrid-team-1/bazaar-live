@@ -53,4 +53,20 @@ describe('StrategyPoller', () => {
     const error = logs.find((l) => l.event === 'poll_error' && l.part === 'me')
     expect(error?.message).toBe('timeout at ***')
   })
+
+  it('tells a listener when a read changed the rows, and a poke reads at once', async () => {
+    const d = db()
+    let timers = 0
+    const poller = new StrategyPoller({ db: d, log: () => undefined, now: () => new Date('2026-10-03T10:00:00Z'), setTimer: () => ++timers, clearTimer: () => undefined })
+    const heard: string[] = []
+    poller.onChange((at) => heard.push(at))
+    await poller.pollOnce()
+    await poller.pollOnce()
+    expect(heard).toEqual(['2026-10-03T10:00:00.000Z'])
+    expect(poller.poke()).toBe(false) // not started
+    poller.start()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(poller.poke()).toBe(true)
+    poller.stop()
+  })
 })

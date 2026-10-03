@@ -3,6 +3,7 @@
  * Like the history poller: on the server's one shared pool (the reader role has a connection limit), one capped
  * query after the other; a view not applied yet (42P01) or not granted (42501) only blanks its part, logged once;
  * any other error keeps the last good part and backs off; no exception leaves `pollOnce()`; error text is redacted.
+ * `poke()` reads now (an agent's socket said something moved); `onChange` hears when a read's rows differ.
  */
 import { EMPTY_STRATEGY, type StrategyParts, type StrategySnapshot } from '../../shared/strategy.ts'
 import { parseAll } from '../learn/rows.ts'
@@ -46,6 +47,8 @@ export class StrategyPoller {
   private failures = 0
   private timer: unknown = null
   private running = false
+  private reading = false
+  private readonly listeners = new Set<(at: string) => void>()
   private readonly deps: StrategyPollerDeps
   private readonly intervalMs: number
   private readonly maxDelayMs: number
@@ -72,9 +75,29 @@ export class StrategyPoller {
     this.timer = null
   }
 
+  /** Reads now instead of at the next interval; false when stopped or already reading. */
+  poke(): boolean {
+    if (!this.running || this.reading) return false
+    if (this.timer !== null) (this.deps.clearTimer ?? clearTimeout)(this.timer as ReturnType<typeof setTimeout>)
+    this.timer = null
+    void this.loop()
+    return true
+  }
+
+  /** Called with the read's time whenever a read's rows differ from the last ones. Returns the unsubscribe. */
+  onChange(listener: (at: string) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
   private async loop(): Promise<void> {
-    if (!this.running) return
-    await this.pollOnce()
+    if (!this.running || this.reading) return
+    this.reading = true
+    try {
+      await this.pollOnce()
+    } finally {
+      this.reading = false
+    }
     if (!this.running) return
     const delay = this.failures === 0 ? this.intervalMs : Math.min(this.maxDelayMs, this.intervalMs * 2 ** this.failures)
     this.timer = (this.deps.setTimer ?? setTimeout)(() => void this.loop(), delay)
@@ -110,7 +133,10 @@ export class StrategyPoller {
     const asks = await read('asks', askOf, prev.asks)
     const cards = await read('cards', catalogOf, prev.cards)
     this.failures = failed ? this.failures + 1 : 0
-    this.snapshot = { at: failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString(), parts, me, spend, decisions, asks, cards }
+    const at = failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString()
+    const changed = JSON.stringify([parts, me, spend, decisions, asks, cards]) !== JSON.stringify([prev.parts, prev.me, prev.spend, prev.decisions, prev.asks, prev.cards])
+    this.snapshot = { at, parts, me, spend, decisions, asks, cards }
+    if (changed && at) for (const listener of this.listeners) listener(at)
   }
 
   private redact(error: unknown): string {
