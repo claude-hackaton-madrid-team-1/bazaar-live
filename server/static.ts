@@ -49,10 +49,11 @@ export function createStatic(root: string): (req: IncomingMessage, res: ServerRe
     const target = normalize(join(base, pathname))
     const inside = target === base || target.startsWith(base + sep)
     const direct = inside ? await load(target) : null
-    const file = direct ?? (await load(join(base, 'index.html')))
+    // A missing hashed asset is a 404, not the SPA page (a module script must never get HTML).
+    const file = direct ?? (pathname.startsWith('/assets/') ? null : await load(join(base, 'index.html')))
     if (!file) {
       res.writeHead(404, { ...headers, 'Content-Type': 'text/plain; charset=utf-8' })
-      res.end('Not built yet: run npm run build')
+      res.end(pathname.startsWith('/assets/') ? 'Not found' : 'Not built yet: run npm run build')
       return
     }
     const hashed = direct !== null && pathname.startsWith('/assets/')

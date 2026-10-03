@@ -267,6 +267,13 @@ export class ShowEngine {
       await Promise.all([this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }), this.sleep(readingMs(line.text, backlog))])
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)
-    this.set({ line: null })
+    this.set(this.clearPatch())
+  }
+
+  /** After a beat the stage relaxes; a dealer stays only if the next beat continues the conversation. */
+  private clearPatch(): Partial<ShowState> {
+    const next = this.director.peek()?.cue.kind
+    const keepDealer = next === 'dealer' || next === 'deal' || next === 'fail'
+    return { line: null, beat: null, reach: null, deal: null, denied: null, fail: null, jev: null, dealer: keepDealer ? this.state.dealer : null }
   }
 }

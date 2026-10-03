@@ -88,15 +88,18 @@ function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
-    req.on('data', (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       size += chunk.length
       if (size > limit) {
+        // Stop reading but keep the socket: the 413 still has to go out (the caller closes it after).
+        req.off('data', onData)
+        req.pause()
         resolve(null)
-        req.destroy()
         return
       }
       chunks.push(chunk)
-    })
+    }
+    req.on('data', onData)
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     req.on('error', reject)
   })
@@ -169,7 +172,10 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     if (!sameOrigin(req)) return json(res, 403, { error: 'cross_origin' })
     if (!String(req.headers['content-type'] ?? '').includes('application/json')) return json(res, 415, { error: 'json_only' })
     const raw = await readBody(req, MAX_BODY)
-    if (raw === null) return json(res, 413, { error: 'too_large' })
+    if (raw === null) {
+      res.on('finish', () => req.socket.destroy())
+      return json(res, 413, { error: 'too_large' }, { Connection: 'close' })
+    }
     const parsed = parseTtsRequest(raw, available)
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
     const key = `${parsed.provider}|${parsed.speaker}|${parsed.text}`

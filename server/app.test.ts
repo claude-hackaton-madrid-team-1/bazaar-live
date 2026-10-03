@@ -179,3 +179,13 @@ describe('shared upstream calls and limits from env', () => {
     expect(readLimits({ TTS_GLOBAL_PER_MINUTE: '90', TTS_GLOBAL_BURST: '-1', TTS_PER_ADDRESS_BURST: 'abc' })).toEqual({ ...DEFAULT_LIMITS, globalPerMinute: 90 })
   })
 })
+
+describe('edge cases', () => {
+  it('answers 413 to an oversized body and 404 to a missing asset', async () => {
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fetch)
+    const big = await fetch(`${base}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: 'x'.repeat(5000) })
+    expect(big.status).toBe(413)
+    expect((await fetch(`${base}/assets/missing-abc.js`)).status).toBe(404)
+    expect((await fetch(`${base}/%E0%A4%A`)).status).toBe(400)
+  })
+})

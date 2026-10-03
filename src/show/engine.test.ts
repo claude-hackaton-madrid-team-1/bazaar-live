@@ -36,14 +36,19 @@ describe('ShowEngine', () => {
   })
 
   it('acts out a live move: cue first, then every line spoken in order', async () => {
-    const { show, spoken } = engine()
+    const seen: unknown[] = []
+    let show: ShowEngine | null = null
+    const provider: SpeechProvider = {
+      name: 'webspeech',
+      speak: async (u) => void seen.push({ speaker: u.speaker, reach: show?.getSnapshot().reach, line: show?.getSnapshot().line?.text === u.text }),
+    }
+    show = new ShowEngine({ speech: new SpeechQueue({ provider }), idle: false, sleep: () => Promise.resolve() })
     show.start()
     show.ingest(event(-2, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
     await settle()
-    const s = show.getSnapshot()
-    expect(s.reach).toMatchObject({ ref: 'SAL-05', take: true })
-    expect(spoken.map((u) => u.speaker)).toEqual(s.transcript.map((t) => t.speaker))
-    expect(spoken.length).toBeGreaterThan(1)
+    expect(seen.length).toBeGreaterThan(1)
+    expect(seen[0]).toMatchObject({ speaker: 'buyer', reach: { ref: 'SAL-05', take: true }, line: true })
+    expect(show.getSnapshot().transcript.map((t) => t.speaker)).toEqual(seen.map((x) => (x as { speaker: string }).speaker))
     show.stop()
   })
 
@@ -75,5 +80,18 @@ describe('board and pacing helpers', () => {
     expect(resolveChoice('gemini', ['elevenlabs'], true)).toBe('webspeech')
     expect(resolveChoice('webspeech', ['elevenlabs'], false)).toBe('off')
     expect(resolveChoice('off', ['elevenlabs'], true)).toBe('off')
+  })
+})
+
+describe('after a beat', () => {
+  it('relaxes the stage: no lingering reach, handshake or dealer', async () => {
+    const { show } = engine()
+    show.start()
+    show.ingest(event(-20, { kind: 'dealer_open', inputs: { dealer: 'abuela', item: 'sobre_barrio' } }, 'taker'), false)
+    await settle()
+    const s = show.getSnapshot()
+    expect([s.line, s.beat, s.reach, s.deal, s.dealer]).toEqual([null, null, null, null, null])
+    expect(s.transcript.length).toBeGreaterThan(0)
+    show.stop()
   })
 })
