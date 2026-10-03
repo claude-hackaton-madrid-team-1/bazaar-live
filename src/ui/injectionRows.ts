@@ -42,6 +42,8 @@ export interface InjectionStrings {
   readonly more: (n: number) => string
   readonly less: string
   readonly empty: string
+  /** No attempt, but weak signals recorded: the log is working, they are behind the toggle. */
+  readonly emptyWeak: (weak: number) => string
   /** The view is not there yet (db/injections.sql not applied, or bazaar's table not created). */
   readonly missing: string
   /** On the show: a link to the judges' view with every row. */
@@ -64,6 +66,8 @@ export const INJECTION_STRINGS: Readonly<Record<Lang, InjectionStrings>> = {
     more: (n) => `Show all (${n} characters)`,
     less: 'Show less',
     empty: 'No injection attempts recorded yet.',
+    emptyWeak: (n) =>
+      `No injection attempts recorded yet. ${n} weak ${n === 1 ? 'signal is' : 'signals are'} logged (code, a link or money words, often a venue's own format notice): tick "Show weak" to see ${n === 1 ? 'it' : 'them'}.`,
     missing: 'The injection log is not set up yet (db/injections.sql, or bazaar has not created its table).',
     all: (n) => `All ${n} on the Injections screen →`,
     status: {
@@ -87,6 +91,8 @@ export const INJECTION_STRINGS: Readonly<Record<Lang, InjectionStrings>> = {
     more: (n) => `Ver todo (${n} caracteres)`,
     less: 'Ver menos',
     empty: 'Aún no hay intentos de inyección registrados.',
+    emptyWeak: (n) =>
+      `Aún no hay intentos de inyección registrados. Hay ${n} ${n === 1 ? 'señal débil registrada' : 'señales débiles registradas'} (código, un enlace o palabras de dinero, a menudo el aviso de formato de un mercado): marca "Ver débiles" para ${n === 1 ? 'verla' : 'verlas'}.`,
     missing: 'El registro de inyecciones aún no está preparado (db/injections.sql, o bazaar aún no creó su tabla).',
     all: (n) => `Los ${n} en la pantalla Inyecciones →`,
     status: {
