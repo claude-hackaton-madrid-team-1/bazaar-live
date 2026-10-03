@@ -70,7 +70,9 @@ describe('toBeat', () => {
 
   it('celebrates an accepted execution and grumbles at a refused one', () => {
     const deal = toBeat(execution('taker', { method: 'accept', request: { offer: 1 }, error_code: null }))
-    expect(deal?.cue).toEqual({ kind: 'deal', big: true, ref: null })
+    expect(deal?.cue).toEqual({ kind: 'deal', big: true, ref: null, price: null })
+    const paid = toBeat(execution('taker', { method: 'accept', request: { offer: 1, price: 18 }, error_code: null }))
+    expect(paid?.cue).toEqual({ kind: 'deal', big: true, ref: null, price: 18 })
     expect(deal?.priority).toBe(PRIORITY.deal)
     const fail = toBeat(execution('taker', { method: 'accept', request: { offer: 1 }, error_code: 'insufficient_cash' }))
     expect(fail?.cue).toEqual({ kind: 'fail', code: 'insufficient_cash' })

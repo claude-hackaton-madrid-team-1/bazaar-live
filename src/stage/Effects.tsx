@@ -54,6 +54,8 @@ function CoinBurst({ n, big }: { readonly n: number; readonly big: boolean }) {
 export interface DealFx {
   readonly n: number
   readonly big: boolean
+  /** What the buyer paid, when the execution said (a public field); null otherwise. */
+  readonly price: number | null
 }
 
 /** A shower of gold coins and a ribbon on every execution the game accepted. */
@@ -79,6 +81,17 @@ export function Deal({ deal }: { readonly deal: DealFx | null }) {
             <span className="ribbon">{deal.big ? t.dealDone : t.dealSent}</span>
             <span className="sr-only">{deal.big ? t.dealDoneSr : t.dealSentSr}</span>
           </motion.div>
+          {deal.big && deal.price !== null && (
+            <motion.div
+              className="float-gold"
+              initial={{ y: '0cqw', opacity: 0, scale: 0.6 }}
+              animate={{ y: ['0cqw', '-1cqw', '-7cqw'], opacity: [0, 1, 0], scale: [0.6, 1.15, 1] }}
+              transition={{ duration: 2.2, delay: 0.35, times: [0, 0.25, 1], ease: 'easeOut' }}
+              aria-hidden="true"
+            >
+              −{deal.price} P
+            </motion.div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

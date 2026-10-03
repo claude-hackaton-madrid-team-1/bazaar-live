@@ -21,7 +21,7 @@ export type Cue =
   | { readonly kind: 'cancel'; readonly side: Side; readonly ref: string }
   | { readonly kind: 'reach'; readonly ref: string; readonly price: number | null; readonly take: boolean }
   | { readonly kind: 'dealer'; readonly dealer: DealerId; readonly move: 'open' | 'bid' | 'accept' | 'walk'; readonly price: number | null }
-  | { readonly kind: 'deal'; readonly big: boolean; readonly ref: string | null }
+  | { readonly kind: 'deal'; readonly big: boolean; readonly ref: string | null; readonly price: number | null }
   | { readonly kind: 'fail'; readonly code: string }
   | { readonly kind: 'talk' }
 

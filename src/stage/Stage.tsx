@@ -9,6 +9,7 @@ import { Deal, Fail, RuneShield } from './Effects'
 import { Merchant } from './Merchant'
 import { poses } from './poses'
 import { BackdropFar, Counter, Foreground } from './scene/Backdrop'
+import './scene/scene.css'
 import './stage.css'
 
 /** The card the buyer reaches for: it flies in from the other stalls; a denied grab drops it. */

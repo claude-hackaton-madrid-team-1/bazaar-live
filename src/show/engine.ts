@@ -55,7 +55,7 @@ export interface ShowState {
   readonly board: readonly BoardCard[]
   readonly dealer: { readonly id: DealerId; readonly move: string } | null
   readonly reach: (Flash & { readonly ref: string; readonly price: number | null; readonly take: boolean }) | null
-  readonly deal: (Flash & { readonly big: boolean }) | null
+  readonly deal: (Flash & { readonly big: boolean; readonly price: number | null }) | null
   readonly denied: Flash | null
   readonly fail: (Flash & { readonly code: string }) | null
   readonly jev: (Flash & { readonly verdict: string; readonly agent: AgentId }) | null
@@ -456,7 +456,7 @@ export class ShowEngine {
       dealer,
       denied: beat.denied ? this.flash() : null,
       reach: cue.kind === 'reach' ? { ...this.flash(), ref: cue.ref, price: cue.price, take: cue.take } : null,
-      deal: cue.kind === 'deal' ? { ...this.flash(), big: cue.big } : null,
+      deal: cue.kind === 'deal' ? { ...this.flash(), big: cue.big, price: cue.price } : null,
       fail: cue.kind === 'fail' ? { ...this.flash(), code: cue.code } : null,
     }
   }

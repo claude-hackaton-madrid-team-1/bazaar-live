@@ -61,10 +61,15 @@ const MOUTH = {
   talkB: 'M58 89Q70 96 82 89Q70 91 58 89Z',
 } as const
 
-function Mouth({ pose, talking, reduce }: { readonly pose: Pose; readonly talking: boolean; readonly reduce: boolean | null }) {
+function Mouth({ role, pose, talking, reduce }: { readonly role: Role; readonly pose: Pose; readonly talking: boolean; readonly reduce: boolean | null }) {
   const rest = pose === 'grumble' ? MOUTH.frown : pose === 'triumph' ? MOUTH.smile : MOUTH.idle
   const animate = talking && !reduce ? { d: [MOUTH.talkB, MOUTH.talkA, MOUTH.talkB, MOUTH.talkA, MOUTH.idle] } : { d: rest }
-  return <motion.path fill="#6e1d2e" stroke="#3a1018" strokeWidth="2" strokeLinejoin="round" initial={{ d: MOUTH.idle }} animate={animate} transition={talking ? { duration: 0.55, repeat: Infinity } : { duration: 0.25 }} />
+  return (
+    <>
+      <motion.path fill="#6e1d2e" stroke="#3a1018" strokeWidth="2.2" strokeLinejoin="round" initial={{ d: MOUTH.idle }} animate={animate} transition={talking ? { duration: 0.55, repeat: Infinity } : { duration: 0.25 }} />
+      {role === 'chato' && pose !== 'grumble' && <rect x="76" y={pose === 'triumph' ? 90 : 91} width="5" height="6" rx="1.2" fill="#f2b544" stroke="#8a5f1a" strokeWidth="1.2" />}
+    </>
+  )
 }
 
 function Brows({ pose, look }: { readonly pose: Pose; readonly look: Look }) {
@@ -197,6 +202,11 @@ function Garb({ role, look }: { readonly role: Role; readonly look: Look }) {
       <>
         <path d="M50 110L70 152L90 110Z" fill="#4a3a5c" />
         <path d="M30 112Q70 140 110 112L120 190Q70 216 20 190Z" fill={look.coat} stroke={look.coatDark} strokeWidth="2.4" />
+        <g transform="translate(86 176)">
+          <path d="M-4 0q4 -14 -2 -22M6 -2q6 -12 16 -14M12 0q8 -8 14 -6" fill="none" stroke="#5e8a46" strokeWidth="4" strokeLinecap="round" />
+          <path d="M-14 0h46l-6 26h-34z" fill="#c8964f" stroke="#1d0f12" strokeWidth="3" strokeLinejoin="round" />
+          <path d="M-10 8h38M-9 16h36M2 0l-3 26M14 0v26M26 0l3 26" stroke="#8a5f2a" strokeWidth="1.8" fill="none" />
+        </g>
         <path d="M24 176Q70 202 116 176" fill="none" stroke={look.trim} strokeWidth="3.4" strokeDasharray="2 6" strokeLinecap="round" />
         <path d="M44 126q26 22 52 0" fill="none" stroke={look.coatDark} strokeWidth="2" opacity="0.7" />
       </>
@@ -262,10 +272,12 @@ export function Merchant({ role, pose = 'idle', talking = false, flip = false, c
                 </g>
               )}
               <motion.g style={{ originX: 0.5, originY: 0.05 }} {...back}>
-                <rect x="26" y="112" width="14" height="52" rx="7" fill={look.coat} opacity="0.88" />
-                <circle cx="33" cy="166" r="7.4" fill={look.skin} />
+                <rect x="22" y="110" width="18" height="54" rx="9" fill={look.coat} stroke="#1d0f12" strokeWidth="3" />
+                <rect x="32" y="112" width="6" height="50" rx="3" fill="#000" opacity="0.15" />
+                <circle cx="31" cy="168" r="10" fill={look.skin} stroke="#1d0f12" strokeWidth="3" />
               </motion.g>
-              <path d="M32 110Q70 98 108 110L120 214Q70 226 20 214Z" fill={look.coat} stroke={look.coatDark} strokeWidth="2.4" />
+              <path d="M24 112Q70 94 116 112L126 214Q70 228 14 214Z" fill={look.coat} stroke="#1d0f12" strokeWidth="3.4" strokeLinejoin="round" />
+              <path d="M70 99Q114 102 116 112L126 214Q98 224 70 226Z" fill="#000" opacity="0.17" />
               <Garb role={role} look={look} />
               <path d="M54 96Q70 112 86 96V106Q70 120 54 106Z" fill={look.skin} />
               <motion.g
@@ -273,18 +285,20 @@ export function Merchant({ role, pose = 'idle', talking = false, flip = false, c
                 animate={reduce ? undefined : pose === 'grumble' ? { rotate: [0, -5, 5, -5, 5, 0] } : talking ? { rotate: [0, -2, 2, -1, 0], y: [0, -1.5, 0] } : { rotate: [0, 0.8, 0] }}
                 transition={{ duration: pose === 'grumble' ? 0.9 : talking ? 0.6 : 5, repeat: pose === 'grumble' ? 1 : Infinity, ease: 'easeInOut' }}
               >
-                <ellipse cx="70" cy="74" rx="30" ry="32" fill={look.skin} />
+                <ellipse cx="70" cy="74" rx="31" ry="33" fill={look.skin} stroke="#1d0f12" strokeWidth="3.4" />
+                <path d="M70 41A31 33 0 0 1 70 107Q88 74 70 41Z" fill="#000" opacity="0.1" />
                 <ellipse cx="46" cy="84" rx="5" ry="3.4" fill="#ff7b7b" opacity="0.32" />
                 <ellipse cx="94" cy="84" rx="5" ry="3.4" fill="#ff7b7b" opacity="0.32" />
                 <path d="M68 76Q72 84 66 86" fill="none" stroke={look.skinShade} strokeWidth="2.2" strokeLinecap="round" />
                 <Eyes pose={pose} reduce={reduce} />
                 <Brows pose={pose} look={look} />
-                <Mouth pose={pose} talking={talking} reduce={reduce} />
+                <Mouth role={role} pose={pose} talking={talking} reduce={reduce} />
                 <Face role={role} look={look} />
               </motion.g>
               <motion.g style={{ originX: 0.5, originY: 0.05 }} {...front}>
-                <rect x="100" y="112" width="14" height="54" rx="7" fill={look.coat} />
-                <circle cx="107" cy="168" r="7.8" fill={look.skin} />
+                <rect x="100" y="110" width="18" height="56" rx="9" fill={look.coat} stroke="#1d0f12" strokeWidth="3" />
+                <rect x="110" y="112" width="6" height="52" rx="3" fill="#000" opacity="0.15" />
+                <circle cx="109" cy="170" r="10.4" fill={look.skin} stroke="#1d0f12" strokeWidth="3" />
               </motion.g>
             </motion.g>
           </motion.g>

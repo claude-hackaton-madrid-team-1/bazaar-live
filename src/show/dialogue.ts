@@ -202,9 +202,9 @@ function executionBeat(event: ExecutionEvent, dialogue: DialogueContext): Beat {
     return { ...base, ...part('FAIL', 'fail', ctx, seed, { kind: 'fail', code: x.errorCode ?? 'error' }, PRIORITY.fail) }
   }
   const ctx = ctxOf(null, dialogue)
-  if (x.method === 'accept') return { ...base, ...part('DEAL', 'deal', ctx, seed, { kind: 'deal', big: true, ref: null }, PRIORITY.deal) }
+  if (x.method === 'accept') return { ...base, ...part('DEAL', 'deal', ctx, seed, { kind: 'deal', big: true, ref: null, price: x.request.price ?? null }, PRIORITY.deal) }
   const key = SENT_BANKS[x.method] ?? 'SENT_OTHER'
-  return { ...base, ...part(key, 'sent', ctx, seed, { kind: 'deal', big: false, ref: null }, PRIORITY.sent) }
+  return { ...base, ...part(key, 'sent', ctx, seed, { kind: 'deal', big: false, ref: null, price: null }, PRIORITY.sent) }
 }
 
 /** One short confirmation per SDK route the agents call. */

@@ -6,6 +6,7 @@
  * reduced motion turns all of it off (stage.css). Nothing here is traced from any game.
  */
 import { memo } from 'react'
+import { rng } from '../rng'
 import { bunting, cobblePaths, scallopedBand, skyline, stars } from './geometry'
 
 const W = 1600
@@ -17,6 +18,10 @@ const MID = skyline(23, 716, 130, 270, W)
 const STARS = stars(7, 54, W, 400)
 const ROPES = [bunting(-20, 120, W + 20, 150, 46, 26), bunting(-20, 205, 560, 168, 30, 9), bunting(1040, 168, W + 20, 215, 30, 9)]
 const COBBLES = cobblePaths(5, 796, H, W)
+const EMBERS = Array.from({ length: 18 }, (_, i) => {
+  const r = rng(101 + i)
+  return { x: 4 + r() * 92, size: 0.35 + r() * 0.55, rise: 20 + r() * 26, drift: (r() - 0.5) * 8, dur: 8 + r() * 9, delay: -r() * 16 }
+})
 const AWNING = scallopedBand(320, 1280, 118, 22, 60)
 
 /** One lantern: rope, cap, glass, a flickering glow (a radial gradient, not a filter) and a tassel. */
@@ -183,8 +188,10 @@ const BackdropFar = memo(function BackdropFar() {
           <path d="M1170 716V470l22 -70l22 70v246z" fill="#27163a" />
           <path d="M1160 470h64l-10 -12h-44z" fill="#321c48" />
           <path d="M1192 400v-40M1186 372h12" stroke="#27163a" strokeWidth="4" />
-          <path d="M90 716V560q54 -76 108 0v156z" fill="#27163a" />
-          <path d="M144 478v-34" stroke="#27163a" strokeWidth="4" />
+          <path d="M120 716V262H330V716H270V540A53 53 0 0 0 164 540V716Z" fill="#2c1a40" stroke="#3f2559" strokeWidth="3" />
+          <path d="M112 262H338V244H112Z" fill="#3a2253" />
+          <path d="M140 300h36v22h-36zM274 300h36v22h-36z" fill="#ffb347" opacity="0.55" />
+          <path d="M164 540a53 53 0 0 1 106 0" fill="none" stroke="#4a2c68" strokeWidth="6" />
           <path d={MID.lit} fill="#ffb347" opacity="0.8" />
           <path d={MID.twinkle} fill="#ffe3a0" className="twinkle" />
         </svg>
@@ -321,6 +328,20 @@ const Counter = memo(function Counter() {
       {Array.from({ length: 40 }, (_, k) => (
         <circle key={k} cx={20 + k * 40} cy="46" r="3.2" fill="#f2b544" opacity="0.85" />
       ))}
+      <g transform="translate(470 0)">
+        <rect x="0" y="-58" width="84" height="58" fill="#8a5a3b" stroke="#1d0f12" strokeWidth="3" />
+        <path d="M0 -39h84M0 -19h84M28 -58v58M56 -58v58" stroke="#3d2415" strokeWidth="3" />
+        <path d="M0 -58l84 58M84 -58l-84 58" stroke="#5a3520" strokeWidth="2" opacity="0.6" />
+        <rect x="14" y="-92" width="58" height="34" fill="#a87347" stroke="#1d0f12" strokeWidth="3" />
+        <path d="M14 -75h58M43 -92v34" stroke="#3d2415" strokeWidth="3" />
+      </g>
+      <g transform="translate(1066 0)">
+        <rect x="0" y="-48" width="76" height="48" fill="#8a5a3b" stroke="#1d0f12" strokeWidth="3" />
+        <path d="M0 -32h76M0 -16h76M25 -48v48M50 -48v48" stroke="#3d2415" strokeWidth="3" />
+        <ellipse cx="38" cy="-48" rx="30" ry="8" fill="url(#coin)" stroke="#8a5f1a" strokeWidth="1.5" />
+        <ellipse cx="38" cy="-55" rx="26" ry="7" fill="url(#coin)" stroke="#8a5f1a" strokeWidth="1.5" />
+        <ellipse cx="38" cy="-62" rx="22" ry="6" fill="url(#coin)" stroke="#8a5f1a" strokeWidth="1.5" />
+      </g>
       <g transform="translate(150 6)">
         {[0, 1, 2, 3, 4].map((k) => (
           <ellipse key={k} cx="0" cy={-k * 7} rx="19" ry="6" fill="url(#coin)" stroke="#8a5f1a" strokeWidth="1.2" />
@@ -342,6 +363,11 @@ const Counter = memo(function Counter() {
 const Foreground = memo(function Foreground() {
   return (
     <div className="scene fore" aria-hidden="true">
+      <div className="embers">
+        {EMBERS.map((e, i) => (
+          <i key={i} style={{ left: `${e.x}%`, width: `${e.size}cqw`, height: `${e.size}cqw`, animationDuration: `${e.dur}s`, animationDelay: `${e.delay}s`, ['--rise' as string]: `${-e.rise}cqw`, ['--drift' as string]: `${e.drift}cqw` }} />
+        ))}
+      </div>
       <div className="fog fog-front" />
       <div className="fog fog-low" />
       <div className="shafts" />

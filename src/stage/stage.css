@@ -9,6 +9,7 @@
   --ink: #2a1d12;
   --px: 0;
   --py: 0;
+  --serif: 'Alegreya', 'Iowan Old Style', Georgia, serif;
   position: relative;
   aspect-ratio: 16 / 10;
   container-type: inline-size;
@@ -20,249 +21,6 @@
   box-shadow: 0 20px 60px rgb(0 0 0 / 0.55), inset 0 0 0 1px rgb(0 0 0 / 0.4);
   color: var(--ink);
   font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
-/* ---------------------------------------------------------------- scene layers */
-
-.scene,
-.scene .layer,
-.par {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.scene.far {
-  z-index: 0;
-}
-
-.scene.fore {
-  z-index: 5;
-}
-
-.scene svg {
-  display: block;
-}
-
-/* Pointer parallax: the nearer the layer, the further it moves (individual `translate`, so the drift
-   animation on the child composes with it). */
-.par {
-  transition: translate 0.35s ease-out;
-  will-change: translate;
-}
-
-.p-far {
-  translate: calc(var(--px) * -0.5cqw) calc(var(--py) * -0.25cqw);
-}
-
-.p-mid {
-  translate: calc(var(--px) * -1cqw) calc(var(--py) * -0.5cqw);
-}
-
-.p-stalls {
-  translate: calc(var(--px) * -1.7cqw) calc(var(--py) * -0.7cqw);
-}
-
-.p-hang {
-  translate: calc(var(--px) * -2.4cqw) calc(var(--py) * -0.9cqw);
-}
-
-.drift {
-  animation: drift 70s ease-in-out infinite alternate;
-}
-
-.drift.slow {
-  animation-duration: 110s;
-}
-
-@keyframes drift {
-  from {
-    transform: translateX(-0.9cqw);
-  }
-  to {
-    transform: translateX(0.9cqw);
-  }
-}
-
-/* lanterns, torches, banners and stars */
-
-.sway {
-  transform-box: fill-box;
-  transform-origin: 50% 0;
-  animation: sway 5.5s ease-in-out infinite alternate;
-}
-
-.banner-sway {
-  animation-duration: 7s;
-}
-
-@keyframes sway {
-  from {
-    transform: rotate(-1.6deg);
-  }
-  to {
-    transform: rotate(1.6deg);
-  }
-}
-
-.flutter {
-  transform-box: fill-box;
-  transform-origin: 50% 0;
-  animation: flutter 3.4s ease-in-out infinite alternate;
-}
-
-@keyframes flutter {
-  from {
-    transform: rotate(-5deg);
-  }
-  to {
-    transform: rotate(5deg);
-  }
-}
-
-.flicker {
-  animation: flicker 2.6s steps(1, end) infinite;
-}
-
-@keyframes flicker {
-  0%,
-  100% {
-    opacity: 0.95;
-  }
-  12% {
-    opacity: 0.75;
-  }
-  27% {
-    opacity: 1;
-  }
-  41% {
-    opacity: 0.82;
-  }
-  63% {
-    opacity: 0.98;
-  }
-  78% {
-    opacity: 0.7;
-  }
-}
-
-.flame {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: flame 0.9s ease-in-out infinite alternate;
-}
-
-@keyframes flame {
-  from {
-    transform: scale(1, 1) skewX(-3deg);
-  }
-  to {
-    transform: scale(0.94, 1.12) skewX(3deg);
-  }
-}
-
-.twinkle {
-  animation: twinkle 3.8s ease-in-out infinite alternate;
-}
-
-@keyframes twinkle {
-  from {
-    opacity: 0.25;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.pulse {
-  animation: pulse 1.6s ease-in-out infinite alternate;
-}
-
-@keyframes pulse {
-  from {
-    opacity: 0.35;
-  }
-  to {
-    opacity: 0.85;
-  }
-}
-
-/* fog, light shafts, pools and the vignette */
-
-.fog {
-  position: absolute;
-  left: 0;
-  width: 200%;
-  pointer-events: none;
-  background: radial-gradient(ellipse 22% 50% at 25% 60%, rgb(255 226 190 / 0.5), transparent 70%) 0 0 / 25% 100% repeat-x,
-    radial-gradient(ellipse 18% 40% at 70% 50%, rgb(210 190 255 / 0.4), transparent 70%) 0 0 / 25% 100% repeat-x;
-  animation: fog 80s linear infinite;
-  will-change: transform;
-}
-
-.fog-back {
-  top: 52%;
-  height: 22%;
-  opacity: 0.5;
-  z-index: 1;
-}
-
-.fog-front {
-  bottom: 4%;
-  height: 26%;
-  opacity: 0.38;
-  animation-duration: 55s;
-  animation-direction: reverse;
-}
-
-.fog-low {
-  bottom: 0;
-  height: 14%;
-  opacity: 0.45;
-  animation-duration: 38s;
-}
-
-@keyframes fog {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-.shafts {
-  position: absolute;
-  inset: 0;
-  opacity: 0.55;
-  mix-blend-mode: screen;
-  background: conic-gradient(from 168deg at 18% -6%, transparent 0 4deg, rgb(255 190 110 / 0.14) 6deg, transparent 13deg, rgb(255 190 110 / 0.09) 17deg, transparent 22deg 360deg),
-    conic-gradient(from 192deg at 82% -6%, transparent 0 4deg, rgb(255 190 110 / 0.14) 6deg, transparent 13deg, rgb(255 190 110 / 0.09) 17deg, transparent 22deg 360deg);
-}
-
-.pool {
-  position: absolute;
-  top: 38%;
-  width: 34%;
-  height: 56%;
-  mix-blend-mode: screen;
-  background: radial-gradient(ellipse at 50% 50%, rgb(255 168 70 / 0.34), transparent 66%);
-}
-
-.pool-l {
-  left: -6%;
-}
-
-.pool-r {
-  right: -6%;
-}
-
-.vignette {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 56%, transparent 52%, rgb(8 3 18 / 0.6) 100%);
 }
 
 /* ---------------------------------------------------------------- the stall */
@@ -311,6 +69,7 @@
   height: 11cqw;
   z-index: 4;
   pointer-events: none;
+  overflow: visible;
 }
 
 /* ---------------------------------------------------------------- the board */
@@ -374,7 +133,7 @@
 
 .card .hood {
   text-align: center;
-  font-size: max(8px, 1cqw);
+  font-size: max(10px, 1cqw);
   color: rgb(42 29 18 / 0.78);
   padding-bottom: 0.5cqw;
 }
@@ -409,7 +168,7 @@
   background: #f6bd60;
   color: var(--ink);
   font-weight: 900;
-  font-size: max(9px, 1.4cqw);
+  font-size: max(11px, 1.4cqw);
   font-variant-numeric: tabular-nums;
 }
 
@@ -456,7 +215,7 @@
   color: var(--gold-soft);
   font-family: 'Cinzel', Georgia, serif;
   font-weight: 800;
-  font-size: max(9px, 1.4cqw);
+  font-size: max(11px, 1.4cqw);
   letter-spacing: 0.12em;
   white-space: nowrap;
 }
@@ -510,13 +269,13 @@
 .dealer-name {
   font-family: 'Cinzel', Georgia, serif;
   font-weight: 800;
-  font-size: max(9px, 1.4cqw);
+  font-size: max(11px, 1.4cqw);
   color: var(--gold-soft);
   letter-spacing: 0.08em;
 }
 
 .dealer-move {
-  font-size: max(8px, 1cqw);
+  font-size: max(10px, 1cqw);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -529,35 +288,53 @@
   position: absolute;
   z-index: 8;
   max-width: 34cqw;
-  padding: 1.1cqw 1.8cqw;
+  padding: 1.1cqw 1.8cqw 1.2cqw;
   border-radius: 1.2cqw;
   background: linear-gradient(180deg, #fbf3da, var(--parchment) 60%, #ecdcae);
-  border: 0.25cqw solid #b8862b;
+  border: 0.28cqw solid #8a5f1a;
+  outline: 0.14cqw solid var(--gold);
+  outline-offset: -0.7cqw;
   color: var(--ink);
-  font-size: max(15px, 2.05cqw);
+  font-family: var(--serif);
+  font-size: max(16px, 2.2cqw);
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.25;
   text-wrap: pretty;
-  box-shadow: 0 0.6cqw 1.6cqw rgb(0 0 0 / 0.55), inset 0 0 1.2cqw rgb(184 134 43 / 0.25);
+  box-shadow: 0 0.6cqw 1.6cqw rgb(0 0 0 / 0.55), inset 0 0 1.4cqw rgb(184 134 43 / 0.3);
 }
 
-.bubble::before,
+/* the tail points at whoever is speaking */
 .bubble::after {
   content: '';
   position: absolute;
-  background: linear-gradient(180deg, #d9b45a, #8a5f1a);
-  top: 0.6cqw;
-  bottom: 0.6cqw;
-  width: 0.5cqw;
-  border-radius: 0.3cqw;
+  bottom: -1.5cqw;
+  width: 2.6cqw;
+  height: 1.8cqw;
+  background: #ecdcae;
+  border: 0 solid #8a5f1a;
+  clip-path: polygon(0 0, 100% 0, 18% 100%);
+  filter: drop-shadow(0 0.2cqw 0 #8a5f1a);
 }
 
-.bubble::before {
-  left: -0.45cqw;
+.bubble.seller::after {
+  left: 3.5cqw;
 }
 
-.bubble::after {
-  right: -0.45cqw;
+.bubble.buyer::after {
+  right: 3.5cqw;
+  clip-path: polygon(0 0, 100% 0, 82% 100%);
+}
+
+.bubble.abuela::after,
+.bubble.chato::after,
+.bubble.narrator::after {
+  left: 50%;
+  margin-left: -1.3cqw;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.bubble.narrator::after {
+  display: none;
 }
 
 .bubble.seller {
@@ -580,17 +357,42 @@
 }
 
 .bubble.abuela {
-  border-color: #c8674a;
+  border-color: #8e3f2e;
 }
 
 .bubble.chato {
-  border-color: #6c7886;
+  border-color: #3a424c;
 }
 
 .bubble.narrator {
   top: 12.5cqw;
   bottom: auto;
   font-style: italic;
+}
+
+/* item quality, in the colours a collector expects (darker on the parchment) */
+.quality {
+  font-weight: 800;
+}
+
+.quality.common {
+  color: #6b6b6b;
+}
+
+.quality.uncommon {
+  color: #1f8a1f;
+}
+
+.quality.rare {
+  color: #1f5fc8;
+}
+
+.quality.epic {
+  color: #8a2fd0;
+}
+
+.quality.legendary {
+  color: #c25a00;
 }
 
 .tag-chip {
@@ -704,7 +506,7 @@
 }
 
 .jev-title {
-  font-size: max(9px, 1.1cqw);
+  font-size: max(11px, 1.1cqw);
   font-weight: 700;
   letter-spacing: 0.06em;
   color: #cbbcf0;
@@ -745,7 +547,7 @@
   display: flex;
   gap: 0.4cqw;
   width: 100%;
-  font-size: max(7px, 0.9cqw);
+  font-size: max(9px, 0.9cqw);
   color: #b3a7d4;
 }
 
@@ -828,6 +630,21 @@
   text-shadow: 0 0.15cqw 0.3cqw rgb(0 0 0 / 0.6);
 }
 
+.float-gold {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 900;
+  font-size: max(14px, 3.2cqw);
+  color: #ffe08a;
+  -webkit-text-stroke: 0.12cqw #6b4410;
+  paint-order: stroke fill;
+  text-shadow: 0 0.2cqw 0.5cqw rgb(0 0 0 / 0.7), 0 0 1.6cqw rgb(255 190 60 / 0.8);
+  white-space: nowrap;
+}
+
 .rune-shield {
   position: absolute;
   left: 50%;
@@ -854,7 +671,7 @@
   font-family: 'Cinzel', Georgia, serif;
   font-weight: 800;
   letter-spacing: 0.14em;
-  font-size: max(9px, 1.3cqw);
+  font-size: max(11px, 1.3cqw);
   white-space: nowrap;
 }
 
@@ -902,13 +719,13 @@
   gap: 0.3cqw;
   font-family: 'Cinzel', Georgia, serif;
   font-weight: 800;
-  font-size: max(9px, 1.5cqw);
+  font-size: max(11px, 1.5cqw);
   color: var(--ink);
 }
 
 .reach-card .price-tag {
   position: static;
-  font-size: max(8px, 1.2cqw);
+  font-size: max(10px, 1.2cqw);
 }
 
 .practice {
@@ -922,7 +739,7 @@
   background: #f4a261;
   color: var(--ink);
   font-weight: 900;
-  font-size: max(9px, 1.2cqw);
+  font-size: max(11px, 1.2cqw);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

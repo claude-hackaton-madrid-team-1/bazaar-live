@@ -7,6 +7,31 @@ import { useStrings } from '../ui/lang'
 
 const TAG = /\[([a-z][a-z ]{0,30})\]/gi
 
+/** Item-quality words get their quality colour (grey, green, blue, purple, orange), in both languages. */
+const QUALITY = /(?<![\p{L}])(poco común|común|rara|épica|legendaria|uncommon|common|rare|epic|legendary)(?![\p{L}])/giu
+const QUALITY_CLASS: Readonly<Record<string, string>> = {
+  común: 'common', common: 'common', 'poco común': 'uncommon', uncommon: 'uncommon', rara: 'rare', rare: 'rare',
+  épica: 'epic', epic: 'epic', legendaria: 'legendary', legendary: 'legendary',
+}
+
+/** A run of words with its quality words coloured. */
+function Words({ text }: { readonly text: string }) {
+  const parts = text.split(QUALITY)
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <span key={i} className={`quality ${QUALITY_CLASS[part.toLowerCase()] ?? ''}`}>
+            {part}
+          </span>
+        ) : (
+          <Fragment key={i}>{part}</Fragment>
+        ),
+      )}
+    </>
+  )
+}
+
 /** Words with their expressive tags shown as small chips: "(laughs) Venga!". The voice never reads them. */
 export function Spoken({ text }: { readonly text: string }) {
   const t = useStrings()
@@ -19,7 +44,7 @@ export function Spoken({ text }: { readonly text: string }) {
             {t.tags[part.toLowerCase()] ?? part}
           </span>
         ) : (
-          <Fragment key={i}>{part}</Fragment>
+          <Words key={i} text={part} />
         ),
       )}
     </>
