@@ -4,12 +4,16 @@ import { readConfig } from './config'
 import { Stage } from './stage/Stage'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
+import { InjectionsPanel } from './ui/InjectionsPanel'
 import { useLang, useStrings } from './ui/lang'
 import { useRoute } from './ui/route'
 import { soundMemory } from './ui/soundChoice'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
 import { useShow } from './ui/useShow'
+
+/** The show keeps the newest few injection attempts under the stage; every row is on /injections. */
+const SHOW_ROWS = 5
 
 // The game screens are their own chunk: the show never loads them.
 const GameApp = lazy(() => import('./game/ui/GameApp'))
@@ -78,6 +82,8 @@ function ShowApp() {
           </ErrorBoundary>
           <Transcript entries={state.transcript} />
         </main>
+        {/* their words as plain text only; this panel never reaches the director or a voice */}
+        <InjectionsPanel mock={config.mock} className="inj-show" max={SHOW_ROWS} />
       </div>
       {!started && (
         <StartGate

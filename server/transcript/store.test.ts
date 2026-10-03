@@ -64,6 +64,7 @@ describe('TranscriptStore', () => {
       draft('e', { kind: 'thread_line', who: 'them', counterpart: 'tendero', text: 'Eso lo dejo en veinte primas, no se hable más.' }),
       draft('g', { kind: 'thread_line', who: 'them', counterpart: 't05', text: 'Te lo cambio por dos repetidas, ni una más.' }),
       draft('f', { kind: 'thread_line', who: 'us', counterpart: 'chato', text: 'We never carry a quote of ours here, but if one came it is not indexed.' }),
+      draft('h', { kind: 'thread_line', who: 'them', counterpart: 'abuela', text: 'Venga, mi niño, esta carta te la dejo muy bien de precio.', muted: true }),
     ])
     expect(store.quote(en)).toEqual({ lang: 'en', speaker: 'chato' })
     expect(store.quote(es)).toEqual({ lang: 'es', speaker: 'abuela' })
@@ -74,5 +75,7 @@ describe('TranscriptStore', () => {
     expect(store.quote('Te lo cambio por dos repetidas, ni una más.')).toBeUndefined() // a team: never a dealer voice
     expect(store.quote('We never carry a quote of ours here, but if one came it is not indexed.')).toBeUndefined()
     expect(store.quote('anything somebody types into the proxy')).toBeUndefined()
+    // its raw words had an injection's shape (rows.ts): never vouched for a voice
+    expect(store.quote('Venga, mi niño, esta carta te la dejo muy bien de precio.')).toBeUndefined()
   })
 })

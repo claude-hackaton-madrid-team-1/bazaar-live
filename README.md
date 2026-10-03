@@ -101,6 +101,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
 | `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
+| `/injections` | Who tried to prompt-inject our agents, and what did they do? | The judges' view: every recorded injection attempt, its exact text (plain text, hidden characters shown as markers), the proof to verify it and what our agent did. See [Injection attempts](#injection-attempts-the-show-debug-and-injections). |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
 
 `?mock=1` plays a TypeScript port of bazaar's mock game (`src/game/mock.ts`, seeded): our agent
@@ -270,7 +271,7 @@ on the big chart. Changes to the agents' GUARDRAILS.md, STRATEGY.md or flags are
 private, and the server holds no GitHub token. Until `show.score_points` is applied the panel is the cash chart.
 
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`. The server reads
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`. The server reads
 the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4), and as soon as our
 agents' sockets say something moved (below), and serves `GET /api/history`, behind `GAME_VIEW_TOKEN`. `?mock=1` shows a
 made-up day of money.
@@ -309,7 +310,7 @@ The caps are read live from the guardrail texts (`cash 81 - 79 < cash_floor 50` 
 denial has named yet (the rare's, the pack's) comes from `src/game/guardrailsDoc.ts`, a typed copy of bazaar's
 GUARDRAILS.md and STRATEGY.md that says which commit it was read from; update it when those files change a value no
 denial shows. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
 The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
 
@@ -330,9 +331,71 @@ can reach them; the page works out what we lack from its own game stream. The ga
 - `show.rival_head`: the newest feed tick.
 
 Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
 The server reads them every 15 s on the shared pool, and 5 s after the taker's tick, and serves `GET /api/rivals` (the
 same token). `?mock=1` shows a made-up market. Proof: `sh scripts/test-sql.sh` runs `db/rival_albums.test.ts`.
+
+### Injection attempts (the show, `/debug` and `/injections`)
+
+Prompt injection is allowed in this game. Our agents only RECORD it (bazaar's `injection_attempts` table) and never
+report a team. The panel shows each attempt with its proof:
+
+- full page on `/injections`, the judges' view;
+- under the stream on `/debug`;
+- on the show, under the stage: the newest five, with a link to the rest. The show is projected, so it shows rows or
+  nothing: no setup note, no loading line, no error.
+
+Each row says when (time and tick), who (team, dealer or venue) and through which channel (feed, team thread, duel,
+dealer thread, offer text). It then shows the tags, their exact text, the proof to check it
+(`GET /api/threads/412 message 2210`) and what our agent did. `weak` rows sit behind a toggle with their count: code,
+a url or money words only, often a venue's own format notice.
+
+- **The views.** `db/injections.sql` adds `show.injection_attempts` (the newest 100 of each severity) and
+  `show.injection_counts` for the same read-only role. They feed a public route, so they publish only:
+  - rows of the real world;
+  - a duel's row (any row that names a duel) by `show.duel_lines`' own rule: once an admin opens `show.gate`, and only
+    for a closed duel with no live sibling;
+  - `our_response` as a verb from a closed list (`ignored`, `refused`, `walked`…), plus `: reason` only when the reason
+    has no digit, so a price or a limit never leaves. Anything else reads `recorded`.
+
+  They never select the recorder's `normalised` text or its unique-key ids. The rules live once, in
+  `show.injection_visible`, which is never granted. The window is an `ORDER BY ... LIMIT` inside the view: at 100,000
+  rows of 2,000 characters a read takes about 50 ms, and 5 ms with an index on `injection_attempts (severity, seen_at
+  desc, id desc)`. The shared pool runs with JIT off (`server/transcript/pg.ts`): with a production-sized `feed_events`
+  the planner's estimates cross `jit_above_cost`, and JIT compiling cost about 240 ms per read. Until bazaar creates
+  the table, the file creates nothing and succeeds: re-run it after. Apply it after the other show files, each time:
+  `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
+- **The server.** `server/injections/` reads both views every 10 s on the shared pool. A `proof` keeps only the
+  characters of an endpoint and its ids.
+  - It serves `GET /api/injections`, which is **public** like `/api/transcript` (the show has no token).
+  - The body is serialised once per change and carries an ETag, so an unchanged list costs a 304.
+  - A view not applied yet shows as "not set up yet", not as "nothing recorded".
+- **Their text is hostile.** It is rendered only as React text nodes: no `dangerouslySetInnerHTML`, no markdown, never
+  in an attribute.
+  - It is cut after 280 characters, with "Show all".
+  - Every hidden character is shown as a marker such as `⟨U+200B⟩`, so the trick is visible and cannot reorder the
+    line. That covers zero-width, bidi, tags, fillers and every default-ignorable code point; an emoji's own joiners
+    are left alone.
+  - A stack of combining marks becomes one marker (`⟨+238 marks⟩`), and the boxes clip their content, so nothing
+    paints over the page.
+- **No voice ever reads it.**
+  - `shared/injections.ts` ports the recorder's own `injection_flags`, checked against its Python output. Python and
+    Node ship different Unicode versions, so the port reads a text both ways: with every mark dropped (words joined)
+    and with every other non-ASCII character as a break (words split). It also refuses a text that reads differently
+    than it looks: a mark other than a plain accent, or a compatibility character beyond `… º ª µ ½ ¼ ¾` and the
+    no-break space.
+  - It flags whatever the recorder flags, on every code point: `server/injections/unicode-parity.test.ts` checks it
+    against `server/injections/recorder-unicode.json`, which `scripts/recorder-unicode.py` writes from bazaar's Python.
+    That covers what the recorder drops, what it calls odd, its look-alike letters, its case folds, and any character
+    between two words of a keyword phrase. Re-run the script after a change to `chooser.py` or a Python upgrade.
+  - The transcript mutes a dealer's quote when its RAW words have any of those shapes, or reach the view's
+    1,000-character cap (`server/transcript/rows.ts`, `muted`). The server then never vouches it to the TTS proxy, and
+    the page keeps it a caption, even with `?quotes=speak`. An item without the flag counts as muted.
+  - The proxy also refuses a quote with that shape, or one equal to a recorded attempt after the same cleaning (or, for a
+    quote the cleaning cut, its beginning).
+  - The panel and the voice pipeline never import each other (`server/injections/isolation.test.ts`).
+- `?mock=1` shows made-up attempts, hostile on purpose. Proof on a throwaway local Postgres: `sh scripts/test-sql.sh`
+  runs `db/injections.test.ts`.
 
 ## Real conversations (LIVE-T1)
 
