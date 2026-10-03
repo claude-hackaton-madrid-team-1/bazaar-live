@@ -7,8 +7,7 @@ import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../
 import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import type { HealthReport } from '../../shared/health.ts'
 import { rng } from '../stage/rng.ts'
-
-const TEAM_ID = /^t\d{1,3}$/
+import { TEAM_ID } from './teamThreads.ts'
 import type { GameEvent, Payload } from './state.ts'
 
 const SETS: Readonly<Record<string, readonly [string, readonly string[]]>> = {

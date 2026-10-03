@@ -930,6 +930,7 @@ const EN: GameStrings = {
     verdict: (v, side) => {
       switch (v.kind) {
         case 'capBelow':
+          if (v.cap == null) return `Their ask ${v.ask} P is above our cap: this won't close unless they come down.`
           return `${v.own ? 'Our cap' : 'The cap for this rarity'} ${v.cap} P < their ask ${v.ask} P: this won't close unless they come down${v.roundsToCap != null ? ` (~${v.roundsToCap} rounds at their pace)` : ''}.`
         case 'overValue':
           return `Their ask ${v.ask} P is above what it's worth to us (${v.value} P).`
@@ -1519,6 +1520,7 @@ const ES: GameStrings = {
     verdict: (v, side) => {
       switch (v.kind) {
         case 'capBelow':
+          if (v.cap == null) return `Su oferta ${v.ask} P pasa nuestro tope: no se cerrará si no bajan.`
           return `${v.own ? 'Nuestro tope' : 'El tope de esta rareza'} ${v.cap} P < su oferta ${v.ask} P: no se cerrará si no bajan${v.roundsToCap != null ? ` (~${v.roundsToCap} rondas a su ritmo)` : ''}.`
         case 'overValue':
           return `Su oferta ${v.ask} P pasa lo que vale para nosotros (${v.value} P).`
