@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { TranscriptEntry } from '../show/engine'
 import { Spoken } from '../stage/Bubbles'
-import { useStrings } from './langContext'
+import { useStrings } from './lang'
 
 function speakerName(t: ReturnType<typeof useStrings>, speaker: TranscriptEntry['speaker']): string {
   switch (speaker) {

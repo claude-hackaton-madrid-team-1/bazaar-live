@@ -206,7 +206,7 @@ export const EN: Pack = {
   ],
   TICK: [
     v('calm', S('Tick, tock… we are at tick {tick} already.'), B("And nobody's made a move yet.")),
-    v('eager', B('Tick {tick}! Let us see what is cooking.'), S('[whispers] Quiet, you can hear the machines think.')),
+    v('eager', B("Tick {tick}! Let's see what is cooking."), S('[whispers] Quiet, you can hear the machines think.')),
     v('sarcastic', S('Tick {tick} and here we are, cool as ever.'), B('[sarcastic] The thrill. The vertigo.')),
     v('eager', S('[excited] Another tick, number {tick}! Somebody do something.'), B("I'm ready, you know me.")),
     v('calm', B('We are at tick {tick}.'), S('[whispers] And I am counting the seconds.')),
@@ -219,7 +219,7 @@ export const EN: Pack = {
   MARKET_TEST: [
     v('eager', S('Market Test session: every venue gets the same book of buyers and sellers.'), B("[whispers] Time to show who's the best go-between.")),
     v('calm', B("They say there's a Market Test. Are we being graded?"), S("We are. Smile and don't touch anything odd.")),
-    v('sarcastic', S('Market Test is on. Let us hope the synthetic buyers haggle well.'), B('[laughs] They probably have no idea what a prima is.')),
+    v('sarcastic', S("Market Test is on. Let's hope the synthetic buyers haggle well."), B('[laughs] They probably have no idea what a prima is.')),
   ],
   SIMULATOR: [
     v('calm', S('We are on the simulator today. Mistakes are free here.'), B("Then let's make magnificent ones.")),

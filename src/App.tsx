@@ -4,8 +4,7 @@ import { readConfig } from './config'
 import { Stage } from './stage/Stage'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
-import { LangProvider } from './ui/lang'
-import { STRINGS } from './ui/strings'
+import { useLang, useStrings } from './ui/lang'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
 import { unlockWebSpeech } from './tts/webspeech'
@@ -13,13 +12,15 @@ import { useShow } from './ui/useShow'
 
 export default function App() {
   const config = useMemo(() => readConfig(window.location.search), [])
+  const lang = useLang()
+  const t = useStrings()
   const { state, speech } = useShow(config)
   const [started, setStarted] = useState(false)
   const { muted, setMuted } = speech
 
   useEffect(() => {
-    document.documentElement.lang = config.lang
-  }, [config.lang])
+    document.documentElement.lang = lang
+  }, [lang])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -35,13 +36,12 @@ export default function App() {
   }, [muted, setMuted])
 
   return (
-    <LangProvider lang={config.lang}>
     <MotionConfig reducedMotion="user">
       <div className="app">
         <Header state={state} speech={speech} mock={config.mock} />
         <Notice state={state} mock={config.mock} />
         <main className="main">
-          <ErrorBoundary fallback={<div className="fallback">{STRINGS[config.lang].fallback}</div>}>
+          <ErrorBoundary fallback={<div className="fallback">{t.fallback}</div>}>
             <Stage state={state} />
           </ErrorBoundary>
           <Transcript entries={state.transcript} />
@@ -57,6 +57,5 @@ export default function App() {
         />
       )}
     </MotionConfig>
-    </LangProvider>
   )
 }

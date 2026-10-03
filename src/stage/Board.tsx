@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { BoardCard } from '../show/engine'
-import { useStrings } from '../ui/langContext'
+import { useStrings } from '../ui/lang'
 
 const HOOD_COLORS: Readonly<Record<string, string>> = {
   LAV: '#e76f51',

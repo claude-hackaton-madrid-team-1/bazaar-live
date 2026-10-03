@@ -54,8 +54,8 @@ function ctxOf(d: PublicDecision | null, dialogue: DialogueContext, extra: Parti
     values: {
       ...L.NO_VALUES,
       card: cardName(ref, lang),
-      price: primas(move.price ?? inputs.price ?? move.wantCash),
-      ask: primas(inputs.ask ?? inputs.herAsk),
+      price: primas(move.price ?? inputs.price ?? move.wantCash, lang),
+      ask: primas(inputs.ask ?? inputs.herAsk, lang),
       item: itemName(inputs.item ?? ref, lang),
       dealerName: dealerName(dealer, lang),
       verdict: verdictWords(d?.jevVerdict, lang),
@@ -245,6 +245,30 @@ const SITUATION_BANKS: Readonly<Record<Situation['topic'], BankKey>> = {
  * a quiet market, a new tick...). `n` counts the situational beats so far.
  */
 export function situationBeat(n: number, situation: Situation, dialogue: DialogueContext): Beat {
+  const plan = planSituation(situation, dialogue)
+  return buildSituationBeat(n, situation, plan)
+}
+
+/**
+ * Like situationBeat, but null when every line that could be said was said within the memory window:
+ * the idle talk keeps quiet rather than repeat itself (the spec: no line repeats within N minutes).
+ */
+export function situationBeatIfFresh(n: number, situation: Situation, dialogue: DialogueContext): Beat | null {
+  const plan = planSituation(situation, dialogue)
+  const { memory, now = Date.now() } = dialogue
+  if (memory) {
+    const pool = L.PACKS[dialogue.lang][plan.key].filter((v) => L.usable(v.lines, plan.ctx.values))
+    if (pool.length > 0 && pool.every((v) => memory.recent(v, now))) return null
+  }
+  return buildSituationBeat(n, situation, plan)
+}
+
+interface SituationPlan {
+  readonly key: BankKey
+  readonly ctx: Ctx
+}
+
+function planSituation(situation: Situation, dialogue: DialogueContext): SituationPlan {
   const ctx = ctxOf(null, dialogue)
   const values: L.SlotValues = {
     ...ctx.values,
@@ -253,11 +277,14 @@ export function situationBeat(n: number, situation: Situation, dialogue: Dialogu
     hood: situation.topic === 'new_page' ? situation.hood : null,
     tick: situation.topic === 'tick' ? String(situation.tick) : null,
   }
-  const filled: Ctx = { ...ctx, values }
   // Closed doors with no countdown to speak of use the bare bank, which needs no slots.
   const key = situation.topic === 'doors_closed' && situation.eta === null && situation.opens === null ? 'DOORS_CLOSED_BARE' : SITUATION_BANKS[situation.topic]
+  return { key, ctx: { ...ctx, values } }
+}
+
+function buildSituationBeat(n: number, situation: Situation, plan: SituationPlan): Beat {
   const seed = seedOf(`${situation.topic}-${n}`)
-  const built = part(key, situation.topic, filled, seed, { kind: 'talk' }, situation.topic === 'new_page' || situation.topic === 'market_test' ? PRIORITY.news : PRIORITY.other)
+  const built = part(plan.key, situation.topic, plan.ctx, seed, { kind: 'talk' }, situation.topic === 'new_page' || situation.topic === 'market_test' ? PRIORITY.news : PRIORITY.other)
   return {
     id: `${situation.topic}-${n}`,
     agent: n % 2 === 0 ? 'maker' : 'taker',

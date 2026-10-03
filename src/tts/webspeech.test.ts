@@ -91,12 +91,23 @@ describe('createWebSpeech', () => {
     expect(spoken.volume).toBeLessThan(1)
   })
 
-  it('uses the language tag alone when the browser has no voice for it', async () => {
+  it('never speaks a line with another language\'s voice: no es voice means the text is shown, not spoken', async () => {
     const f = fakeSynth([{ name: 'Samantha', lang: 'en-US', localService: true }])
-    await createWebSpeech({ synth: f.synth, makeUtterance: f.makeUtterance }).speak(u('buyer', 'Hola.'), new AbortController().signal)
-    const spoken = f.spoken[0] as unknown as { voice: VoiceLike | null; lang: string }
-    expect(spoken.voice).toBeNull()
-    expect(spoken.lang).toBe('es-ES')
+    const provider = createWebSpeech({ synth: f.synth, makeUtterance: f.makeUtterance })
+    await provider.speak(u('buyer', 'Hola.'), new AbortController().signal)
+    expect(f.spoken).toEqual([])
+    await provider.speak(u('buyer', 'Hello.', 'en'), new AbortController().signal)
+    expect(f.spoken.length).toBe(1)
+  })
+
+  it('only picks a voice whose language matches the line (es-* for es, en-* for en)', async () => {
+    const f = fakeSynth([{ name: 'Samantha', lang: 'en-US' }, { name: 'Mónica', lang: 'es-ES' }, { name: 'Thomas', lang: 'fr-FR' }])
+    const provider = createWebSpeech({ synth: f.synth, makeUtterance: f.makeUtterance })
+    for (const speaker of ['buyer', 'seller', 'abuela', 'chato', 'narrator'] as const) await provider.speak(u(speaker, 'Hola.'), new AbortController().signal)
+    for (const x of f.spoken) expect((x as unknown as { voice: VoiceLike }).voice.lang.startsWith('es')).toBe(true)
+    f.spoken.length = 0
+    for (const speaker of ['buyer', 'abuela'] as const) await provider.speak(u(speaker, 'Hello.', 'en'), new AbortController().signal)
+    for (const x of f.spoken) expect((x as unknown as { voice: VoiceLike }).voice.lang.startsWith('en')).toBe(true)
   })
 
   it('says nothing for a line that is only tags', async () => {

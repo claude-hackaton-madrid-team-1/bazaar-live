@@ -146,7 +146,8 @@ describe('slots and vocab', () => {
   })
 
   it('writes countdowns in minutes under two hours, then whole hours, and refuses nonsense', () => {
-    expect(etaWords(1, 'es')).toBe('1 minuto')
+    expect(etaWords(1, 'es')).toBeNull() // under two minutes there is no countdown to speak of
+    expect(etaWords(2, 'es')).toBe('2 minutos')
     expect(etaWords(45, 'es')).toBe('45 minutos')
     expect(etaWords(95, 'en')).toBe('95 minutes')
     expect(etaWords(150, 'es')).toBe('2 horas')
@@ -160,6 +161,7 @@ describe('slots and vocab', () => {
     expect(opensWords(0, 6, 9, 0, 'es')).toBe('hoy a las 9:00')
     expect(opensWords(1, 0, 9, 5, 'es')).toBe('mañana a las 9:05')
     expect(opensWords(3, 6, 21, 30, 'es')).toBe('el sábado a las 21:30')
+    expect(opensWords(1, 0, 1, 5, 'es')).toBe('mañana a la 1:05')
     expect(opensWords(0, 6, 9, 0, 'en')).toBe('today at 9:00')
     expect(opensWords(2, 1, 10, 0, 'en')).toBe('on Monday at 10:00')
     expect(opensWords(-1, 1, 10, 0, 'en')).toBeNull()

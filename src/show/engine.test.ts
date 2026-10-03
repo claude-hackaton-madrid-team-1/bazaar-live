@@ -279,7 +279,7 @@ describe('a gap-free voice queue', () => {
     a.ingest(event(-41, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
     await settle()
     a.stop()
-    expect(sleeps.slice(0, 2)).toEqual([0, 0]) // a voice sets the pace
+    expect(sleeps.slice(0, 2)).toEqual([500, 500]) // a voice sets the pace; a caption still stays a moment if the voice fails
     const mutedSleeps: number[] = []
     const muted = new SpeechQueue({ provider: { name: 'webspeech', speak: async () => undefined } })
     muted.setMuted(true)
@@ -289,5 +289,58 @@ describe('a gap-free voice queue', () => {
     await settle()
     b.stop()
     expect(mutedSleeps[0]).toBeGreaterThan(1000) // text is read at reading speed
+  })
+})
+
+describe('switching the language (the selector)', () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('stops the beat being played, drops what was queued, and says the next things in the new language', async () => {
+    const spoken: Utterance[] = []
+    const release: (() => void)[] = []
+    const provider: SpeechProvider = { name: 'webspeech', speak: (u) => new Promise<void>((resolve) => { spoken.push(u); release.push(resolve) }) }
+    let current: 'es' | 'en' = 'es'
+    const speech = new SpeechQueue({ provider, currentLang: () => current })
+    const show = new ShowEngine({ speech, idle: false, sleep: () => Promise.resolve(), lang: 'es' })
+    show.start()
+    show.ingest(event(-50, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
+    show.ingest(event(-51, { kind: 'post_ask', inputs: { ref: 'LAT-09', price: 68 } }), false)
+    await settle()
+    expect(spoken[0]?.lang).toBe('es')
+    expect(show.getSnapshot().beat).not.toBeNull()
+    current = 'en'
+    show.setLang('en')
+    release.forEach((r) => r())
+    await settle()
+    const s = show.getSnapshot()
+    expect(s.line).toBeNull()
+    expect(s.beat).toBeNull()
+    expect(spoken.length).toBe(1) // nothing else of the old language was started
+    show.ingest(event(-52, { kind: 'hold_ask', jev: { verdict: 'hold' }, inputs: { ref: 'MAL-03' } }), false)
+    await settle()
+    release.forEach((r) => r())
+    await settle()
+    const later = spoken.slice(1)
+    expect(later.length).toBeGreaterThan(0)
+    for (const u of later) {
+      expect(u.lang).toBe('en')
+      expect(isShowLine(u.speaker, u.text, 'en'), u.text).toBe(true)
+    }
+    show.stop()
+  })
+
+  it('is a no-op for the same language, and the idle talk follows the new language', async () => {
+    const spoken: Utterance[] = []
+    const provider: SpeechProvider = { name: 'webspeech', speak: async (u) => void spoken.push(u) }
+    const show = new ShowEngine({ speech: new SpeechQueue({ provider }), idle: true, idleAfterMs: 5, lang: 'es', sleep: () => Promise.resolve() })
+    show.setLang('es')
+    show.start()
+    await wait(80)
+    show.setLang('en')
+    spoken.length = 0
+    await wait(150)
+    show.stop()
+    expect(spoken.length).toBeGreaterThan(0)
+    expect(spoken.every((u) => u.lang === 'en' && isShowLine(u.speaker, u.text, 'en'))).toBe(true)
   })
 })

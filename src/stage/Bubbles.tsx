@@ -3,7 +3,7 @@ import { Fragment } from 'react'
 import type { AgentId } from '../model/events'
 import type { Line } from '../show/beat'
 import { verdictFamily, verdictHue } from '../show/jev'
-import { useStrings } from '../ui/langContext'
+import { useStrings } from '../ui/lang'
 
 const TAG = /\[([a-z][a-z ]{0,30})\]/gi
 

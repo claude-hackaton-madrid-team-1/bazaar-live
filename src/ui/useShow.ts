@@ -9,7 +9,9 @@ import { SpeechQueue } from '../tts/queue'
 import { fetchRemoteProviders, type RemoteName } from '../tts/remote'
 import { providerFactory, resolveChoice } from '../tts/select'
 import type { ProviderName } from '../tts/types'
-import { createWebSpeech, webSpeechAvailable } from '../tts/webspeech'
+import { createWebSpeech, hasVoiceFor, webSpeechAvailable } from '../tts/webspeech'
+import type { Lang } from '../../shared/lang.ts'
+import { getLang, subscribeLang, useLang } from './lang'
 
 export interface SpeechControls {
   readonly muted: boolean
@@ -19,6 +21,8 @@ export interface SpeechControls {
   readonly available: readonly RemoteName[]
   readonly active: ProviderName | 'off'
   readonly lastError: string | null
+  /** The language the browser has no voice for, when speaking with the browser's voices (the text is shown, not spoken). */
+  readonly noVoiceFor: Lang | null
 }
 
 export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechControls } {
@@ -30,11 +34,12 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
       new SpeechQueue({
         provider: providerFor('webspeech'),
         fallback: providerFor('webspeech'),
+        currentLang: getLang,
         onError: (error, _u, provider) => setLastError(`${provider}: ${error instanceof Error ? error.message : String(error)}`),
       }),
     [providerFor],
   )
-  const engine = useMemo(() => new ShowEngine({ speech: queue, lang: config.lang, idleAfterMs: config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.lang, config.idleSeconds])
+  const engine = useMemo(() => new ShowEngine({ speech: queue, lang: getLang(), idleAfterMs: config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.idleSeconds])
   const state = useSyncExternalStore(engine.subscribe, engine.getSnapshot)
 
   const [muted, setMuted] = useState(true)
@@ -51,13 +56,33 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   }, [])
   useEffect(() => queue.setProvider(providerFor(active)), [queue, providerFor, active])
   useEffect(() => queue.setMuted(muted || active === 'off'), [queue, muted, active])
+  // The selector changes the language: the engine re-picks banks and drops what is queued in the old one.
+  useEffect(() => {
+    engine.setLang(getLang())
+    return subscribeLang((l) => engine.setLang(l))
+  }, [engine])
+  const noVoiceFor = useMissingVoice(hasWebSpeech && active === 'webspeech')
   useEffect(() => {
     engine.start()
     return () => engine.stop()
   }, [engine])
   useSources(engine, config)
 
-  return { state, speech: { muted, setMuted, choice, setChoice, available, active, lastError } }
+  return { state, speech: { muted, setMuted, choice, setChoice, available, active, lastError, noVoiceFor } }
+}
+
+/** The language the browser has no voice for (so the show only shows its text), or null. Voices load late: it listens. */
+function useMissingVoice(watching: boolean): Lang | null {
+  const lang = useLang()
+  const [missing, setMissing] = useState<Lang | null>(null)
+  useEffect(() => {
+    if (!watching) return
+    const check = () => setMissing(hasVoiceFor(lang) ? null : lang)
+    check()
+    window.speechSynthesis.addEventListener('voiceschanged', check)
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', check)
+  }, [watching, lang])
+  return watching ? missing : null
 }
 
 function useSources(engine: ShowEngine, config: ShowConfig): void {

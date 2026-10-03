@@ -70,6 +70,39 @@ describe('SpeechQueue', () => {
     expect(starts.c).toBe(ends.b)
   })
 
+  it('never speaks a line of another language: it resolves unspoken, queued or not', async () => {
+    const p = timedProvider('webspeech', 100)
+    let current: 'es' | 'en' = 'es'
+    const q = new SpeechQueue({ provider: p.provider, currentLang: () => current })
+    const es = (id: string) => ({ ...line(id), lang: 'es' as const })
+    const en = (id: string) => ({ ...line(id), lang: 'en' as const })
+    const first = q.say(es('a'))
+    const queued = q.say(es('b'))
+    await vi.advanceTimersByTimeAsync(10)
+    current = 'en' // the visitor switched while "a" was being said and "b" waited
+    q.clear()
+    await Promise.all([first, queued])
+    expect(p.log).toEqual(['start a', 'abort a'])
+    await q.say(es('c')) // an old-language line arriving late is dropped
+    const fresh = q.say(en('d'))
+    await vi.advanceTimersByTimeAsync(200)
+    await fresh
+    expect(p.log).toEqual(['start a', 'abort a', 'start d', 'end d'])
+    q.prefetch(es('e')) // and is not prefetched either
+  })
+
+  it('a line queued in the old language is skipped at its turn when the language changed behind it', async () => {
+    const p = timedProvider('webspeech', 100)
+    let current: 'es' | 'en' = 'es'
+    const q = new SpeechQueue({ provider: p.provider, currentLang: () => current })
+    const all = [q.say({ ...line('a'), lang: 'es' }), q.say({ ...line('b'), lang: 'es' })]
+    await vi.advanceTimersByTimeAsync(10)
+    current = 'en'
+    await vi.advanceTimersByTimeAsync(500)
+    await Promise.all(all)
+    expect(p.log).toEqual(['start a', 'end a']) // "b" never started
+  })
+
   it('mute stops the current line and resolves the waiting ones unspoken', async () => {
     const p = timedProvider('webspeech', 1000)
     const q = new SpeechQueue({ provider: p.provider })

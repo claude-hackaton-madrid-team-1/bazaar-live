@@ -58,6 +58,8 @@ export interface Vocab {
   readonly tomorrow: string
   readonly on: string
   readonly at: string
+  /** The preposition before one o'clock ("a la 1:05"). */
+  readonly atOne: string
 }
 
 export const VOCAB: Readonly<Record<Lang, Vocab>> = {
@@ -81,7 +83,7 @@ export const VOCAB: Readonly<Record<Lang, Vocab>> = {
     },
     errors: {
       insufficient_cash: 'no hay efectivo suficiente',
-      wait_for_tick: 'hay que esperar al siguiente tick',
+      wait_for_tick: 'hay que esperar al siguiente turno',
       rate_limited: 'vamos demasiado rápido',
       persona_quota: 'la cuota de esta hora está llena',
       cooloff: 'toca enfriarse un rato',
@@ -110,6 +112,7 @@ export const VOCAB: Readonly<Record<Lang, Vocab>> = {
     tomorrow: 'mañana',
     on: 'el',
     at: 'a las',
+    atOne: 'a la',
   },
   en: {
     number: 'number',
@@ -158,6 +161,7 @@ export const VOCAB: Readonly<Record<Lang, Vocab>> = {
     tomorrow: 'tomorrow',
     on: 'on',
     at: 'at',
+    atOne: 'at',
   },
 }
 
@@ -165,7 +169,7 @@ const MAX_ETA_HOURS = 72
 
 /** A wait as words ("45 minutos", "2 hours"), or null when it is not a usable countdown. */
 export function etaWords(minutes: number | null | undefined, lang: Lang): string | null {
-  if (minutes === null || minutes === undefined || !Number.isFinite(minutes) || minutes < 1 || minutes > MAX_ETA_HOURS * 60) return null
+  if (minutes === null || minutes === undefined || !Number.isFinite(minutes) || minutes < 2 || minutes > MAX_ETA_HOURS * 60) return null
   const vocab = VOCAB[lang]
   // Under two hours the minutes are what people count; after that, whole hours (never more than there are).
   if (minutes < 120) {
@@ -182,7 +186,7 @@ export function opensWords(dayOffset: number, weekday: number, hour: number, min
   const vocab = VOCAB[lang]
   const clock = `${hour}:${String(minute).padStart(2, '0')}`
   const day = dayOffset === 0 ? vocab.today : dayOffset === 1 ? vocab.tomorrow : `${vocab.on} ${WEEKDAYS[lang][weekday]}`
-  return `${day} ${vocab.at} ${clock}`
+  return `${day} ${hour === 1 ? vocab.atOne : vocab.at} ${clock}`
 }
 
 function escape(text: string): string {
@@ -195,7 +199,7 @@ export const SLOT_NAMES = ['card', 'price', 'ask', 'item', 'dealerName', 'verdic
 export type Slot = (typeof SLOT_NAMES)[number]
 
 const HOOD_NAMES = Object.values(HOODS)
-const PRIMAS = '\\d{1,8}(?:\\.\\d)? primas?'
+const PRIMAS = '\\d{1,8}(?:[.,]\\d)? primas?'
 
 /** What each slot may contain, per language: exactly the words src/show/words.ts produces. */
 export function slotPatterns(lang: Lang): Readonly<Record<Slot, string>> {
@@ -212,7 +216,7 @@ export function slotPatterns(lang: Lang): Readonly<Record<Slot, string>> {
     kind: oneOf([...Object.values(vocab.kinds), vocab.unknownKind]),
     count: '\\d{1,3}',
     eta: `\\d{1,3} ${oneOf([...vocab.minute, ...vocab.hour])}`,
-    opens: `(?:${escape(vocab.today)}|${escape(vocab.tomorrow)}|${escape(vocab.on)} ${oneOf(WEEKDAYS[lang])}) ${escape(vocab.at)} \\d{1,2}:\\d{2}`,
+    opens: `(?:${escape(vocab.today)}|${escape(vocab.tomorrow)}|${escape(vocab.on)} ${oneOf(WEEKDAYS[lang])}) (?:${escape(vocab.at)}|${escape(vocab.atOne)}) \\d{1,2}:\\d{2}`,
     hood: oneOf(HOOD_NAMES),
     tick: '\\d{1,7}',
   }

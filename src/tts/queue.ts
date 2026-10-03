@@ -7,6 +7,7 @@
  * - a failing provider falls back to `fallback` for that line, and after `maxFailures` failures in a
  *   row the queue uses the fallback alone for `coolDownMs`.
  */
+import type { Lang } from '../../shared/lang.ts'
 import type { ProviderName, SpeechProvider, Utterance } from './types'
 
 export interface QueueOptions {
@@ -19,6 +20,8 @@ export interface QueueOptions {
   readonly timeoutMs?: (u: Utterance) => number
   readonly onError?: (error: unknown, u: Utterance, provider: ProviderName) => void
   readonly onSpeaking?: (u: Utterance | null) => void
+  /** The language being shown now: a line of another language is never spoken (it resolves unspoken). */
+  readonly currentLang?: () => Lang
 }
 
 interface Pending {
@@ -76,7 +79,7 @@ export class SpeechQueue {
   }
 
   say(u: Utterance): Promise<void> {
-    if (this.isMuted) return Promise.resolve()
+    if (this.isMuted || this.staleLang(u)) return Promise.resolve()
     return new Promise<void>((resolve) => {
       this.pending = [...this.pending, { u, done: resolve }]
       this.active().prefetch?.(u)
@@ -86,7 +89,12 @@ export class SpeechQueue {
 
   /** Ask the active provider to fetch a line's audio ahead of time (no-op for local voices). */
   prefetch(u: Utterance): void {
-    if (!this.isMuted) this.active().prefetch?.(u)
+    if (!this.isMuted && !this.staleLang(u)) this.active().prefetch?.(u)
+  }
+
+  private staleLang(u: Utterance): boolean {
+    const current = this.opts.currentLang?.()
+    return current !== undefined && u.lang !== current
   }
 
   /** Drop everything: the current line stops, waiting lines resolve unspoken. */
@@ -124,7 +132,8 @@ export class SpeechQueue {
   }
 
   private async speakOne(u: Utterance): Promise<void> {
-    if (this.isMuted) return
+    // A line queued before the language changed is dropped here too, never spoken with the new voices.
+    if (this.isMuted || this.staleLang(u)) return
     const provider = this.active()
     this.opts.onSpeaking?.(u)
     try {

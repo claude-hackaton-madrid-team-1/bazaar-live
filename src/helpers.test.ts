@@ -11,9 +11,9 @@ import { modeOf } from './ui/mode'
 
 describe('readConfig', () => {
   it('reads ?mock, ?speed, ?tts and ?mode with safe defaults', () => {
-    expect(readConfig('')).toEqual({ mock: false, speed: 1, tts: 'auto', mockMode: 'live', lang: 'es', mockDoors: 'open', idleSeconds: null })
-    expect(readConfig('?mock=1&speed=20&tts=Gemini&mode=dry&lang=EN-gb&doors=closed')).toEqual({ mock: true, speed: 8, tts: 'gemini', mockMode: 'dry', lang: 'en', mockDoors: 'closed', idleSeconds: null })
-    expect(readConfig('?mock&speed=abc&tts=shout&lang=fr')).toEqual({ mock: true, speed: 1, tts: 'auto', mockMode: 'live', lang: 'es', mockDoors: 'open', idleSeconds: null })
+    expect(readConfig('')).toEqual({ mock: false, speed: 1, tts: 'auto', mockMode: 'live', mockDoors: 'open', idleSeconds: null })
+    expect(readConfig('?mock=1&speed=20&tts=Gemini&mode=dry&lang=EN-gb&doors=closed')).toEqual({ mock: true, speed: 8, tts: 'gemini', mockMode: 'dry', mockDoors: 'closed', idleSeconds: null })
+    expect(readConfig('?mock&speed=abc&tts=shout&lang=fr')).toEqual({ mock: true, speed: 1, tts: 'auto', mockMode: 'live', mockDoors: 'open', idleSeconds: null })
     expect(readConfig('?idle=0').idleSeconds).toBe(2)
     expect(readConfig('?idle=9999').idleSeconds).toBe(600)
     expect(readConfig('?idle=abc').idleSeconds).toBeNull()

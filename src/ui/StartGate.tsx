@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useStrings } from './langContext'
+import { useStrings } from './lang'
 
 /**
  * Browsers only let a page speak after a click. The gate asks once: with sound, or muted.

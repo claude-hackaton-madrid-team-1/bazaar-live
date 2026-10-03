@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { DealerId } from '../show/beat'
-import { useStrings } from '../ui/langContext'
+import { useStrings } from '../ui/lang'
 import { Merchant, type Pose } from './Merchant'
 
 const POSE: Readonly<Record<string, Pose>> = { open: 'greet', bid: 'haggle', accept: 'triumph', walk: 'grumble' }

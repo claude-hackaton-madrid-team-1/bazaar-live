@@ -81,6 +81,11 @@ export function webSpeechAvailable(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
 }
 
+/** True when the browser has at least one voice that can speak `lang` (es-*, en-*). */
+export function hasVoiceFor(lang: Lang, synth: Pick<Synth, 'getVoices'> | null = webSpeechAvailable() ? (window.speechSynthesis as unknown as Synth) : null): boolean {
+  return synth !== null && Object.values(assignVoices(synth.getVoices(), lang)).some((v) => v !== null)
+}
+
 /** Some browsers (Safari) only allow speech that starts inside a click: prime it there. */
 export function unlockWebSpeech(): void {
   if (!webSpeechAvailable()) return
@@ -126,9 +131,14 @@ export function createWebSpeech<V extends VoiceLike = SpeechSynthesisVoice>(deps
       return new Promise<void>((resolve, reject) => {
         const utter = makeUtterance(params.text)
         const voice = voiceBook(u.lang)[u.speaker]
-        // The language tag is always set: even with no matching voice the browser picks a default one for it.
-        utter.lang = voice ? voice.lang : params.lang
-        if (voice) utter.voice = voice
+        // No voice of this language: show the text, do not speak it with another language's voice (the
+        // browser would pick its default voice for the tag, whatever language that is).
+        if (!voice) {
+          resolve()
+          return
+        }
+        utter.lang = voice.lang
+        utter.voice = voice
         utter.rate = params.rate
         utter.pitch = params.pitch
         utter.volume = params.volume

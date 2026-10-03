@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useMemo } from 'react'
 import { errorWords } from '../show/words'
-import { useLang, useStrings } from '../ui/langContext'
+import { useLang, useStrings } from '../ui/lang'
 import { rng } from './rng'
 
 /** A gold coin in original SVG: a disc, a rim, a small sun. */

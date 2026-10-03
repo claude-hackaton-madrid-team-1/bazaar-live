@@ -5,7 +5,7 @@ import { tagsOf, KNOWN_TAGS } from '../../shared/tags.ts'
 import type { AgentHealth, ShowEvent } from '../model/events'
 import { parseEnvelope } from '../model/sanitize'
 import { PRIORITY } from './beat'
-import { situationBeat, toBeat, type DialogueContext } from './dialogue'
+import { situationBeat, situationBeatIfFresh, toBeat, type DialogueContext } from './dialogue'
 import { LineMemory } from './memory'
 import { situationOf, type Narration, type Situation } from './situation'
 
@@ -175,5 +175,42 @@ describe('language: events and situations speak one language', () => {
         }
       }
     }
+  })
+})
+
+describe('the idle talk keeps quiet rather than repeat itself (review P1)', () => {
+  it('over forty minutes of closed doors no line returns inside the window, however small the bank', async () => {
+    const { ShowEngine } = await import('./engine')
+    const { SpeechQueue } = await import('../tts/queue')
+    const spoken: { at: number; text: string }[] = []
+    let clock = 0
+    const queue = new SpeechQueue({ provider: { name: 'webspeech', speak: async (u) => void spoken.push({ at: clock, text: u.text }) } })
+    const h = (agent: 'taker' | 'maker') => ({ ok: true, agent, mode: 'live' as const, tick: null, doors: 'closed', paused: true, nextOpens: null, tickSeconds: 60, serverTick: 1, target: 'real' as const })
+    const engine = new ShowEngine({ speech: queue, idle: false, sleep: () => Promise.resolve(), now: () => clock, lang: 'es' })
+    engine.setHealth('taker', h('taker'))
+    // Drive the same situation code the idle loop uses, every 29 s, in fake time.
+    const memory = new LineMemory(6 * MIN)
+    const said: { at: number; open: string }[] = []
+    let n = 0
+    for (clock = 0; clock < 40 * MIN; clock += 29_000) {
+      n += 1
+      const s: Situation = { topic: 'paused' }
+      const beat = situationBeatIfFresh(n, s, { lang: 'es', memory, now: clock })
+      if (beat) said.push({ at: clock, open: beat.lines[0]?.text ?? '' })
+    }
+    expect(said.length).toBeGreaterThan(3) // it still talks...
+    expect(said.length).toBeLessThan(40 * 60 / 29) // ...but not every time
+    for (const a of said) {
+      const again = said.find((b) => b.open === a.open && b.at > a.at)
+      if (again) expect(again.at - a.at, a.open).toBeGreaterThanOrEqual(6 * MIN)
+    }
+    expect(spoken).toEqual([])
+  })
+
+  it('always says news, even when the ambient bank is used up', () => {
+    const memory = new LineMemory(60 * MIN)
+    for (let i = 0; i < 10; i += 1) situationBeat(i, { topic: 'new_page', hood: 'El Retiro' }, { lang: 'es', memory, now: 0 })
+    expect(situationBeat(11, { topic: 'new_page', hood: 'El Retiro' }, { lang: 'es', memory, now: 0 }).lines.length).toBeGreaterThan(0)
+    expect(situationBeatIfFresh(12, { topic: 'new_page', hood: 'El Retiro' }, { lang: 'es', memory, now: 0 })).toBeNull()
   })
 })

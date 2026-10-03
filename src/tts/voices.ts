@@ -20,8 +20,8 @@ type Gender = 'f' | 'm'
 
 /** The voice each role should sound like; the pitch and rate in webspeech.ts finish the job. */
 const ROLE_GENDER: Readonly<Record<Speaker, Gender>> = { abuela: 'f', buyer: 'f', chato: 'm', seller: 'm', narrator: 'm' }
-/** Who picks first, so the characters that must stand out get the best-fitting voices. */
-const PICK_ORDER: readonly Speaker[] = ['abuela', 'chato', 'seller', 'buyer', 'narrator']
+/** Who picks first: the leads speak most, so they get the most native voices before the dealers do. */
+const PICK_ORDER: readonly Speaker[] = ['seller', 'buyer', 'abuela', 'chato', 'narrator']
 
 const FEMALE = /\b(monica|mónica|paulina|helena|laura|sabina|marisol|lucia|lucía|elvira|dalia|luciana|samantha|karen|moira|tessa|serena|kate|fiona|victoria|susan|zira|female|mujer)\b/i
 const MALE = /\b(jorge|juan|diego|carlos|pablo|alvaro|álvaro|enrique|miguel|alonso|daniel|alex|fred|oliver|arthur|thomas|david|mark|male|hombre)\b/i
@@ -63,22 +63,28 @@ function ranked<T extends VoiceLike>(voices: readonly T[], lang: Lang): T[] {
 
 export type VoiceMap<T extends VoiceLike> = Readonly<Record<Speaker, T | null>>
 
+/**
+ * The voices worth using: the most native tier only (every es-ES voice when there is one, not an es-MX
+ * one next to it); for English also the next tier (en-GB and en-US sound alike), so the cast has choice.
+ */
+function usableTiers<T extends VoiceLike>(pool: readonly T[], lang: Lang): T[] {
+  const best = pool[0] ? tierOf(pool[0], lang) : 0
+  const worst = lang === 'en' ? Math.max(best, 1) : best
+  return pool.filter((v) => tierOf(v, lang) <= worst)
+}
+
 /** One native voice per role (or null when the browser has none for the language). */
 export function assignVoices<T extends VoiceLike>(voices: readonly T[], lang: Lang): VoiceMap<T> {
-  const pool = ranked(voices, lang)
+  const pool = usableTiers(ranked(voices, lang), lang)
   const taken = new Set<T>()
   const out = Object.fromEntries(SPEAKERS.map((s) => [s, null])) as Record<Speaker, T | null>
   for (const role of PICK_ORDER) {
     const want = ROLE_GENDER[role]
     const free = pool.filter((v) => !taken.has(v))
+    // A free voice of the right gender, else one of unknown gender; sharing a voice of the right gender
+    // (the pitch still differs) beats giving a woman's part to a man's voice.
     const pick =
-      free.find((v) => genderOf(v) === want) ??
-      free.find((v) => genderOf(v) === null) ??
-      free[0] ??
-      // Fewer voices than characters: share, preferring one of the right gender.
-      pool.find((v) => genderOf(v) === want) ??
-      pool[0] ??
-      null
+      free.find((v) => genderOf(v) === want) ?? free.find((v) => genderOf(v) === null) ?? pool.find((v) => genderOf(v) === want) ?? free[0] ?? pool[0] ?? null
     out[role] = pick
     if (pick) taken.add(pick)
   }

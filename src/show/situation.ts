@@ -8,7 +8,6 @@ import type { Lang } from '../../shared/lang.ts'
 import { etaWords, opensWords } from '../../shared/vocab.ts'
 import type { AgentHealth, AgentId } from '../model/events'
 import type { FeedStatus } from '../net/feed'
-import type { Topic } from './mood'
 
 export interface Narration {
   readonly health: Readonly<Record<AgentId, AgentHealth | null>>
@@ -89,4 +88,3 @@ export function situationOf(n: Narration, lang: Lang, turn: number): Situation {
   return ambient[turn % ambient.length] as Situation
 }
 
-export const topicOf = (s: Situation): Topic => s.topic

@@ -28,10 +28,12 @@ export function itemName(item: string | undefined, lang: Lang): string {
 
 const MAX_PRIMAS = 10_000_000 // the game's own cap on prices and cash
 
-export function primas(value: number | undefined | null): string | null {
+export function primas(value: number | undefined | null, lang: Lang = 'en'): string | null {
   if (value === undefined || value === null || !Number.isFinite(value) || value < 0 || value > MAX_PRIMAS) return null
   const n = Math.round(value * 10) / 10
-  return `${n} ${n === 1 ? 'prima' : 'primas'}`
+  // Spanish writes 12,5 and a Spanish voice reads the comma, not a "punto".
+  const written = lang === 'es' ? String(n).replace('.', ',') : String(n)
+  return `${written} ${n === 1 ? 'prima' : 'primas'}`
 }
 
 const LABEL = /^[a-z0-9_]{1,30}$/

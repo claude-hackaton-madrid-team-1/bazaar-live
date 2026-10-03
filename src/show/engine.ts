@@ -11,7 +11,7 @@ import type { AgentHealth, AgentId, OpenOffer, ShowEvent } from '../model/events
 import type { FeedStatus } from '../net/feed'
 import type { SpeechQueue } from '../tts/queue'
 import type { Beat, Cue, DealerId, Line, Side } from './beat'
-import { holdsBeat, situationBeat, toBeat, type DialogueContext } from './dialogue'
+import { holdsBeat, situationBeat, situationBeatIfFresh, toBeat, type DialogueContext } from './dialogue'
 import { Director } from './director'
 import { LineMemory } from './memory'
 import { situationOf } from './situation'
@@ -77,6 +77,10 @@ const LATE_HOODS: ReadonlySet<string> = new Set(['RET', 'CHA'])
 /** The Market Test runs every two game hours (RULES.md): a session starts each time this slot changes. */
 const MARKET_TEST_HOURS = 2
 const NOTIFY_MS = 16
+/** How many situations the idle talk tries before it decides to keep quiet. */
+const AMBIENT_ATTEMPTS = 4
+/** A caption stays at least this long when a voice sets the pace (a failed voice must not flash it away). */
+const MIN_CAPTION_MS = 500
 const STALE_TICKS = 2
 
 export const INITIAL_STATE: ShowState = {
@@ -184,7 +188,9 @@ export class ShowEngine {
   private readonly director: Director
   private readonly sleep: (ms: number) => Promise<void>
   private readonly idle: boolean
-  private readonly lang: Lang
+  private lang: Lang
+  /** Bumped on every language change: a beat started in the old language stops at once. */
+  private langEpoch = 0
   private readonly memory: LineMemory
   private readonly clock: () => number
   private readonly idleAfterMs: number | null
@@ -251,6 +257,21 @@ export class ShowEngine {
 
   setHealth(agent: AgentId, health: AgentHealth | null): void {
     this.set({ health: { ...this.state.health, [agent]: health } })
+  }
+
+  /**
+   * Changes the language of everything said from now on: the beat being played stops, the queued beats
+   * and the queued voices of the old language are dropped, and the next lines come from the new pack.
+   */
+  setLang(lang: Lang): void {
+    if (lang === this.lang) return
+    this.lang = lang
+    this.langEpoch += 1
+    this.speech.clear()
+    this.director.clear()
+    this.activityAt = Date.now()
+    this.set({ line: null, beat: null, reach: null, deal: null, denied: null, fail: null, jev: null, dealer: null })
+    this.wake?.()
   }
 
   setFeed(agent: AgentId, status: FeedStatus): void {
@@ -349,11 +370,20 @@ export class ShowEngine {
   /** Queue one beat about the situation; one-shot news is consumed by being said. */
   private situational(): void {
     this.activityAt = Date.now()
-    this.idleCount += 1
-    const situation = situationOf(this.narration(), this.lang, this.idleCount)
-    if (situation.topic === 'new_page') this.freshHood = null
-    if (situation.topic === 'market_test') this.freshMarketTest = false
-    this.director.push(situationBeat(this.idleCount, situation, this.dialogue(true)))
+    // Ambient talk needs a line that was not said within the memory window: when a small bank (a pause,
+    // no signal) is used up, the next situation gets a turn, and if none has a fresh line the stage stays
+    // quiet instead of looping. News (a new page, a Market Test) is always said.
+    for (let attempt = 0; attempt < AMBIENT_ATTEMPTS; attempt += 1) {
+      this.idleCount += 1
+      const situation = situationOf(this.narration(), this.lang, this.idleCount)
+      const news = situation.topic === 'new_page' || situation.topic === 'market_test'
+      const beat = news ? situationBeat(this.idleCount, situation, this.dialogue(true)) : situationBeatIfFresh(this.idleCount, situation, this.dialogue(true))
+      if (!beat) continue
+      if (situation.topic === 'new_page') this.freshHood = null
+      if (situation.topic === 'market_test') this.freshMarketTest = false
+      this.director.push(beat)
+      return
+    }
   }
 
   /** How long a quiet stage waits: less when the doors are closed or the game is paused or unreachable. */
@@ -385,11 +415,15 @@ export class ShowEngine {
 
   private waitForWork(ms: number): Promise<void> {
     return new Promise<void>((resolve) => {
-      const timer = setTimeout(done, ms)
-      function done(): void {
+      // eslint-disable-next-line prefer-const -- `done` clears the timer that is created after it
+      let timer: ReturnType<typeof setTimeout>
+      const done = (): void => {
         clearTimeout(timer)
+        // Only clear our own wake-up: a restarted loop (StrictMode) may have set a newer one.
+        if (this.wake === done) this.wake = null
         resolve()
       }
+      timer = setTimeout(done, ms)
       this.wake = done
     })
   }
@@ -406,7 +440,6 @@ export class ShowEngine {
       // before that (a tick, a replayed event) only moves the clock forward.
       const delay = this.idleDelay()
       await this.waitForWork(Math.max(50, delay - (Date.now() - this.activityAt)))
-      this.wake = null
       if (this.running && this.idle && this.director.size === 0 && Date.now() - this.activityAt >= delay) this.situational()
     }
   }
@@ -436,22 +469,27 @@ export class ShowEngine {
     this.prefetch(beat)
     this.prefetch(this.director.peek())
     this.set(this.cuePatch(beat))
-    const utterance = (line: Line, i: number) => ({ id: `${beat.id}#${i}`, speaker: line.speaker, lang: this.lang, text: line.text })
+    // The beat's lines are all in the language it was built in; a language change (epoch) ends it.
+    const lang = this.lang
+    const epoch = this.langEpoch
+    const stale = () => !this.running || this.generation !== generation || this.langEpoch !== epoch
+    const utterance = (line: Line, i: number) => ({ id: `${beat.id}#${i}`, speaker: line.speaker, lang, text: line.text })
     // The next line goes into the voice queue while the current one is still being said, so the queue
     // never waits for the stage and there is no silence between lines.
     let current: Promise<void> = Promise.resolve()
     for (const [i, line] of beat.lines.entries()) {
-      if (!this.running || this.generation !== generation) return
+      if (stale()) return
       this.set({ line, transcript: this.appendLines(beat, 'played', line) })
       if (i === 0) current = this.speech.say(utterance(line, 0))
       const following = beat.lines[i + 1]
       const next = following ? this.speech.say(utterance(following, i + 1)) : Promise.resolve()
       // A voice sets the pace; the reading time only applies to a muted or silent stage.
-      const reading = this.speech.audible ? 0 : readingMs(line.text, this.director.size + this.speech.backlog)
+      const reading = this.speech.audible ? MIN_CAPTION_MS : readingMs(line.text, this.director.size + this.speech.backlog)
       await Promise.all([current, this.sleep(reading)])
       current = next
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)
+    if (stale()) return
     this.set(this.clearPatch())
     this.activityAt = Date.now()
   }

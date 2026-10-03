@@ -3,7 +3,8 @@ import { TTS_CHOICES, type TtsChoice } from '../config'
 import { AGENTS, type AgentHealth, type AgentId } from '../model/events'
 import type { FeedStatus } from '../net/feed'
 import type { ShowState } from '../show/engine'
-import { useLang, useStrings } from './langContext'
+import { LANGS, type Lang } from '../../shared/lang.ts'
+import { setLang, useLang, useStrings } from './lang'
 import { modeOf, type Mode } from './mode'
 import type { SpeechControls } from './useShow'
 
@@ -68,6 +69,12 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
         <Heartbeat state={state} />
       </div>
       <div className="controls">
+        <LangToggle />
+        {speech.noVoiceFor && (
+          <span className="no-voice" role="status" title={t.noVoice}>
+            🔇 {speech.noVoiceFor.toUpperCase()}
+          </span>
+        )}
         <label className="sr-only" htmlFor="voice">
           {t.voiceLabel}
         </label>
@@ -92,6 +99,23 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
         </button>
       </div>
     </header>
+  )
+}
+
+const LANG_NAME: Readonly<Record<Lang, string>> = { es: 'Castellano', en: 'English' }
+
+/** The ES / EN selector: a small banner toggle. Choosing re-picks the lines and the voices at once. */
+function LangToggle() {
+  const lang = useLang()
+  const t = useStrings()
+  return (
+    <div className="lang-toggle" role="group" aria-label={t.langLabel}>
+      {LANGS.map((l) => (
+        <button key={l} type="button" lang={l} className={l === lang ? 'on' : undefined} aria-pressed={l === lang} title={LANG_NAME[l]} onClick={() => setLang(l)}>
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
   )
 }
 

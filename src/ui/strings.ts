@@ -44,6 +44,8 @@ export interface Strings {
   readonly voiceLabel: string
   readonly voices: Readonly<Record<string, string>>
   readonly noKey: string
+  readonly langLabel: string
+  readonly noVoice: string
   readonly muted: string
   readonly soundOn: string
   readonly tick: string
@@ -103,6 +105,8 @@ const ES: Strings = {
   voiceLabel: 'Proveedor de voz',
   voices: { auto: 'Voz: auto', webspeech: 'Voz del navegador', elevenlabs: 'ElevenLabs', gemini: 'Gemini', off: 'Sin voz' },
   noKey: 'sin clave',
+  langLabel: 'Idioma',
+  noVoice: 'Este navegador no tiene voz en castellano: solo se muestra el texto',
   muted: 'Silenciado',
   soundOn: 'Con sonido',
   tick: 'tick',
@@ -160,6 +164,8 @@ const EN: Strings = {
   voiceLabel: 'Voice provider',
   voices: { auto: 'Voice: auto', webspeech: 'Browser voice', elevenlabs: 'ElevenLabs', gemini: 'Gemini', off: 'No voice' },
   noKey: 'no key',
+  langLabel: 'Language',
+  noVoice: 'This browser has no English voice: the text is shown, not spoken',
   muted: 'Muted',
   soundOn: 'Sound on',
   tick: 'tick',

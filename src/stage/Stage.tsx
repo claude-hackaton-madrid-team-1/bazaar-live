@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import type { ShowState } from '../show/engine'
-import { useStrings } from '../ui/langContext'
+import { useStrings } from '../ui/lang'
 import { Board, PriceTag } from './Board'
 import { JevOrb, SpeechBubble } from './Bubbles'
 import { Dealer } from './Dealer'

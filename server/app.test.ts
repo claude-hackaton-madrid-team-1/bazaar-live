@@ -380,8 +380,8 @@ describe('one language per line (the proxy contract, both languages)', () => {
   })
 
   it('accepts the situational lines with their countdown, and nothing free in the slots', () => {
-    expect(ask('es', 'buyer', 'Quedan 45 minutos para abrir. ¿Qué hacemos mientras?')).toMatchObject({ lang: 'es' })
-    expect(ask('es', 'buyer', 'Quedan 45 mensajes para abrir. ¿Qué hacemos mientras?')).toMatch(/own lines/)
+    expect(ask('es', 'buyer', 'Cuenta atrás: 45 minutos para abrir. ¿Qué hacemos mientras?')).toMatchObject({ lang: 'es' })
+    expect(ask('es', 'buyer', 'Cuenta atrás: 45 mensajes para abrir. ¿Qué hacemos mientras?')).toMatch(/own lines/)
     expect(ask('en', 'seller', '[excited] New pages! We can trade El Retiro now.')).toMatchObject({ lang: 'en' })
     expect(ask('en', 'seller', '[excited] New pages! We can trade Wall Street now.')).toMatch(/own lines/)
   })

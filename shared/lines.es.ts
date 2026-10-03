@@ -36,7 +36,7 @@ export const ES: Pack = {
   ],
   POST_BID: [
     v('eager', S('¡Hoy compro yo! Busco {card} y pago {price}.'), B('[laughs] Mira quién se ha puesto a comprar.')),
-    v('calm', S('¿Alguien con {card}? {price} en mano, aquí mismo.'), B('[whispers] El dinero habla, compadre.')),
+    v('calm', S('¿Alguien con {card}? {price} en mano, aquí mismo.'), B('[whispers] El dinero habla, tío.')),
     v('sarcastic', S('Pago {price} por {card}. Ofertón del siglo.'), B('[sarcastic] Se me saltan las lágrimas de la emoción.')),
   ],
   POST_BID_NO_PRICE: [
@@ -44,12 +44,12 @@ export const ES: Pack = {
     v('eager', S('¿Quién tiene {card}? Que la necesito ya.'), B('Tranquilo, hombre, que no se va a ir a ningún lado.')),
   ],
   REPRICE: [
-    v('eager', S('¡Precio nuevo para {card}: {price}!'), B('[gasps] ¡Ha movido la etiqueta! Menuda inflación, compadre.')),
+    v('eager', S('¡Precio nuevo para {card}: {price}!'), B('[gasps] ¡Ha movido la etiqueta! Menuda inflación, tío.')),
     v('calm', S('[whispers] Jev dice {verdict}, así que {card} queda en {price}.'), B('Le haces más caso a esa máquina que a mí.')),
     v('sarcastic', S('{card}, ahora a {price}. Precio fresco, día nuevo.'), B('[sarcastic] Ah, sí, el famoso descuento del Rastro.')),
   ],
   REPRICE_NO_PRICE: [
-    v('calm', S('Toca tocar el precio de {card}.'), B('[curious] ¿Para arriba o para abajo?'), S('[mischievously] De lado.')),
+    v('calm', S('Toca retocar el precio de {card}.'), B('[curious] ¿Para arriba o para abajo?'), S('[mischievously] De lado.')),
     v('eager', S('Voy a darle una vuelta al precio de {card}.'), B('Siempre es para arriba, no te hagas el interesante.')),
   ],
   HOLD: [
@@ -67,7 +67,7 @@ export const ES: Pack = {
     v('sarcastic', S('{card}, te vienes a casa.'), B('[sarcastic] Nadie la quería como tú.')),
   ],
   CANCEL_BUYER: [
-    v('sarcastic', B('Retiro mi puja por {card}.'), S('[sarcastic] ¿Problemas de compromiso?')),
+    v('sarcastic', B('Retiro mi puja por {card}.'), S('[sarcastic] ¿Miedo al compromiso?')),
     v('calm', B('Mejor me lo pienso: retiro la puja por {card}.'), S('Piénsalo, piénsalo. Aquí te espero.')),
   ],
 
@@ -80,12 +80,12 @@ export const ES: Pack = {
   ],
   PASS: [
     v('calm', B('{card}… no. Hoy no.'), S('[whispers] Qué exigente.')),
-    v('calm', B('[sighs] Dejo pasar {card}.'), S('Siempre hay otra carta, compadre.')),
+    v('calm', B('[sighs] Dejo pasar {card}.'), S('Siempre hay otra carta, colega.')),
     v('sarcastic', B('¿{card}? Paso. Ya se la comprará otro.'), S('[chuckles] Con esa filosofía vas lejos.')),
   ],
   LATE: [
-    v('calm', B('[sighs] Tarde para {card}. Se cerró la ventana.'), S('Mañana será otro día.')),
-    v('sarcastic', B('Espera, espera… ¿ya se acabó el tick?'), S('[laughs] Como el último autobús.')),
+    v('calm', B('[sighs] Tarde para {card}. Se me pasó el turno.'), S('Mañana será otro día.')),
+    v('sarcastic', B('Espera, espera… ¿ya se acabó el turno?'), S('[laughs] Como el último autobús.')),
   ],
   SKIP_SELLER: [
     v('calm', S('Guardo {card} en el cajón de momento.'), B('Sabio. Muy sabio.')),
@@ -97,8 +97,8 @@ export const ES: Pack = {
   ],
   DENIED_BUYER: [
     v('sarcastic', B('Me llevo {card}…'), S('[gasps] ¡Alto! ¡Las barreras dicen que no!'), B('[sighs] Vale. Vale.')),
-    v('calm', B('[excited] ¡{card}, allá voy!'), S('Señal de stop, compadre. Las reglas son las reglas.')),
-    v('sarcastic', B('Esa {card} lleva mi nombre…'), S('Y las barreras llevan el suyo. Dicen que no.')),
+    v('calm', B('[excited] ¡{card}, allá voy!'), S('Señal de stop, colega. Las reglas son las reglas.')),
+    v('sarcastic', B('Mira, {card} lleva mi nombre…'), S('Y las barreras llevan el suyo. Dicen que no.')),
   ],
   DENIED_SELLER: [
     v('calm', S('Voy a poner {card}…'), B('[gasps] ¡Alto! Las barreras dicen que no.')),
@@ -117,11 +117,11 @@ export const ES: Pack = {
     v('calm', ...HANDLE),
   ],
   DEALER_BID_KIND: [
-    v('calm', B('Le ofrezco {price} por {item}.'), D('[laughs] Me recuerdas a mi nieto. ¡Qué barato!')),
+    v('calm', B('Le ofrezco {price} por {item}.'), D('[laughs] Me recuerdas a mi nieto. ¡Qué rácano!')),
     ...BID_SHARED,
   ],
   DEALER_BID_CHATO: [
-    v('sarcastic', B('Le ofrezco {price} por {item}.'), D('[snorts] ¿{price}? Los pichones ofrecen más.')),
+    v('sarcastic', B('Le ofrezco {price} por {item}.'), D('[snorts] ¿{price}? Eso lo ofrecen hasta las palomas de la Plaza Mayor.')),
     ...BID_SHARED,
   ],
   DEALER_BID_NO_PRICE: [v('calm', B('Una ofertilla por {item}…'), S('[whispers] Firme… firme…'))],
@@ -145,8 +145,8 @@ export const ES: Pack = {
   // ---------------------------------------------------------------- what the game answered
   DEAL: [
     v('triumphant', B('[excited] ¡Trato hecho!'), S('[laughs] ¡Apretón de manos, confeti, todo!')),
-    v('triumphant', S('[gasps] ¡Ha pasado!'), B('¡Olé, olé, olé!')),
-    v('calm', B('Choca esa mano, compadre.'), S('[laughs] Qué apretón más firme. Me gusta.')),
+    v('triumphant', S('[gasps] ¡Ha colado!'), B('¡Olé, olé, olé!')),
+    v('calm', B('Choca esos cinco, tío.'), S('[laughs] Qué apretón más firme. Me gusta.')),
   ],
   SENT_LIST_OFFER: [v('calm', S('Hecho. Oficial, sellado y en el tablón.')), v('eager', S('El juego dijo que sí. ¡Vamos!'))],
   SENT_CANCEL: [v('calm', S('Fuera del tablón.')), v('calm', S('[sighs] Retirada. Oficialmente.'))],
@@ -177,8 +177,8 @@ export const ES: Pack = {
   // ---------------------------------------------------------------- situations (/health, /state, /events)
   DOORS_CLOSED: [
     v('calm', S('Las puertas siguen cerradas. Abrimos {opens}.'), B('[sighs] Y yo con las ganas de regatear.')),
-    v('calm', B('Quedan {eta} para abrir. ¿Qué hacemos mientras?'), S('Afilar los precios, compadre. Siempre se puede afilar un precio.')),
-    v('eager', S('Faltan {eta} para la apertura. Ya huelo los churros.'), B('Yo ya tengo el monedero preparado.')),
+    v('calm', B('Cuenta atrás: {eta} para abrir. ¿Qué hacemos mientras?'), S('Afinar los precios, colega. Siempre se puede afinar un precio.')),
+    v('eager', S('{eta} para la apertura y ya huelo los churros.'), B('Yo ya tengo el monedero preparado.')),
     v('sarcastic', B('¿{eta} para abrir? Me da tiempo a dar una vuelta por el Retiro.'), S('Hazlo, y vuelves con las manos vacías.')),
     v('eager', B('Cuando abramos {opens}, voy directo a las cartas raras.'), S('[mischievously] Tú ve, que yo ya las he escondido.')),
     v('calm', S('Con las puertas cerradas, hasta los faroles se aburren.'), B('[chuckles] Y eso que están encendidos.')),
@@ -190,7 +190,7 @@ export const ES: Pack = {
   ],
   PAUSED: [
     v('calm', S('El juego está en pausa. Ni un movimiento.'), B('[whispers] Respira hondo. Ya volverá.')),
-    v('sarcastic', B('¿Pausa? Justo cuando me estaba animando.'), S('[chuckles] Los organizadores tienen un timing perfecto.')),
+    v('sarcastic', B('¿Pausa? Justo cuando me estaba animando.'), S('[chuckles] Qué oportunos, los organizadores.')),
     v('calm', S('Alguien ha parado el reloj. Aprovecha para repasar precios.'), B('Eso llevo haciendo toda la mañana.')),
   ],
   QUIET: [
@@ -199,17 +199,17 @@ export const ES: Pack = {
     v('eager', S('Los precios están puestos. Ahora a esperar al primer valiente.'), B('Que se anime alguien, por favor.')),
     v('calm', B('[whispers] ¿Se ha dormido el mercado?'), S('[chuckles] Siesta. Hasta las cartas la necesitan.')),
     v('sarcastic', S('Aquí se está mejor que en una terraza de la Latina.'), B('Pues yo pediría una caña ya.')),
-    v('eager', B('¿Alguna carta buena hoy?'), S('[mischievously] Tú espera y verás, compadre.')),
+    v('eager', B('¿Alguna carta buena hoy?'), S('[mischievously] Tú espera y verás, colega.')),
     v('calm', B('Oye, ¿tú crees que la gente sigue mirando?'), S('Claro. Hay que mantener la compostura.')),
     v('sarcastic', S('Un día cualquiera en el Rastro, un negocio cualquiera.'), B('Cualquiera menos el nuestro, que es de lujo.')),
   ],
   TICK: [
-    v('calm', S('Tic, tac… ya vamos por el tick {tick}.'), B('Y nadie ha movido ficha todavía.')),
-    v('eager', B('¡Tick {tick}! A ver qué se cuece.'), S('[whispers] Silencio, que se oye pensar a las máquinas.')),
-    v('sarcastic', S('Tick {tick} y aquí seguimos, tan campantes.'), B('[sarcastic] Qué emoción, qué vértigo.')),
-    v('eager', S('[excited] ¡Otro tick, el {tick}! Que alguien haga algo.'), B('Yo estoy listo, ya me conoces.')),
-    v('calm', B('Estamos en el tick {tick}.'), S('[whispers] Y yo contando los segundos.')),
-    v('sarcastic', S('El tick {tick} acaba de llegar. Se le echaba de menos.'), B('[laughs] Como a un recibo de la luz.')),
+    v('calm', S('Tic, tac… ya vamos por el turno {tick}.'), B('Y nadie ha movido ficha todavía.')),
+    v('eager', B('¡Turno {tick}! A ver qué se cuece.'), S('[whispers] Silencio, que se oye pensar a las máquinas.')),
+    v('sarcastic', S('Turno {tick} y aquí seguimos, tan campantes.'), B('[sarcastic] Qué emoción, qué vértigo.')),
+    v('eager', S('[excited] ¡Otro turno, el {tick}! Que alguien haga algo.'), B('Yo estoy listo, ya me conoces.')),
+    v('calm', B('Estamos en el turno {tick}.'), S('[whispers] Y yo contando los segundos.')),
+    v('sarcastic', S('El turno {tick} acaba de llegar. Se le echaba de menos.'), B('[laughs] Como a un recibo de la luz.')),
   ],
   NEW_PAGE: [
     v('eager', S('[excited] ¡Páginas nuevas! Ya se puede comerciar con {hood}.'), B('[gasps] ¡Una zona nueva del álbum! A por ella.')),
