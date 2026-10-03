@@ -5,7 +5,8 @@
  * ONE language: the show's selected one. By default every real quote is a caption only and a generated
  * line in the selected language, built from the structured offer, is spoken in its place. With
  * `speakQuotes` a quote is voiced only when its own language is the selected one (`planQuote`); in the
- * other language it is still a caption. Spanish never reaches an English voice, nor the reverse.
+ * other language it is still a caption. Only a dealer's quotes can be voiced; a rival's duel words never
+ * are. Spanish never reaches an English voice, nor the reverse.
  */
 import { detectLang, type QuoteLang } from '../../shared/detect-lang.ts'
 import type { Lang } from '../../shared/lang.ts'
@@ -24,6 +25,8 @@ export interface RealOptions {
 }
 
 const CAPTIONS_ONLY: RealOptions = { speakQuotes: false }
+/** A rival's duel words are never voiced, in any mode: prompt injection is allowed in this game. */
+const NO_VOICE: RealOptions = CAPTIONS_ONLY
 
 export interface QuotePlan {
   /** True when a voice of the selected language may read the quote. */
@@ -84,15 +87,16 @@ function threadLine(item: TranscriptItem, lang: Lang, opts: RealOptions): Beat |
     agent: item.offer?.verb === 'bid' ? 'maker' : 'taker',
     priority: item.offer?.final ? PRIORITY.dealer : PRIORITY.dealerBid,
     cue,
-    lines: quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, opts),
+    // Only the two hosted dealers have a voice for their own words; any other dealer is a caption.
+    lines: quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, { speakQuotes: opts.speakQuotes && speakerOfDealer(item.counterpart) !== 'narrator' }),
   })
 }
 
-function duelReplay(item: TranscriptItem, lang: Lang, opts: RealOptions): Beat | null {
+function duelReplay(item: TranscriptItem, lang: Lang): Beat | null {
   const ours: Speaker = item.role === 'seller' ? 'seller' : 'buyer'
   const theirs: Speaker = ours === 'seller' ? 'buyer' : 'seller'
   const chair = (who: Who): Speaker => (who === 'us' ? ours : theirs)
-  const said = (l: DuelLine): Line[] => quoteLines(chair(l.speaker), l.text, l.price === null ? null : duelOfferLine(l.speaker, l.price, lang), lang, opts)
+  const said = (l: DuelLine): Line[] => quoteLines(chair(l.speaker), l.text, l.price === null ? null : duelOfferLine(l.speaker, l.price, lang), lang, NO_VOICE)
   const status = item.status === 'deal' ? 'deal' : 'no_deal'
   const lines = [...item.lines.slice(-MAX_REPLAY_LINES).flatMap(said), spoken('narrator', duelEndLine(status, item.price, lang), lang)]
   return beatOf(item, {
@@ -117,6 +121,6 @@ export function realBeat(item: TranscriptItem, lang: Lang, opts: RealOptions = C
         ? null
         : beatOf(item, { agent: 'taker', priority: PRIORITY.deal, cue: { kind: 'deal', big: true, ref: item.item }, lines: [spoken('narrator', settlementLine(item.price, item.item, lang), lang)] })
     case 'duel_replay':
-      return duelReplay(item, lang, opts)
+      return duelReplay(item, lang)
   }
 }

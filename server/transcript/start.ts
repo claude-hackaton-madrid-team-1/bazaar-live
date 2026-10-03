@@ -24,9 +24,11 @@ export function startTranscript(env: Readonly<Record<string, string | undefined>
   try {
     const secrets = secretsOf(config.url)
     pool = createShowPool(config.url, (error) => log({ route: 'transcript', event: 'pool_error', code: (error as { code?: string } | null)?.code ?? 'ERR' }))
-    const poller = new Poller({ db: pool, store, log, secrets })
+    // Duels are off the page unless SHOW_DUELS is set: their prices reveal our limits while rivals still play.
+    const duels = ['1', 'on', 'true'].includes((env.SHOW_DUELS ?? '').trim().toLowerCase())
+    const poller = new Poller({ db: pool, store, log, secrets, duels })
     poller.start()
-    log({ route: 'transcript', event: 'on' })
+    log({ route: 'transcript', event: 'on', duels })
     const live = pool
     return {
       store,

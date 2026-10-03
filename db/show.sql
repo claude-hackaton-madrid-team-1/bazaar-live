@@ -79,14 +79,28 @@ select e.id as event_id,
  where (e.type in ('thread.opened', 'thread.message') and e.payload ->> 'team' = 't01')
     or (e.type = 'settlement' and jsonb_typeof(e.payload -> 'parties') = 'array' and e.payload -> 'parties' ? 't01');
 
--- A closed duel's conversation. Nothing of a duel that is still live: not its words, not even its
--- existence. And a closed duel is held back while ANOTHER duel over the same item is live: the sibling
--- (same scenario, another rival) must never see our offers by watching the show.
+-- The gate: when may a closed duel's conversation be public? (security audit P1)
+-- Our duel prices are a fixed function of our private limit and every team plays the same scenarios, so a
+-- finished transcript lets a rival still negotiating with us compute our walk-away price. So a closed duel
+-- is shown only when ALL of these hold:
+--   * no duel of its session is live, and no duel over the same item is live (the sibling case);
+--   * its session is over: a later session exists, or show.gate.open_all was switched on by an admin
+--     (after the last session: `update show.gate set open_all = true`).
+-- The server also keeps duels off the page entirely unless SHOW_DUELS is set; this is the second wall.
+create table if not exists show.gate (
+  only_row boolean primary key default true check (only_row),
+  open_all boolean not null default false
+);
+insert into show.gate (only_row, open_all) values (true, false) on conflict do nothing;
+revoke all on show.gate from public;
+
 create or replace view show.duel_lines with (security_barrier = true) as
 with shown as (
   select d.* from public.duels d
    where d.status in ('deal', 'no_deal')
-     and not exists (select 1 from public.duels l where l.status = 'live' and l.item is not distinct from d.item)
+     and not exists (select 1 from public.duels l
+                      where l.status = 'live' and (l.session is not distinct from d.session or l.item is not distinct from d.item))
+     and (d.session < (select max(x.session) from public.duels x) or (select g.open_all from show.gate g))
 )
 -- The outcome.
 select 'closed'::text as kind, d.duel, 0 as n, d.session, d.status, d.role, d.item, d.rival,
@@ -120,8 +134,24 @@ grant execute on function show.as_int(jsonb), show.as_text(jsonb, int), show.car
 grant select on show.thread_lines, show.duel_lines to bazaar_live_reader;
 
 alter role bazaar_live_reader connection limit 4;
+-- A superuser-only limit: the role cannot lift it. (statement_timeout and read-only below are only defaults.)
+alter role bazaar_live_reader set temp_file_limit = '16MB';
 alter role bazaar_live_reader set default_transaction_read_only = on;
 alter role bazaar_live_reader set statement_timeout = '2s';
 alter role bazaar_live_reader set idle_in_transaction_session_timeout = '5s';
+
+-- Narrow what PUBLIC (and so this role) may do to the database. Our agents connect as the owner role, which
+-- these revokes do not touch. TEMPORARY: no temp tables. CONNECT: the role reaches only its own database.
+do $$
+declare
+  other text;
+begin
+  execute format('revoke temporary on database %I from public', current_database());
+  foreach other in array array['postgres', 'bazaar_sim'] loop
+    if other <> current_database() and exists (select from pg_database where datname = other) then
+      execute format('revoke connect on database %I from public', other);
+    end if;
+  end loop;
+end $$;
 
 commit;

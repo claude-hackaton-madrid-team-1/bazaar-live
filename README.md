@@ -81,14 +81,19 @@ Spec: [`docs/specs/LIVE-T1.md`](docs/specs/LIVE-T1.md).
 - `db/show.sql` (applied by whoever holds the admin url, never by this repo): schema `show`, views
   `show.thread_lines` and `show.duel_lines`, role `bazaar_live_reader` (NOLOGIN in the file; add LOGIN and a
   password outside it). The role has no grant on `feed_events` or `duels`. A duel's words are exposed only
-  after it closes, and not while another duel over the same item is live; a live duel shows nothing.
-- `SHOW_DATABASE_URL` (a Railway service variable, that role's url; prefer the private
-  `postgres.railway.internal` one, since `pg` reads `sslmode=require` as verify-full): absent → the feature is
-  off and the show is unchanged. `TRANSCRIPT_STREAMS_PER_ADDRESS` (default 24) caps open streams per address. Pool of 2, 2 s statement timeout, a poll every 3 s with backoff; `GET /api/transcript` and the
+  after it closes, only when no duel of its session or item is live and its session is over (`show.gate`:
+  `update show.gate set open_all = true` opens the last session, run by an admin after the final one). A live
+  duel shows nothing. The server keeps duels off the page entirely unless `SHOW_DUELS=on` (our duel prices
+  reveal our limits while rivals still play). The role also gets `temp_file_limit`, no TEMP and no CONNECT
+  to the other databases.
+- `SHOW_DATABASE_URL` (a Railway service variable, that role's url on the private network,
+  `postgres.railway.internal`, which carries no TLS; any other host, a public proxy included, is refused and
+  the feature stays off): absent → the feature is off and the show is unchanged. `TRANSCRIPT_STREAMS_PER_ADDRESS` (default 24) caps open streams per address; a stream lasts 30 min and the page reconnects. Pool of 2, 2 s statement timeout, a poll every 3 s with backoff; `GET /api/transcript` and the
   SSE stream `/api/transcript/stream`.
 - One language (`?lang=es|en`) for every generated line and voice. A dealer's or rival's real words are
   captions only; the line built from the structured offer is what is spoken. `?quotes=speak` with
-  `TRANSCRIPT_SPEAK_QUOTES=1` voices a quote, and only when its detected language is the selected one. A
+  `TRANSCRIPT_SPEAK_QUOTES=1` voices a hosted dealer's quote (bound to that dealer, never a rival's), and only when its
+  detected language is the selected one. A
   line that names its language is never read by a voice of another one. The TTS proxy voices only show
   templates and generated real lines (plus those quotes when enabled).
 - `?mock=1` plays a synthetic transcript with no database.

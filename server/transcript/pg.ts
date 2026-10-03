@@ -1,17 +1,30 @@
 /**
- * The connection to the show's read-only role (SHOW_DATABASE_URL). Absent → the feature is off and the
+ * The connection to the show's read-only role (SHOW_DATABASE_URL). Only a `*.railway.internal` or loopback
+ * host is accepted: the private network carries no TLS and needs none, and a public proxy url (with a
+ * password in it) is refused rather than sent across the internet. Absent → the feature is off and the
  * show runs exactly as before. The url is a secret: it is read once here, never logged, and every error
  * text is redacted against `secretsOf(url)` before it leaves the process.
  */
 import pg from 'pg'
 import type { Db } from './poller.ts'
 
-export type ShowDatabase = { readonly enabled: true; readonly url: string } | { readonly enabled: false; readonly reason: 'absent' | 'not_postgres' }
+export type ShowDatabase =
+  | { readonly enabled: true; readonly url: string }
+  | { readonly enabled: false; readonly reason: 'absent' | 'not_postgres' | 'host_not_allowed' }
+
+/** Railway's private network (no TLS, never leaves the project) or this machine. Nothing else. */
+const ALLOWED_HOST = /^(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*\.railway\.internal|localhost|127\.0\.0\.1|\[::1\])$/i
 
 export function readShowDatabase(env: Readonly<Record<string, string | undefined>>): ShowDatabase {
   const url = env.SHOW_DATABASE_URL?.trim()
   if (!url) return { enabled: false, reason: 'absent' }
-  return /^postgres(?:ql)?:\/\//i.test(url) ? { enabled: true, url } : { enabled: false, reason: 'not_postgres' }
+  if (!/^postgres(?:ql)?:\/\//i.test(url)) return { enabled: false, reason: 'not_postgres' }
+  try {
+    // The url carries a password: it must only ever be sent over the private network (or to this machine).
+    return ALLOWED_HOST.test(new URL(url).hostname) ? { enabled: true, url } : { enabled: false, reason: 'host_not_allowed' }
+  } catch {
+    return { enabled: false, reason: 'not_postgres' }
+  }
 }
 
 /** A tiny pool: two connections, and no statement may run longer than 2 s. */

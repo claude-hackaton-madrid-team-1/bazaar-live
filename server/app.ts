@@ -17,7 +17,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isShowLine } from '../shared/lines.ts'
 import { isRealLine } from '../shared/real-lines.ts'
-import { isSpeaker } from '../shared/tags.ts'
+import { isSpeaker, type Speaker } from '../shared/tags.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
 import { createStatic } from './static.ts'
@@ -38,7 +38,7 @@ export interface AppDeps {
   readonly budget?: DailyBudget
   readonly log?: (entry: Record<string, unknown>) => void
   /** The real conversations (LIVE-T1); absent → /api/transcript answers `enabled: false`. */
-  readonly transcript?: Pick<TranscriptRouteDeps, 'store' | 'enabled' | 'limiter' | 'maxStreams' | 'maxPerAddress' | 'heartbeatMs'> & {
+  readonly transcript?: Pick<TranscriptRouteDeps, 'store' | 'enabled' | 'limiter' | 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter'> & {
     /** Voice real quotes the server read from the database. Off by default: they are captions only. */
     readonly vouchQuotes?: boolean
   }
@@ -135,7 +135,7 @@ interface TtsRequest {
  * templates, a line generated from a real conversation's structure, or a quote the server itself read
  * from the database (`vouches`). Nothing a caller invents is ever voiced.
  */
-export function parseTtsRequest(raw: string, available: readonly ProviderId[], vouches: (text: string) => boolean = () => false): TtsRequest | string {
+export function parseTtsRequest(raw: string, available: readonly ProviderId[], vouches: (text: string, speaker: Speaker) => boolean = () => false): TtsRequest | string {
   let body: unknown
   try {
     body = JSON.parse(raw)
@@ -150,7 +150,7 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[], v
   // eslint-disable-next-line no-control-regex
   const clean = typeof text === 'string' ? text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : ''
   if (!clean || clean.length > MAX_TEXT) return `text must be 1 to ${MAX_TEXT} characters`
-  if (!isShowLine(speaker, clean) && !isRealLine(clean) && !vouches(clean)) return 'only the show\'s own lines are spoken here'
+  if (!isShowLine(speaker, clean) && !isRealLine(clean) && !vouches(clean, speaker)) return 'only the show\'s own lines are spoken here'
   return { provider, speaker, text: clean }
 }
 
@@ -191,7 +191,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       res.on('finish', () => req.socket.destroy())
       return json(res, 413, { error: 'too_large' }, { Connection: 'close' })
     }
-    const parsed = parseTtsRequest(raw, available, (text) => deps.transcript?.vouchQuotes === true && transcriptStore.quoteLang(text) !== undefined)
+    const parsed = parseTtsRequest(raw, available, (text, speaker) => deps.transcript?.vouchQuotes === true && transcriptStore.quote(text)?.speaker === speaker)
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
     const key = `${parsed.provider}|${parsed.speaker}|${parsed.text}`
     const started = Date.now()

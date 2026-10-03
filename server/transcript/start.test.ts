@@ -17,6 +17,21 @@ describe('startTranscript', () => {
     expect(JSON.stringify(logs)).not.toContain('topsecret')
   })
 
+  it('refuses a public host (a url with a password is never sent across the internet) and says so without the url', () => {
+    const logs: Record<string, unknown>[] = []
+    const t = startTranscript({ SHOW_DATABASE_URL: 'postgresql://reader:topsecret@viaduct.proxy.rlwy.net:5432/railway' }, (e) => logs.push(e))
+    expect(t.enabled()).toBe(false)
+    expect(logs).toEqual([{ route: 'transcript', event: 'off', reason: 'host_not_allowed' }])
+  })
+
+  it('keeps duels off unless SHOW_DUELS is set', async () => {
+    const logs: Record<string, unknown>[] = []
+    const url = 'postgresql://reader:topsecret@127.0.0.1:1/none'
+    await startTranscript({ SHOW_DATABASE_URL: url }, (e) => logs.push(e)).stop()
+    await startTranscript({ SHOW_DATABASE_URL: url, SHOW_DUELS: 'on' }, (e) => logs.push(e)).stop()
+    expect(logs.filter((l) => l.event === 'on').map((l) => l.duels)).toEqual([false, true])
+  })
+
   it('turns on with a postgres url and survives an unreachable host without throwing', async () => {
     const logs: Record<string, unknown>[] = []
     const t = startTranscript({ SHOW_DATABASE_URL: 'postgresql://reader:topsecret@127.0.0.1:1/none' }, (e) => logs.push(e))

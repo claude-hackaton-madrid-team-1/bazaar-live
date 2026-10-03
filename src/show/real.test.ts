@@ -134,13 +134,15 @@ describe('duels', () => {
   it('plays the replay once, with the rival in the opposite chair, then the verdict', () => {
     const beat = realBeat(replay('seller'), 'es', SPEAK)
     expect(shown(beat).map((l) => [l.speaker, l.silent === true])).toEqual([
-      ['buyer', false], // the rival, speaking Spanish in a Spanish show
-      ['seller', false], // our offer, from the structure (no words of ours in the data)
+      ['buyer', true], // the rival's own words: a caption, even in the show's language and with speakQuotes
+      ['buyer', false], // what the structure says the rival asked, spoken
+      ['seller', false], // our offer, from the structure
       ['buyer', true], // an English quote is only shown
       ['narrator', false],
     ])
-    expect(shown(beat)[1]?.text).toBe('Mi oferta es 50 primas.')
-    expect(shown(beat)[3]?.text).toBe('El duelo ha terminado: trato por 55 primas.')
+    expect(shown(beat)[1]?.text).toBe('60 primas es mi precio.')
+    expect(shown(beat)[2]?.text).toBe('Mi oferta es 50 primas.')
+    expect(shown(beat)[4]?.text).toBe('El duelo ha terminado: trato por 55 primas.')
     expect(beat?.id).toBe('real:dc:61')
   })
 

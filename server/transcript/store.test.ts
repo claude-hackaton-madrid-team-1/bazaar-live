@@ -51,18 +51,24 @@ describe('TranscriptStore', () => {
     expect(got).toEqual([['a']])
   })
 
-  it('vouches only for a quote it read, in the language it detected', () => {
+  it("vouches only for a dealer's quote, in its language and bound to the dealer who said it", () => {
     const store = new TranscriptStore()
+    const en = "Your abuela would've moved more than one. I match what you move, nothing extra."
+    const es = 'Venga, mi niño. Te lo dejo en 31 primas, ni una menos.'
     store.add([
-      draft('a', { who: 'them', text: "Your abuela would've moved more than one. I match what you move, nothing extra." }),
-      draft('b', { who: 'them', text: 'Venga, mi niño. Te lo dejo en 31 primas, ni una menos.' }),
-      draft('c', { who: 'them', text: 'ok' }),
+      draft('a', { kind: 'thread_line', who: 'them', counterpart: 'chato', text: en }),
+      draft('b', { kind: 'thread_line', who: 'them', counterpart: 'abuela', text: es }),
+      draft('c', { kind: 'thread_line', who: 'them', counterpart: 'chato', text: 'ok' }),
       draft('d', { kind: 'duel_replay', lines: [{ n: 1, speaker: 'them', tick: 1, price: 5, days: null, text: 'Eso es muy poco para una carta así.' }] }),
+      draft('e', { kind: 'thread_line', who: 'them', counterpart: 'tendero', text: 'Eso lo dejo en veinte primas, no se hable más.' }),
+      draft('f', { kind: 'thread_line', who: 'us', counterpart: 'chato', text: 'We never carry a quote of ours here, but if one came it is not indexed.' }),
     ])
-    expect(store.quoteLang("Your abuela would've moved more than one. I match what you move, nothing extra.")).toBe('en')
-    expect(store.quoteLang('Venga, mi niño. Te lo dejo en 31 primas, ni una menos.')).toBe('es')
-    expect(store.quoteLang('Eso es muy poco para una carta así.')).toBe('es')
-    expect(store.quoteLang('ok')).toBeUndefined()
-    expect(store.quoteLang('anything somebody types into the proxy')).toBeUndefined()
+    expect(store.quote(en)).toEqual({ lang: 'en', speaker: 'chato' })
+    expect(store.quote(es)).toEqual({ lang: 'es', speaker: 'abuela' })
+    expect(store.quote('ok')).toBeUndefined()
+    expect(store.quote('Eso es muy poco para una carta así.')).toBeUndefined() // a rival's duel words: never
+    expect(store.quote('Eso lo dejo en veinte primas, no se hable más.')).toBeUndefined() // a dealer with no voice of its own
+    expect(store.quote('We never carry a quote of ours here, but if one came it is not indexed.')).toBeUndefined()
+    expect(store.quote('anything somebody types into the proxy')).toBeUndefined()
   })
 })

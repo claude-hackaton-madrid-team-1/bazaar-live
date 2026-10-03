@@ -27,8 +27,8 @@ const threadRow = (id: number, extra: Record<string, unknown> = {}) => ({
   give_cash: 0, want_cash: 31, final: false, offer_status: 'open', price: null, text: `line ${id}`, ...extra,
 })
 
-const deps = (db: Db, store: TranscriptStore, logs: Record<string, unknown>[] = []) => ({
-  db, store, log: (e: Record<string, unknown>) => logs.push(e), random: () => 0.5, backfill: 40, cap: 100, idWindow: 1000,
+const deps = (db: Db, store: TranscriptStore, logs: Record<string, unknown>[] = [], duels = false) => ({
+  db, store, log: (e: Record<string, unknown>) => logs.push(e), random: () => 0.5, backfill: 40, cap: 100, idWindow: 1000, duels,
 })
 
 describe('Poller', () => {
@@ -71,7 +71,7 @@ describe('Poller', () => {
       return c.sql.includes("kind = 'message'") ? [message(61)] : [closed(61)]
     })
     const store = new TranscriptStore()
-    const poller = new Poller(deps(db, store))
+    const poller = new Poller(deps(db, store, [], true))
     await poller.pollOnce()
     expect(calls.find((c) => c.sql.includes("kind = 'message'"))?.params).toEqual([[61]])
     expect(store.since(null)[0]).toMatchObject({ id: 'dc:61', kind: 'duel_replay', lines: [{ n: 1, text: 'Sesenta y no se hable más.' }] })
@@ -85,8 +85,38 @@ describe('Poller', () => {
 
   it('never reads a live duel: every duel query is for closed ones only', async () => {
     const { db, calls } = fakeDb(() => [])
-    await new Poller(deps(db, new TranscriptStore())).pollOnce()
+    await new Poller(deps(db, new TranscriptStore(), [], true)).pollOnce()
+    expect(calls.filter((x) => x.sql.includes('duel_lines')).length).toBeGreaterThan(0)
     for (const c of calls.filter((x) => x.sql.includes('duel_lines'))) expect(c.sql).not.toContain("'live'")
+  })
+
+  it('SHOW_DUELS off (the default): the duel view is never queried and no duel is ever served', async () => {
+    const { db, calls } = fakeDb((c) => (c.sql.includes('duel_lines') ? [closed(61)] : []))
+    const store = new TranscriptStore()
+    const poller = new Poller(deps(db, store))
+    for (let i = 0; i < 3; i++) await poller.pollOnce()
+    expect(calls.some((c) => c.sql.includes('duel_lines'))).toBe(false)
+    expect(store.cursor).toBe(0)
+  })
+
+  it('starts the duel keyset over every N polls, to find a duel the gate opened without touching its row', async () => {
+    const all = [closed(1, '2026-10-03T08:00:00.000000Z')]
+    const { db } = fakeDb((c) => {
+      if (c.sql.includes('thread_lines') || c.sql.includes("kind = 'message'")) return []
+      if (c.sql.includes('(updated_at, duel) >')) {
+        const [stamp, duel, cap] = c.params as [string, number, number]
+        return all.filter((r) => r.stamp > stamp || (r.stamp === stamp && r.duel > duel)).slice(0, cap)
+      }
+      return all.slice(0, 20)
+    })
+    const store = new TranscriptStore()
+    const poller = new Poller({ ...deps(db, store, [], true), rescanEvery: 3 })
+    await poller.pollOnce()
+    all.unshift(closed(0, '2026-10-03T07:00:00.000000Z')) // opened by the gate later, with an OLD stamp
+    await poller.pollOnce()
+    expect(store.has('dc:0')).toBe(false)
+    await poller.pollOnce() // the 3rd poll restarts from the top
+    expect(store.has('dc:0')).toBe(true)
   })
 
   it('gets past 100 duels that share one updated_at (bazaar re-stamps every finished duel together)', async () => {
@@ -101,7 +131,7 @@ describe('Poller', () => {
       return all.slice(0, 20)
     })
     const store = new TranscriptStore({ ring: 1000 })
-    const poller = new Poller(deps(db, store))
+    const poller = new Poller(deps(db, store, [], true))
     for (let i = 0; i < 4; i++) await poller.pollOnce()
     expect(store.since(0, 1000).filter((i) => i.kind === 'duel_replay')).toHaveLength(150)
     // A duel that closes later has a later stamp and is not shadowed by the 150 before it.

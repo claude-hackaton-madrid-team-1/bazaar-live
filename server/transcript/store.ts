@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto'
 import { detectLang } from '../../shared/detect-lang.ts'
 import type { Lang } from '../../shared/lang.ts'
+import type { Speaker } from '../../shared/tags.ts'
 import type { Draft, TranscriptItem } from '../../shared/transcript.ts'
 
 export interface StoreOptions {
@@ -25,7 +26,7 @@ export class TranscriptStore {
   readonly epoch = randomUUID().slice(0, 8)
   private ring: TranscriptItem[] = []
   private readonly ids = new Set<string>()
-  private readonly langs = new Map<string, Lang>()
+  private readonly quotes = new Map<string, { readonly lang: Lang; readonly speaker: Speaker }>()
   private readonly listeners = new Set<Listener>()
   private seq = 0
   private readonly opts: Required<StoreOptions>
@@ -74,9 +75,13 @@ export class TranscriptStore {
     return () => this.listeners.delete(listener)
   }
 
-  /** The language of a quote this server read from the database, or undefined for any other text. */
-  quoteLang(text: string): Lang | undefined {
-    return this.langs.get(text)
+  /**
+   * What the TTS proxy may voice of a real conversation: the language and the speaker of a DEALER's quote
+   * this server read from the database. A rival's duel text is never in here, and a quote is bound to the
+   * character who said it (a quote cannot be voiced as our buyer).
+   */
+  quote(text: string): { readonly lang: Lang; readonly speaker: Speaker } | undefined {
+    return this.quotes.get(text)
   }
 
   private remember(set: Set<string>, id: string): void {
@@ -88,16 +93,22 @@ export class TranscriptStore {
   }
 
   private indexQuotes(item: TranscriptItem): void {
-    const texts = [item.who === 'them' ? item.text : null, ...item.lines.map((l) => l.text)]
-    for (const text of texts) {
-      if (!text || this.langs.has(text)) continue
-      const lang = detectLang(text)
-      if (lang === 'unknown') continue
-      this.langs.set(text, lang)
-      if (this.langs.size > this.opts.quotes) {
-        const oldest = this.langs.keys().next().value
-        if (oldest !== undefined) this.langs.delete(oldest)
-      }
+    const speaker = item.kind === 'thread_line' && item.who === 'them' ? dealerSpeaker(item.counterpart) : null
+    const text = item.text
+    if (!speaker || !text || this.quotes.has(text)) return
+    const lang = detectLang(text)
+    if (lang === 'unknown') return
+    this.quotes.set(text, { lang, speaker })
+    if (this.quotes.size > this.opts.quotes) {
+      const oldest = this.quotes.keys().next().value
+      if (oldest !== undefined) this.quotes.delete(oldest)
     }
   }
+}
+
+/** The stage character of a dealer: only the two organiser-hosted dealers have a voice of their own. */
+export function dealerSpeaker(counterpart: string | null): 'abuela' | 'chato' | null {
+  const id = (counterpart ?? '').toLowerCase()
+  if (id.includes('abuela') || id.includes('carmen')) return 'abuela'
+  return id.includes('chato') ? 'chato' : null
 }

@@ -36,6 +36,10 @@ export interface PollerDeps {
   readonly cap?: number
   /** Thread lines read when the server starts (history for the first page). */
   readonly backfill?: number
+  /** SHOW_DUELS: read closed duels at all. Off (default): the duel view is never queried. */
+  readonly duels?: boolean
+  /** Every this many polls the duel keyset restarts from the beginning, so a duel that became visible without its row changing is still found. */
+  readonly rescanEvery?: number
   /** Closed duels read when the server starts. */
   readonly duelBackfill?: number
   /** Thread lines are re-read from this many ids before the newest one: the monitor writes streamed events at once and gap-fills later. */
@@ -75,6 +79,7 @@ export class Poller {
   private threadMark: number | null = null
   private duelMark: DuelMark | null = null
   private fails = 0
+  private polls = 0
   private timer: unknown = null
   private stopped = true
 
@@ -83,7 +88,7 @@ export class Poller {
     this.store = deps.store
     this.log = deps.log
     this.o = {
-      intervalMs: 3000, cap: 200, backfill: 40, duelBackfill: 20, idWindow: 1000, maxDelayMs: 60_000, secrets: [],
+      intervalMs: 3000, duels: false, rescanEvery: 20, cap: 200, backfill: 40, duelBackfill: 20, idWindow: 1000, maxDelayMs: 60_000, secrets: [],
       random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
@@ -120,7 +125,10 @@ export class Poller {
 
   /** One round over both views. Never throws. */
   async pollOnce(): Promise<void> {
-    const results = await Promise.allSettled([this.readThreads(), this.readDuels()])
+    this.polls += 1
+    // The gate in the view can open a duel without touching its row (a later session starts): look again from the top.
+    if (this.o.duels && this.polls % this.o.rescanEvery === 0) this.duelMark = { stamp: '1970-01-01T00:00:00.000000Z', duel: 0 }
+    const results = await Promise.allSettled([this.readThreads(), this.o.duels ? this.readDuels() : Promise.resolve()])
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (!failed) {
       if (this.fails > 0) this.log({ route: 'transcript', event: 'poll_recovered', after: this.fails })

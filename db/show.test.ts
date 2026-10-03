@@ -55,13 +55,17 @@ const MESSAGES = [
 ]
 
 const DUELS = [
-  { duel: 61, status: 'deal', role: 'seller', item: 'MAL-02', rival: 'Rival Noche', price: 55, days: 3, payload: { messages: MESSAGES, your_offer: { price: 50, limit: SECRET_LIMIT }, limit_meaning: SECRET_REASON, your_days_weight: SECRET_WEIGHT } },
-  { duel: 62, status: 'no_deal', role: 'buyer', item: 'SAL-01', rival: 'Rival Mar', price: null, days: null, payload: { messages: [{ from: 'Rival Mar', text: 'No.', tick: 50, price: null, days: null }] } },
-  { duel: 63, status: 'live', role: 'buyer', item: 'LAT-05', rival: 'Rival Sol', price: 70, days: 1, payload: { messages: [{ from: 'Rival Sol', text: 'LIVE-TEXT-MUST-NOT-LEAK', tick: 60, price: 71 }], your_offer: { price: 70 } } },
-  { duel: 64, status: 'deal', role: 'seller', item: 'RET-03', rival: 'Rival Luna', price: 20, days: 0, payload: 'not an object' },
+  { duel: 61, session: 1, status: 'deal', role: 'seller', item: 'MAL-02', rival: 'Rival Noche', price: 55, days: 3, payload: { messages: MESSAGES, your_offer: { price: 50, limit: SECRET_LIMIT }, limit_meaning: SECRET_REASON, your_days_weight: SECRET_WEIGHT } },
+  { duel: 62, session: 1, status: 'no_deal', role: 'buyer', item: 'SAL-01', rival: 'Rival Mar', price: null, days: null, payload: { messages: [{ from: 'Rival Mar', text: 'No.', tick: 50, price: null, days: null }] } },
+  { duel: 63, session: 2, status: 'live', role: 'buyer', item: 'LAT-05', rival: 'Rival Sol', price: 70, days: 1, payload: { messages: [{ from: 'Rival Sol', text: 'LIVE-TEXT-MUST-NOT-LEAK', tick: 60, price: 71 }], your_offer: { price: 70 } } },
+  { duel: 64, session: 1, status: 'deal', role: 'seller', item: 'RET-03', rival: 'Rival Luna', price: 20, days: 0, payload: 'not an object' },
   // Same item, two rivals: one closed, one still live. The closed one must stay hidden meanwhile.
-  { duel: 71, status: 'deal', role: 'seller', item: 'Taxi Blanco', rival: 'Rival Verde', price: 30, days: 1, payload: { messages: [{ from: 'Rival Verde', text: 'SIBLING-MUST-WAIT', tick: 70, price: 30 }] } },
-  { duel: 72, status: 'live', role: 'seller', item: 'Taxi Blanco', rival: 'Rival Rojo', price: null, days: null, payload: { messages: [] } },
+  { duel: 71, session: 1, status: 'deal', role: 'seller', item: 'Taxi Blanco', rival: 'Rival Verde', price: 30, days: 1, payload: { messages: [{ from: 'Rival Verde', text: 'SIBLING-MUST-WAIT', tick: 70, price: 30 }] } },
+  // The last session (2) has a live duel and no later session: its closed duel is hidden. A session with a live duel hides its closed ones.
+  { duel: 81, session: 2, status: 'deal', role: 'buyer', item: 'LAST-ONE', rival: 'Rival Azul', price: 40, days: 2, payload: { messages: [{ from: 'Rival Azul', text: 'LAST-SESSION-HIDDEN', tick: 80, price: 40 }] } },
+  { duel: 82, session: 0, status: 'deal', role: 'buyer', item: 'OLD-ONE', rival: 'Rival Gris', price: 10, days: 0, payload: { messages: [{ from: 'Rival Gris', text: 'SESSION-HAS-LIVE', tick: 5, price: 10 }] } },
+  { duel: 83, session: 0, status: 'live', role: 'buyer', item: 'OTHER-ONE', rival: 'Rival Rosa', price: null, days: null, payload: { messages: [] } },
+  { duel: 72, session: 2, status: 'live', role: 'seller', item: 'Taxi Blanco', rival: 'Rival Rojo', price: null, days: null, payload: { messages: [] } },
 ]
 
 const dbName = `show_test_${randomBytes(4).toString('hex')}`
@@ -71,6 +75,17 @@ function withDb(url: string, db: string): string {
   const u = new URL(url)
   u.pathname = `/${db}`
   return u.toString()
+}
+
+/** Runs `sql` in a read-write transaction (the role's read-only default is only a default), rolled back. */
+async function refusedWhenWritable(client: pg.Client, sql: string): Promise<unknown> {
+  await client.query('begin')
+  await client.query('set transaction read write')
+  try {
+    return await client.query(sql).then(() => null, (e: unknown) => e)
+  } finally {
+    await client.query('rollback')
+  }
 }
 
 describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
@@ -90,8 +105,8 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     for (const e of FEED) await adminDb.query('insert into feed_events (id, tick, type, actor, payload) values ($1,$2,$3,$4,$5)', [e.id, e.tick, e.type, 'x', e.payload])
     for (const d of DUELS) {
       await adminDb.query(
-        'insert into duels (duel, session, tick, status, role, item, your_limit, rival, price, days, result, payload) values ($1,2,50,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-        [d.duel, d.status, d.role, d.item, SECRET_LIMIT, d.rival, d.price, d.days, SECRET_RESULT, JSON.stringify(d.payload)],
+        'insert into duels (duel, session, tick, status, role, item, your_limit, rival, price, days, result, payload) values ($1,$11,50,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        [d.duel, d.status, d.role, d.item, SECRET_LIMIT, d.rival, d.price, d.days, SECRET_RESULT, JSON.stringify(d.payload), d.session],
       )
     }
     await adminDb.query(SHOW_SQL)
@@ -204,6 +219,30 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     await adminDb.query("update duels set status = 'live' where duel = 72")
   })
 
+  it('hides a closed duel while its session has a live duel, and while it is the last session', async () => {
+    const rows = (await reader.query('select * from show.duel_lines where duel in (81, 82)')).rows
+    expect(rows).toEqual([])
+  })
+
+  it('opens the last session only when an admin flips show.gate, and the role cannot', async () => {
+    expect(await refusedWhenWritable(reader, 'update show.gate set open_all = true')).toMatchObject({ code: '42501' })
+    await expect(reader.query('select * from show.gate')).rejects.toMatchObject({ code: '42501' })
+    await adminDb.query("update duels set status = 'no_deal' where duel in (63, 72)")
+    expect((await reader.query('select 1 from show.duel_lines where duel = 81')).rowCount).toBe(0) // still the last session
+    await adminDb.query('update show.gate set open_all = true')
+    expect((await reader.query("select text from show.duel_lines where duel = 81 and kind = 'message'")).rows).toEqual([{ text: 'LAST-SESSION-HIDDEN' }])
+    await adminDb.query('update show.gate set open_all = false')
+    await adminDb.query("update duels set status = 'live' where duel in (63, 72)")
+  })
+
+  it('cannot lift its limits or create temp objects, and reaches no other database', async () => {
+    expect((await reader.query('show temp_file_limit')).rows[0]).toEqual({ temp_file_limit: '16MB' })
+    await expect(reader.query('set temp_file_limit = -1')).rejects.toMatchObject({ code: '42501' })
+    expect(await refusedWhenWritable(reader, 'create temp table big as select generate_series(1, 10) as n')).toMatchObject({ code: '42501' })
+    expect((await adminDb.query("select has_database_privilege('bazaar_live_reader', 'postgres', 'CONNECT') as ok")).rows[0]).toEqual({ ok: false })
+    expect((await adminDb.query(`select has_database_privilege('bazaar_live_reader', '${dbName}', 'CONNECT') as ok`)).rows[0]).toEqual({ ok: true })
+  })
+
   it('answers through security_barrier views', async () => {
     const { rows } = await adminDb.query("select relname, reloptions from pg_class where relname in ('thread_lines', 'duel_lines') order by 1")
     expect(rows).toEqual([{ relname: 'duel_lines', reloptions: ['security_barrier=true'] }, { relname: 'thread_lines', reloptions: ['security_barrier=true'] }])
@@ -213,7 +252,7 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     const t = await reader.query('select * from show.thread_lines')
     const d = await reader.query('select * from show.duel_lines')
     const dump = JSON.stringify([t.rows, d.rows, t.fields.map((f) => f.name), d.fields.map((f) => f.name)])
-    for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol']) {
+    for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol', 'LAST-SESSION-HIDDEN', 'SESSION-HAS-LIVE']) {
       expect(dump).not.toContain(secret)
     }
     const columns = [...t.fields, ...d.fields].map((f) => f.name)

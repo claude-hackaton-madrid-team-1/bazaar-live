@@ -13,11 +13,11 @@ afterEach(() => servers.splice(0).forEach((s) => { s.closeAllConnections(); s.cl
 
 const draft = (id: string, extra: Partial<Draft> = {}): Draft => ({ ...EMPTY_ITEM, id, who: 'them', text: `line ${id}`, ...extra })
 
-async function start(opts: { enabled?: boolean; store?: TranscriptStore; limiter?: RateLimiter; maxPerAddress?: number; maxStreams?: number; heartbeatMs?: number } = {}) {
+async function start(opts: { enabled?: boolean; store?: TranscriptStore; limiter?: RateLimiter; maxPerAddress?: number; maxStreams?: number; heartbeatMs?: number; maxLifetimeMs?: number; openLimiter?: RateLimiter } = {}) {
   const store = opts.store ?? new TranscriptStore()
   const app = createApp({
     config: readProviderConfig({}), distDir: '/nonexistent', log: () => undefined,
-    transcript: { store, enabled: () => opts.enabled ?? true, limiter: opts.limiter, maxPerAddress: opts.maxPerAddress, maxStreams: opts.maxStreams, heartbeatMs: opts.heartbeatMs },
+    transcript: { store, enabled: () => opts.enabled ?? true, limiter: opts.limiter, maxPerAddress: opts.maxPerAddress, maxStreams: opts.maxStreams, heartbeatMs: opts.heartbeatMs, maxLifetimeMs: opts.maxLifetimeMs, openLimiter: opts.openLimiter },
   })
   const server = createServer(app)
   servers.push(server)
@@ -149,6 +149,27 @@ describe('GET /api/transcript/stream', () => {
     expect(streams.every((r) => r.status === 200)).toBe(true)
     expect((await fetch(`${base}/api/transcript/stream`)).status).toBe(429)
     await Promise.all(streams.map((r) => r.body?.cancel()))
+  })
+
+  it('ends a stream after its lifetime so a slot cannot be held forever; the page reconnects', async () => {
+    const { base } = await start({ maxLifetimeMs: 60 })
+    const res = await fetch(`${base}/api/transcript/stream`)
+    const reader = res.body?.getReader()
+    let done = false
+    const started = Date.now()
+    while (!done && Date.now() - started < 2000) done = ((await reader?.read()) ?? { done: true }).done
+    expect(done).toBe(true)
+  })
+
+  it('rate limits how fast one address may open streams', async () => {
+    const { base } = await start({ openLimiter: new RateLimiter({ capacity: 2, refillPerSecond: 0.001 }) })
+    const codes: number[] = []
+    for (let i = 0; i < 4; i++) {
+      const res = await fetch(`${base}/api/transcript/stream`)
+      codes.push(res.status)
+      await res.body?.cancel()
+    }
+    expect(codes).toEqual([200, 200, 429, 429])
   })
 
   it('keeps the connection alive with hb events the page can see', async () => {

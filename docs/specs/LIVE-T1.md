@@ -10,9 +10,13 @@ Source decided by Jev (0.99): **a read-only Postgres role**. Not the bazaar-mcp 
 token can also trade) and not the game API (every read spends the one team key's shared 5 req/s).
 
 Duel visibility (Jev undecided, closed_only 0.51 vs live 0.44) → safe default: a duel's
-conversation is shown **only after it closes** (`deal` or `no_deal`). Review decision (pr-reviewer P1-2):
-a live duel shows NOTHING from the database, and a closed duel is held back while another duel over the
-same item is still live (its sibling must not watch our offers). Our limits are never public.
+conversation is shown **only after it closes** (`deal` or `no_deal`). Review decisions: a live duel shows
+NOTHING from the database (pr-reviewer P1-2); and, because our duel prices are a fixed function of our
+private limit and every team plays the same scenarios (security audit P1), duels are OFF the public show
+during the game: server flag `SHOW_DUELS` (default off, the duel view is never queried). When on, the view
+still shows a closed duel only when no duel of its session or item is live and its session is over (a later
+session exists, or an admin ran `update show.gate set open_all = true` after the last session). Our limits
+are never public.
 
 ## Hard limits
 
@@ -36,13 +40,13 @@ The coordinator applies `db/show.sql` and sets `SHOW_DATABASE_URL`.
 | AC1 | `db/show.sql` is idempotent; creates schema `show`, views `show.thread_lines` and `show.duel_lines`, role `bazaar_live_reader` (NOLOGIN) with USAGE on the schema and SELECT on those two views only. |
 | AC2 | On a local Postgres 17 with synthetic rows, the role cannot read `feed_events` or `duels`, cannot write, and no private key or value appears in any view row. |
 | AC3 | `show.thread_lines` exposes only our dealer threads (opened / message / settlement where `t01` is a party); our own text is null. |
-| AC4 | `show.duel_lines` exposes only CLOSED duels, and none while a same-item duel is live; a live duel yields no row at all. |
-| AC5 | Server: `SHOW_DATABASE_URL` absent → feature off, show unchanged; present → pool max 2, `statement_timeout` 2 s, poll every 3 s by watermark, row cap per poll, backoff on errors, never crashes the server, errors logged without the URL. |
+| AC4 | `show.duel_lines` exposes only CLOSED duels of a finished session with no live duel in the session or over the same item; a live duel yields no row. `SHOW_DUELS` (default off) keeps duels off the page. |
+| AC5 | Server: `SHOW_DATABASE_URL` absent, or a host that is not `*.railway.internal`/loopback → feature off, show unchanged; present → pool max 2, `statement_timeout` 2 s, poll every 3 s by watermark, row cap per poll, backoff on errors, never crashes the server, errors logged without the URL. |
 | AC6 | Every text is sanitized (length cap, control / invisible / bidi characters, markup, expressive `[tags]`, URLs); ref / counterpart / numbers come from closed vocabularies. |
 | AC7 | `GET /api/transcript?since=<cursor>` and SSE `/api/transcript/stream`; the CSP and existing limits stay; the stream is capped. |
 | AC8 | Page: a transcript feed client (reconnect + dedupe); the director plays the real lines: the dealer speaks its real line, our agent speaks our offers rendered from the structured offer, duel replays play after a duel closes. |
-| AC9 | ONE selected language (ES or EN, `?lang=`) for every generated line and voice. A real quote is detected (es/en, deterministic, tested). Review decision (P2-7): real dealer/rival quotes are CAPTIONS ONLY by default and the generated line built from the structured offer is spoken; `?quotes=speak` (page) plus `TRANSCRIPT_SPEAK_QUOTES=1` (server) voice a quote only when its language is the selected one. A voice never reads a line in a language it does not have. |
-| AC10 | The TTS proxy still speaks only text it can vouch for: show templates, the generated real-line templates, and (only with `TRANSCRIPT_SPEAK_QUOTES=1`) a quote the server itself read from the database. |
+| AC9 | ONE selected language (ES or EN, `?lang=`) for every generated line and voice. A real quote is detected (es/en, deterministic, tested). Review decisions: real dealer/rival quotes are CAPTIONS ONLY by default; a rival's duel words are never voiced in any mode; and the generated line built from the structured offer is spoken; `?quotes=speak` (page) plus `TRANSCRIPT_SPEAK_QUOTES=1` (server) voice a quote only when its language is the selected one. A voice never reads a line in a language it does not have. |
+| AC10 | The TTS proxy still speaks only text it can vouch for: show templates, the generated real-line templates, and (only with `TRANSCRIPT_SPEAK_QUOTES=1`) a hosted dealer's quote the server itself read, bound to the dealer who said it. |
 | AC11 | `?mock=1` shows a synthetic transcript with no database. |
 | AC12 | Tests: SQL privacy (local Postgres), poller + routes with a fake pg, client feed, language routing, mock fixtures. |
 

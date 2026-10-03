@@ -21,6 +21,10 @@ export interface TranscriptRouteDeps {
   readonly maxStreams?: number
   readonly maxPerAddress?: number
   readonly heartbeatMs?: number
+  /** A stream ends after this long; the page reconnects and resumes from its cursor. */
+  readonly maxLifetimeMs?: number
+  /** Opening a stream takes a token per address, so a few addresses cannot cycle the slots. */
+  readonly openLimiter?: RateLimiter
   /** A client that has this many bytes waiting is not reading: drop it. */
   readonly maxQueuedBytes?: number
   readonly log?: (entry: Record<string, unknown>) => void
@@ -46,6 +50,8 @@ export function createTranscriptRoutes(deps: TranscriptRouteDeps): (req: Incomin
   const maxStreams = deps.maxStreams ?? 100
   const maxPerAddress = deps.maxPerAddress ?? 24
   const heartbeatMs = deps.heartbeatMs ?? 15_000
+  const maxLifetimeMs = deps.maxLifetimeMs ?? 30 * 60_000
+  const openLimiter = deps.openLimiter ?? new RateLimiter({ capacity: 24, refillPerSecond: 0.2 })
   const maxQueued = deps.maxQueuedBytes ?? 256 * 1024
   const perAddress = new Map<string, number>()
   let open = 0
@@ -69,6 +75,8 @@ export function createTranscriptRoutes(deps: TranscriptRouteDeps): (req: Incomin
   function stream(req: IncomingMessage, res: ServerResponse, url: URL): void {
     if (!deps.enabled()) return json(res, deps.headers, 404, { error: 'transcript_off' })
     const address = deps.address(req)
+    const opened = openLimiter.take(address)
+    if (!opened.ok) return json(res, deps.headers, 429, { error: 'rate_limited' }, { 'Retry-After': String(opened.retryAfterSeconds) })
     if (open >= maxStreams || (perAddress.get(address) ?? 0) >= maxPerAddress) {
       return json(res, deps.headers, 429, { error: 'too_many_streams' }, { 'Retry-After': '10' })
     }
@@ -94,11 +102,13 @@ export function createTranscriptRoutes(deps: TranscriptRouteDeps): (req: Incomin
     })
     // A real event, not a comment: EventSource never shows comments to the page, and its watchdog needs a beat.
     const beat = setInterval(() => res.write('event: hb\ndata: 1\n\n'), heartbeatMs)
+    const lifetime = setTimeout(() => end(), maxLifetimeMs)
     let ended = false
     function end(): void {
       if (ended) return
       ended = true
       clearInterval(beat)
+      clearTimeout(lifetime)
       off()
       open -= 1
       const left = (perAddress.get(address) ?? 1) - 1
