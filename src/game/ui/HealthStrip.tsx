@@ -30,6 +30,7 @@ function Details({ chip, t, nowMs, onClose }: { chip: HealthChip; t: GameStrings
         <span className="gm-health-reason" data-tone={chip.tone}>
           {MARK[chip.tone]} {chip.reason ? h.reason(chip.reason) : h.ok}
           {at(chip.since) && <span className="gm-muted"> · {h.since(at(chip.since) as string)}</span>}
+          {chip.health?.tone === 'good' && chip.reason && <span className="gm-muted">{t.agt.healthFine}</span>}
         </span>
         <button type="button" className="gm-health-x" onClick={onClose} aria-label={h.close}>
           ×

@@ -14,10 +14,12 @@ import { toneOf } from './tone.ts'
 
 const STATE_TONE: Readonly<Record<AgentState, Tone>> = { none: 'neutral', silent: 'bad', quiet: 'warn', stuck: 'warn', ok: 'good' }
 
-/** Why a silent or quiet agent is quiet, from its /health: ": ledger down since 11:40" (null when /health is fine). */
+/** Why a silent or quiet agent is quiet, from its /health: ": ledger down since 11:40", or " · /health fine" (null without one). */
 function because(t: GameStrings, st: AgentStatus, chip: HealthChip | undefined): string | null {
   const h = chip?.health
-  if ((st.state !== 'silent' && st.state !== 'quiet') || !h?.reason || h.tone === 'good') return null
+  if ((st.state !== 'silent' && st.state !== 'quiet') || !h) return null
+  // a fine /health is an answer too: the agent runs, its own logic is what decides nothing
+  if (!h.reason || h.tone === 'good') return t.agt.healthFine
   return t.agt.because(t.health.reason(h.reason), hhmm(h.since))
 }
 

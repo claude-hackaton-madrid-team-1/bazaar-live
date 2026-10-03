@@ -144,6 +144,7 @@ export interface GameStrings {
     readonly allOk: string
     /** What its /health says beside a silent or quiet agent: ": ledger down since 11:40". */
     readonly because: (reason: string, since: string | null) => string
+    readonly healthFine: string
   }
   /** The header's health strip: one chip per agent, its one reason, and the panel a click opens. */
   readonly health: {
@@ -601,6 +602,7 @@ const EN: GameStrings = {
     alertStuck: (agent, n, rule) => `${agent} blocked ×${n} in a row by ${rule}`,
     allOk: 'all three agents are deciding',
     because: (reason, since) => `: ${reason}${since ? ` since ${since}` : ''}`,
+    healthFine: ' · /health fine',
   },
   health: {
     label: 'Agents\' health',
@@ -1123,6 +1125,7 @@ const ES: GameStrings = {
     alertStuck: (agent, n, rule) => `${agent} bloqueado ×${n} seguidas por ${rule}`,
     allOk: 'los tres agentes están decidiendo',
     because: (reason, since) => `: ${reason}${since ? ` desde las ${since}` : ''}`,
+    healthFine: ' · /health bien',
   },
   health: {
     label: 'Salud de los agentes',
