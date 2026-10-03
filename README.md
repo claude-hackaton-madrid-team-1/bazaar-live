@@ -18,7 +18,7 @@ Node 22.18 or newer (`.nvmrc` pins 22.22.0): the server runs TypeScript directly
 
 ```sh
 npm ci
-npm run dev            # http://localhost:5173 — the show; voices via Web Speech
+npm run dev            # http://localhost:5173 — the show (voice: ElevenLabs v4 when `npm start` has its key, else captions only)
 npm run build          # static files in dist/
 npm start              # http://localhost:8080 — dist/ + /health + the TTS proxy (/api/tts)
 ```
@@ -46,7 +46,7 @@ npm run test:coverage  # with v8 coverage
 | `?doors=closed` | With `?mock=1`: the mock's `/health` says the doors are closed (no events, a countdown to the opening), to hear the idle talk. |
 | `?idle=8` | Seconds of quiet before the characters talk about the situation (default 22 s with closed doors or a pause, 35 s otherwise; 2 to 600). |
 | `?mode=dry` | The mock's agents report DRY RUN, so every move is acted out as practice. |
-| `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) takes ElevenLabs, then Gemini, when the server has their key, else the browser's voice. The header's picker changes it live. |
+| `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) is ElevenLabs v4 when the server has its key, else captions only: no browser-voice or Gemini stand-in. `webspeech` and `gemini` are for development, by name. The header's picker offers ElevenLabs v4 or no voice. |
 
 Keyboard: **M** mutes and unmutes. Browsers only let a page speak after a click, so the show opens
 with a "Start the show with sound / Watch muted" gate.
@@ -147,9 +147,8 @@ Spec: [`docs/specs/LIVE-T1.md`](docs/specs/LIVE-T1.md).
 One queue (`src/tts/queue.ts`): one line at a time, never overlapping, and **gap-free**: the stage hands
 the next line to the queue while the current one is still being said (a remote voice fetches it ahead,
 `prefetch`), so the next line starts the instant the last ends and the captions follow the voice; mute
-stops the current line and drops the rest; a watchdog ends a line whose provider never reports its end; a failing provider
-falls back to the browser's voice, and after three failures in a row the fallback is used alone for a
-minute.
+stops the current line and drops the rest; a watchdog ends a line whose provider never reports its end; a failing or refused line (a spent budget, a 5xx)
+is skipped: its caption keeps its reading time and the show goes on (no browser voice stands in).
 
 | Provider | Where | Model | Tags | Env (server only) |
 |---|---|---|---|---|
@@ -199,7 +198,7 @@ logged or committed. The proxy is public, so it guards what it speaks and what i
 - **Cache.** Every viewer hears the same line for the same event: a 24 MB cache and shared in-flight
   requests make a repeated line free.
 
-A refused or failed line falls back to the browser's voice.
+A refused or failed line is shown as a caption only, for its reading time.
 
 ## Deploy (Railway)
 

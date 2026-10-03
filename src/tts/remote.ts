@@ -28,10 +28,24 @@ export async function fetchRemoteProviders(fetchImpl: typeof fetch = fetch): Pro
   }
 }
 
+/** One element for every line: a browser that allows it to play inside a tap (iOS Safari) keeps allowing it. */
+let shared: HTMLAudioElement | null = null
+
+const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+
+/** Call it inside the click that starts the show: it plays a silent clip so later lines may play without a tap. */
+export function unlockAudio(): void {
+  if (typeof Audio === 'undefined') return
+  shared ??= new Audio()
+  shared.src = SILENCE
+  void shared.play().catch(() => undefined)
+}
+
 function playBlob(blob: Blob, signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
+    const audio = shared ?? new Audio()
+    audio.src = url
     const done = (error?: Error) => {
       audio.onended = audio.onerror = null
       URL.revokeObjectURL(url)

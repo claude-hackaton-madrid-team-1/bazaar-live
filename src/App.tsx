@@ -7,6 +7,7 @@ import { Header, Notice } from './ui/Header'
 import { useLang, useStrings } from './ui/lang'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
+import { unlockAudio } from './tts/remote'
 import { unlockWebSpeech } from './tts/webspeech'
 import { useShow } from './ui/useShow'
 
@@ -50,7 +51,10 @@ export default function App() {
       {!started && (
         <StartGate
           onStart={(withSound) => {
-            if (withSound) unlockWebSpeech()
+            if (withSound) {
+              unlockWebSpeech()
+              unlockAudio()
+            }
             setStarted(true)
             setMuted(!withSound)
           }}

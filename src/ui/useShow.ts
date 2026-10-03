@@ -53,9 +53,19 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
 
   useEffect(() => {
     let alive = true
-    void fetchRemoteProviders().then((list) => alive && setAvailable(list))
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // An empty answer may be a failed request (a deploy in progress), not a missing key: ask again a few times.
+    const ask = (attempt: number): void => {
+      void fetchRemoteProviders().then((list) => {
+        if (!alive) return
+        setAvailable(list)
+        if (list.length === 0 && attempt < 3) timer = setTimeout(() => ask(attempt + 1), 4000 * (attempt + 1))
+      })
+    }
+    ask(0)
     return () => {
       alive = false
+      clearTimeout(timer)
     }
   }, [])
   useEffect(() => queue.setProvider(providerFor(active)), [queue, providerFor, active])

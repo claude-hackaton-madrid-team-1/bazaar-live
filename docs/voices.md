@@ -98,7 +98,7 @@ lower the budget further. Nothing here has been run against the API yet.
 
 1. `railway variable set ELEVENLABS_API_KEY --stdin --service bazaar-live` (never in a file or a chat).
 2. Optionally set `ELEVENLABS_VOICE_*` as above.
-3. Open the site with `?tts=elevenlabs` (or leave `auto`: ElevenLabs, then Gemini, then the browser voice).
+3. Open the site (the default, `?tts=auto`, is ElevenLabs v4 once the server has the key; without it the show plays captions only).
 4. The guards stay on: same-origin only, template-only lines, per-address and global rate limits, and the
    daily character budget (`TTS_DAILY_CHARS`, `TTS_DAILY_CHARS_PER_ADDRESS`). Lower them for a rehearsal.
 

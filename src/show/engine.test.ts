@@ -279,16 +279,27 @@ describe('a gap-free voice queue', () => {
     show.stop()
   })
 
-  it('shows each caption when its voice starts, and the reading time only applies when muted', async () => {
+  it('a voice that was heard sets the pace; one that ended at once, and a muted stage, leave the caption its reading time', async () => {
     const sleeps: number[] = []
-    const voiced = new SpeechQueue({ provider: { name: 'webspeech', speak: async () => undefined } })
-    const a = new ShowEngine({ speech: voiced, idle: false, sleep: (ms) => { sleeps.push(ms); return Promise.resolve() } })
+    const sleeper = (ms: number): Promise<void> => {
+      sleeps.push(ms)
+      return Promise.resolve()
+    }
+    const instant = new SpeechQueue({ provider: { name: 'webspeech', speak: async () => undefined } })
+    const a = new ShowEngine({ speech: instant, idle: false, sleep: sleeper })
     a.start()
     a.ingest(event(-41, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
     await settle()
     a.stop()
-    expect(sleeps[0]).toBe(500) // a voice sets the pace
-    expect(sleeps[1]).toBeGreaterThan(500) // ...unless it ended at once (it did not speak): then the caption keeps its reading time
+    expect(sleeps.some((ms) => ms > 1000)).toBe(true) // a voice that ended at once (a refused request, a spent budget): reading time
+    const heardSleeps: number[] = []
+    const real = new SpeechQueue({ provider: { name: 'webspeech', speak: () => new Promise<void>((r) => setTimeout(r, 300)) } })
+    const h = new ShowEngine({ speech: real, idle: false, sleep: (ms) => { heardSleeps.push(ms); return Promise.resolve() } })
+    h.start()
+    h.ingest(event(-43, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
+    await new Promise((r) => setTimeout(r, 900))
+    h.stop()
+    expect(heardSleeps.filter((ms) => ms > 1000)).toEqual([]) // a voice that was heard sets the pace: no reading time added
     const mutedSleeps: number[] = []
     const muted = new SpeechQueue({ provider: { name: 'webspeech', speak: async () => undefined } })
     muted.setMuted(true)

@@ -86,11 +86,11 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
         <select
           id="voice"
           className="control"
-          value={speech.choice}
+          value={speech.choice === 'auto' ? 'elevenlabs' : speech.choice}
           onChange={(e) => speech.setChoice(e.target.value as TtsChoice)}
           title={speech.lastError ? `Last voice error: ${speech.lastError}` : `Speaking with: ${speech.active}`}
         >
-          {TTS_PICKER.map((c) => (
+          {(TTS_PICKER.includes(speech.choice) || speech.choice === 'auto' ? TTS_PICKER : [...TTS_PICKER, speech.choice]).map((c) => (
             <option key={c} value={c} disabled={unavailable(c)}>
               {t.voices[c]}
               {unavailable(c) ? ` (${t.noKey})` : ''}

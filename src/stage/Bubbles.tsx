@@ -65,7 +65,9 @@ export function SpeechBubble({ line, id }: { readonly line: Line | null; readonl
           transition={{ type: 'spring', stiffness: 380, damping: 26 }}
           aria-hidden="true"
         >
-          <Spoken text={line.text} />
+          <span className="bubble-text">
+            <Spoken text={line.text} />
+          </span>
         </motion.div>
       )}
     </AnimatePresence>
