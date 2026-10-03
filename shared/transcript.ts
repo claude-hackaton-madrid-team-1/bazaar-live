@@ -63,6 +63,8 @@ export interface TranscriptBatch {
   /** The newest seq the server has (also when `items` is empty). */
   readonly cursor: number
   readonly enabled: boolean
+  /** True when `items` are history for a page that has no cursor yet: captions, not scenes. */
+  readonly replay: boolean
   readonly items: readonly TranscriptItem[]
 }
 
