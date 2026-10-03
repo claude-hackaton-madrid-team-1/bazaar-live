@@ -105,7 +105,7 @@ and never hands the key to the page:
 |---|---|
 | `BAZAAR_KEY` | The real game (`https://bazaar.causaprima.ai`). Without it (and without `BAZAAR_SIM`) the relay is off and the screens say so. |
 | `BAZAAR_SIM=1`, `BAZAAR_SIM_KEY` | The simulator instead, with a `sim-…` key (default `sim-team1`). With `sim-team1` the screens show team 1 of the simulator. |
-| `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values and our album. |
+| `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values, our album and our duel offers. |
 | `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
 
 Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick and after a settlement
@@ -113,7 +113,13 @@ of ours (a 429 there waits for the next tick, the loop does not slow down). It n
 stream: its cap of 6 streams per key is shared with the agents. Events reach the page in the web view's
 envelope (made-up `clock`, `agent.hello`, `agent.me` with negative ids, then the feed unchanged). `agent.me`
 carries only what the screens read (`server/game/me.ts`: id, name, cash, the score and its parts, the album
-pages, each asset's id, kind, ref, serial and our value); never the affinity, a key or the rest:
+pages, each asset's id, kind, ref, serial and our value); never the affinity, a key or the rest. Duel
+messages and results are team-only, so the feed never has them: on each new tick (after `/me`, inside the same
+budget, a 429 waiting for the next tick and its Retry-After) the relay reads `/api/duels?done=true` and turns
+the newest 20 duels into `duel.message {duel, role, sender, price, days}` and `duel.result {duel, deal, price,
+points}`, each once, with stable negative ids, scope `team` (`server/game/duels.ts`). Never our limit, days
+weight, gain or the words. The page counts a duel event as ours only when it is `team` or names a duel of ours,
+so the feed's public `duel.closed` of other teams stays in the market:
 
 - `GET /api/game` → `{enabled, target, tokenRequired}` (never the key or the URL).
 - `GET /api/game/stream` → server-sent events: one `events` message with the replay (the latest hello,

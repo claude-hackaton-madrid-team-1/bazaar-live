@@ -6,11 +6,15 @@
  * agents that trade with it. Every poll is `/api/clock` and `/api/feed`; `/api/me` only on the first poll,
  * on a new tick, after a settlement of ours, and again after it failed (never again once the key is refused
  * there: the clock and the feed are public, so the market screens keep working; a 429 there waits for the
- * next tick, and its Retry-After, without slowing the loop). Each poll publishes, in order: `clock` (when
- * the tick changed), `agent.hello` (when the team is new), `agent.me` (allow-listed, `./me.ts`), then the
- * new feed events unchanged, oldest first. No exception ever leaves `pollOnce()`.
+ * next tick, and its Retry-After, without slowing the loop). On the first poll and each new tick, after /me,
+ * `/api/duels?done=true` too: duel messages and results are team-only, so the feed never has them (`./duels.ts`
+ * translates them; a 429 there waits the same way, a refusal turns them off). Each poll publishes, in order:
+ * `clock` (when the tick changed), `agent.hello` (when the team is new), `agent.me` (allow-listed, `./me.ts`),
+ * the duel events not sent before, then the new feed events unchanged, oldest first. No exception ever
+ * leaves `pollOnce()`.
  */
 import { redact } from '../transcript/poller.ts'
+import { duelEvents } from './duels.ts'
 import { projectMe } from './me.ts'
 
 export type Payload = Record<string, unknown>
@@ -90,6 +94,8 @@ export interface RelayDeps {
   readonly pollMs?: number
   readonly timeoutMs?: number
   readonly feedLimit?: number
+  /** The newest duels translated each time (a first read would otherwise backfill hundreds of events). */
+  readonly duelLimit?: number
   readonly maxDelayMs?: number
   /** Feed ids remembered for dedupe, below the newest one. */
   readonly idWindow?: number
@@ -137,11 +143,18 @@ export class GameRelay {
   private meRefused = false
   /** After a 429 on /me: not before this time (ms), and not before the next tick. */
   private meNotBefore = 0
+  private duelsDue = true
+  private duelsNotBefore = 0
+  /** The game refused /api/duels (401, 403, 404): no more duels, the rest goes on. */
+  private duelsOff = false
+  private duelFails = 0
+  /** The synthetic ids of the last duel list, so each message and result is sent once. */
+  private duelsSeen = new Set<number>()
 
   constructor(deps: RelayDeps) {
     this.deps = deps
     this.o = {
-      fetchImpl: fetch, pollMs: 5000, timeoutMs: 4000, feedLimit: 150, maxDelayMs: 60_000, idWindow: 2000,
+      fetchImpl: fetch, pollMs: 5000, timeoutMs: 4000, feedLimit: 150, duelLimit: 20, maxDelayMs: 60_000, idWindow: 2000,
       random: Math.random, now: Date.now, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
@@ -242,8 +255,10 @@ export class GameRelay {
       const feed = this.fresh(feedBody)
       const ours = this.team !== null && feed.some((e) => e.type === 'settlement' && Array.isArray(e.payload.parties) && e.payload.parties.includes(this.team))
       if (newTick || ours) this.meDue = true
+      if (newTick) this.duelsDue = true
       const meEvents: GameEvent[] = []
       let meError: unknown = null
+      let meHeld = false
       if (this.meDue && !this.meRefused && this.o.now() >= this.meNotBefore) {
         try {
           const me = await this.get('/api/me')
@@ -266,15 +281,54 @@ export class GameRelay {
             // Too early in the tick, or over the key's rate: /me waits for the next tick, the clock and the feed go on.
             this.meDue = false
             this.meNotBefore = this.o.now() + (error.retryAfterMs ?? 0)
+            // The Retry-After is the key's: the duels wait as long.
+            this.duelsNotBefore = Math.max(this.duelsNotBefore, this.meNotBefore)
+            meHeld = true
           } else meError = error
         }
       }
-      this.deps.hub.publish([...out, ...meEvents, ...feed])
+      // Our duels go before the feed: a public `duel.closed` of ours then finds its duel already known.
+      const duels = meHeld || meError !== null ? [] : await this.pollDuels()
+      this.deps.hub.publish([...out, ...meEvents, ...duels, ...feed])
       if (meError !== null) throw meError
       if (this.fails > 0) this.deps.log({ route: 'game', event: 'poll_recovered', after: this.fails })
       this.fails = 0
     } catch (error: unknown) {
       this.failed(error)
+    }
+  }
+
+  /** Our duels as the page's events, the ones not sent before; at most once a tick. Never throws. */
+  private async pollDuels(): Promise<GameEvent[]> {
+    const team = this.team
+    if (!this.duelsDue || this.duelsOff || team === null || this.o.now() < this.duelsNotBefore) return []
+    this.duelsDue = false
+    try {
+      const all = duelEvents(await this.get('/api/duels?done=true'), team, this.o.duelLimit)
+      const next = new Set<number>()
+      const fresh = all.filter((e) => {
+        const isNew = !this.duelsSeen.has(e.id) && !next.has(e.id)
+        next.add(e.id)
+        return isNew
+      })
+      this.duelsSeen = next
+      this.duelFails = 0
+      return fresh.map((e) => ({ id: e.id, tick: e.tick ?? this.tick ?? 0, type: e.type, scope: 'team', actor: '', payload: e.payload }))
+    } catch (error: unknown) {
+      const status = error instanceof GameHttpError ? error.status : 0
+      if (status === 401 || status === 403 || status === 404) {
+        this.duelsOff = true
+        this.deps.log({ route: 'game', event: 'duels_refused', status })
+        return []
+      }
+      // Next tick, and not before a 429's Retry-After.
+      if (status === 429 && error instanceof GameHttpError) this.duelsNotBefore = this.o.now() + (error.retryAfterMs ?? 0)
+      this.duelFails += 1
+      if (this.duelFails === 1 || this.duelFails % 10 === 0) {
+        const text = error instanceof Error ? error.message : String(error)
+        this.deps.log({ route: 'game', event: 'duels_failed', fails: this.duelFails, status, message: redact(text, [this.deps.key, this.deps.url]).slice(0, 160) })
+      }
+      return []
     }
   }
 

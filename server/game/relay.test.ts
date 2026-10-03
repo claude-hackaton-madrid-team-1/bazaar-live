@@ -5,6 +5,7 @@ interface World {
   clock: Record<string, unknown>
   feed: Record<string, unknown>[]
   me: Record<string, unknown>
+  duels: Record<string, unknown>[]
   /** Status per path prefix, to make a route fail. */
   fail: Record<string, number>
   calls: string[]
@@ -15,6 +16,7 @@ const world = (): World => ({
   clock: { tick: 7, t_hours: 0.12, tick_seconds: 60, next_tick_in: 41, round_name: 'Friday · El Rastro' },
   feed: [],
   me: { id: 't01', name: 'Team 1', cash: 400 },
+  duels: [],
   fail: {},
   calls: [],
   auth: [],
@@ -25,11 +27,11 @@ const ev = (id: number, type = 'thread.message', payload: Record<string, unknown
 function fakeFetch(w: World): typeof fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input))
-    w.calls.push(url.pathname)
+    w.calls.push(url.pathname + url.search)
     w.auth.push(String((init?.headers as Record<string, string> | undefined)?.['X-Team-Key']))
     const status = Object.entries(w.fail).find(([p]) => url.pathname.startsWith(p))?.[1]
     if (status) return new Response('{}', { status, headers: status === 429 ? { 'Retry-After': '30' } : {} })
-    const body = url.pathname === '/api/clock' ? w.clock : url.pathname === '/api/feed' ? { events: w.feed } : w.me
+    const body = url.pathname === '/api/clock' ? w.clock : url.pathname === '/api/feed' ? { events: w.feed } : url.pathname === '/api/duels' ? { duels: w.duels } : w.me
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }) as typeof fetch
 }
@@ -63,10 +65,11 @@ describe('GameRelay', () => {
     const { w, batches, relay } = setup()
     w.feed = [ev(10)]
     await relay.pollOnce()
+    expect(w.calls).toEqual(['/api/clock', '/api/feed?limit=150', '/api/me', '/api/duels?done=true'])
     w.calls = []
     await relay.pollOnce()
     expect(batches).toHaveLength(1)
-    expect(w.calls).toEqual(['/api/clock', '/api/feed'])
+    expect(w.calls).toEqual(['/api/clock', '/api/feed?limit=150'])
   })
 
   it('a new tick brings a clock and a fresh /me, and no second hello for the same team', async () => {
@@ -141,7 +144,7 @@ describe('GameRelay', () => {
     w.clock = { ...w.clock, tick: 8 }
     w.calls = []
     await relay.pollOnce()
-    expect(w.calls).toEqual(['/api/clock', '/api/feed'])
+    expect(w.calls).toEqual(['/api/clock', '/api/feed?limit=150'])
     expect(relay.nextDelayMs()).toBe(5000)
     expect(logs.filter((l) => l.event === 'me_refused')).toHaveLength(1)
   })
@@ -190,15 +193,82 @@ describe('GameRelay', () => {
     w.fail = {}
     w.calls = []
     await relay.pollOnce()
-    expect(w.calls).toEqual(['/api/clock', '/api/feed'])
+    expect(w.calls).toEqual(['/api/clock', '/api/feed?limit=150'])
     w.clock = { ...w.clock, tick: 9 }
     time.ms = 29_000
     await relay.pollOnce()
     expect(w.calls).not.toContain('/api/me')
+    expect(w.calls).not.toContain('/api/duels?done=true')
     time.ms = 30_000
     await relay.pollOnce()
     expect(w.calls).toContain('/api/me')
+    expect(w.calls).toContain('/api/duels?done=true')
     expect(batches.at(-1)!.map((e) => e.type)).toEqual(['agent.me'])
+  })
+
+  it('duels: read after /me on a new tick, published before the feed, each message and result once', async () => {
+    const { w, batches, relay } = setup()
+    const duel = { duel: 563, status: 'live', role: 'seller', your_limit: 100, deadline_tick: 20, messages: [{ tick: 7, from: 'Rival Oro', text: 'hi', price: 106, days: 0 }] }
+    w.duels = [duel]
+    w.feed = [ev(1, 'duels.scheduled')]
+    await relay.pollOnce()
+    expect(batches[0]!.map((e) => e.type)).toEqual(['clock', 'agent.hello', 'agent.me', 'duel.message', 'duels.scheduled'])
+    expect(batches[0]![3]).toMatchObject({ tick: 7, scope: 'team', actor: '', payload: { duel: 563, role: 'seller', sender: 'Rival Oro', price: 106, days: 0 } })
+    // Same tick: no second read.
+    w.calls = []
+    await relay.pollOnce()
+    expect(w.calls).not.toContain('/api/duels?done=true')
+    // New tick: our answer and the rival's acceptance arrive, the old message is not sent again.
+    w.clock = { ...w.clock, tick: 8 }
+    duel.messages.push({ tick: 8, from: 'you', text: 'no', price: 120, days: 2 })
+    w.duels = [{ ...duel, status: 'deal', price: 120, result: { status: 'deal', price: 120, points: 3.1, your_gain: 20 } }]
+    w.feed = [ev(2, 'duel.closed', { duel: 563, status: 'deal' })]
+    await relay.pollOnce()
+    const fresh = batches.at(-1)!
+    expect(fresh.map((e) => e.type)).toEqual(['clock', 'agent.me', 'duel.message', 'duel.result', 'duel.closed'])
+    expect(fresh[2]?.payload).toEqual({ duel: 563, role: 'seller', sender: 't01', price: 120, days: 2 })
+    expect(fresh[3]?.payload).toEqual({ duel: 563, deal: true, price: 120, points: 3.1 })
+    expect(new Set(batches.flat().filter((e) => e.type.startsWith('duel.m')).map((e) => e.id)).size).toBe(2)
+    expect(JSON.stringify(batches)).not.toMatch(/your_limit|your_gain/)
+  })
+
+  it('duels: a 429 waits for the next tick and its Retry-After; a refusal turns them off; neither slows the loop', async () => {
+    const { w, logs, relay, time } = setup()
+    w.fail['/api/duels'] = 429
+    await relay.pollOnce()
+    expect(relay.nextDelayMs()).toBe(5000)
+    w.fail = {}
+    w.clock = { ...w.clock, tick: 8 }
+    w.calls = []
+    await relay.pollOnce()
+    expect(w.calls).not.toContain('/api/duels?done=true')
+    time.ms = 30_000
+    await relay.pollOnce()
+    expect(w.calls).toContain('/api/duels?done=true')
+    w.fail['/api/duels'] = 404
+    w.clock = { ...w.clock, tick: 9 }
+    await relay.pollOnce()
+    w.fail = {}
+    w.clock = { ...w.clock, tick: 10 }
+    w.calls = []
+    await relay.pollOnce()
+    expect(w.calls).toEqual(['/api/clock', '/api/feed?limit=150', '/api/me'])
+    expect(relay.nextDelayMs()).toBe(5000)
+    expect(logs.filter((l) => l.event === 'duels_refused')).toHaveLength(1)
+    expect(logs.some((l) => l.event === 'poll_failed')).toBe(false)
+  })
+
+  it('no duels without a team (/me refused), and none in a poll where /me was held by a 429', async () => {
+    const { w, relay } = setup()
+    w.fail['/api/me'] = 429
+    await relay.pollOnce()
+    expect(w.calls).not.toContain('/api/duels?done=true')
+    const other = setup()
+    other.w.fail['/api/me'] = 403
+    await other.relay.pollOnce()
+    other.w.clock = { ...other.w.clock, tick: 8 }
+    await other.relay.pollOnce()
+    expect(other.w.calls).not.toContain('/api/duels?done=true')
   })
 
   it('a failed /me still publishes the clock and the feed, and /me is retried next poll', async () => {
