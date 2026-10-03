@@ -6,13 +6,29 @@
  */
 import { useSyncExternalStore } from 'react'
 
-let available: boolean | null = null
+/**
+ * on: the server runs approvals; off: it answered 404; unknown: it could not say yet (429, 5xx, no answer: asking
+ * again); null: no answer at all yet.
+ */
+export type ApproverState = 'on' | 'off' | 'unknown' | null
+
+let state: ApproverState = null
 let asked = false
 const listeners = new Set<() => void>()
 
-function settle(value: boolean): void {
-  available = value
+function settle(value: ApproverState): void {
+  if (value === state) return
+  state = value
   listeners.forEach((listener) => listener())
+}
+
+/**
+ * What /approvals renders: nothing before the first answer, the show once the server said off (like any unknown
+ * path), else the screen, whose own login form stands in while the server cannot say yet.
+ */
+export function approvalsViewOf(s: ApproverState): 'blank' | 'show' | 'screen' {
+  if (s === null) return 'blank'
+  return s === 'off' ? 'show' : 'screen'
 }
 
 /** What the probe does with an answer: on, off, or ask again in `retryS` seconds. */
@@ -26,8 +42,11 @@ export function probeOutcomeOf(status: number | null, retryAfter: string | null)
 function probe(): void {
   const next = (status: number | null, retryAfter: string | null) => {
     const out = probeOutcomeOf(status, retryAfter)
-    if (out.kind === 'retry') setTimeout(probe, out.retryS * 1000)
-    else settle(out.kind === 'on')
+    if (out.kind === 'retry') {
+      // still unknown once on or off was said? keep the last word; else say unknown and ask again
+      if (state === null) settle('unknown')
+      setTimeout(probe, out.retryS * 1000)
+    } else settle(out.kind)
   }
   fetch('/api/approver/session', { credentials: 'same-origin', cache: 'no-store' })
     .then((res) => {
@@ -50,7 +69,6 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-/** true: the server runs approvals; false: it does not (or did not answer); null: not known yet. */
-export function useApproverAvailable(): boolean | null {
-  return useSyncExternalStore(subscribe, () => available, () => null)
+export function useApproverState(): ApproverState {
+  return useSyncExternalStore(subscribe, () => state, () => null)
 }

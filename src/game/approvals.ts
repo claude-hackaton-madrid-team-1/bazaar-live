@@ -57,6 +57,17 @@ export function sessionOutcomeOf(status: number, body: unknown, retryAfter: stri
   return { kind: 'unknown', retryS: Number.isFinite(seconds) && seconds > 0 ? Math.min(60, seconds) : 5 }
 }
 
+/**
+ * What the screen holds after a session answer: the CSRF token (in), null (the login form), and when to ask again.
+ * While the server cannot say, the login form stands in (never a blank page) and the screen keeps asking; a token it
+ * already holds is kept.
+ */
+export function sessionStepOf(out: SessionOutcome, held: string | null | undefined): { readonly csrf: string | null; readonly retryS: number | null } {
+  if (out.kind === 'in') return { csrf: out.csrf, retryS: null }
+  if (out.kind === 'out') return { csrf: null, retryS: null }
+  return { csrf: held ?? null, retryS: out.retryS }
+}
+
 export async function readSession(signal?: AbortSignal): Promise<SessionOutcome> {
   try {
     const res = await fetch('/api/approver/session', { credentials: 'same-origin', cache: 'no-store', signal })
@@ -168,9 +179,9 @@ export function orderActive(rows: readonly ActiveApproval[]): ActiveApproval[] {
   return [...rows].sort((a, b) => a.until_tick - b.until_tick)
 }
 
-/** The live approval a Deny on this request would revoke too (bazaar-mcp's revoke ends any approval for card + side). */
+/** The live approval a Deny on this request would revoke too (bazaar-mcp's revoke ends any approval for card + side; live while until_tick > tick, as bazaar-mcp counts it). */
 export function liveApprovalFor(row: Pick<PendingRequest, 'card' | 'side'>, active: readonly ActiveApproval[], tick: number): ActiveApproval | null {
-  return active.find((a) => a.card === row.card && a.side === row.side && a.until_tick >= tick) ?? null
+  return active.find((a) => a.card === row.card && a.side === row.side && a.until_tick > tick) ?? null
 }
 
 /** The form's first price: the asked one in whole primas, rounded so the approval still covers it (a buy up, a sell down). */

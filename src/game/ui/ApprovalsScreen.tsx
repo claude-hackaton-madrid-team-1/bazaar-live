@@ -8,7 +8,7 @@ import type { ActiveApproval, ApprovalLimits, ApprovalsSnapshot, PendingRequest 
 import { REASON_MAX } from '../../../shared/approvals.ts'
 import {
   albumLineOf, approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, denyInput, liveApprovalFor, login, logout, orderActive,
-  orderPending, prefillPrice, priceBounds, priceWarningOf, readApprovals, readSession, reasonTooLong, REFRESH_MS, revoke, rowKey, staleness, ticksLeft,
+  orderPending, prefillPrice, priceBounds, priceWarningOf, readApprovals, readSession, reasonTooLong, sessionStepOf, REFRESH_MS, revoke, rowKey, staleness, ticksLeft,
   type LoginOutcome, type WriteOutcome,
 } from '../approvals.ts'
 import { p, useApprovalsStrings } from '../approvalsStrings.ts'
@@ -22,12 +22,14 @@ export function ApprovalsScreen() {
   useEffect(() => {
     const controller = new AbortController()
     let retry: ReturnType<typeof setTimeout> | undefined
-    // a 429, a 5xx or no answer is not "locked": keep checking, and ask again when the server says
+    // a 429, a 5xx or no answer: the login form stands in, and the screen asks again when the server says
     const ask = (): void => {
       void readSession(controller.signal).then((out) => {
         if (controller.signal.aborted) return
-        if (out.kind === 'unknown') retry = setTimeout(ask, out.retryS * 1000)
-        else setCsrf(out.kind === 'in' ? out.csrf : null)
+        const step = sessionStepOf(out, undefined)
+        if (step.retryS !== null) retry = setTimeout(ask, step.retryS * 1000)
+        // the updater stays pure: an unknown answer keeps a token already held, else shows the login form
+        setCsrf((held) => sessionStepOf(out, held).csrf)
       })
     }
     ask()

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CONTRACT_LIMITS, type PendingRequest } from '../../shared/approvals.ts'
 import {
-  albumLineOf, approvalLimitOf, approve, liveApprovalFor, prefillPrice, sessionOutcomeOf, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, CONFIRM_DELAY_MS, denyInput, login, loginOutcomeOf, orderActive, orderPending, priceBounds, priceWarningOf,
+  albumLineOf, approvalLimitOf, approve, liveApprovalFor, prefillPrice, sessionOutcomeOf, sessionStepOf, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, CONFIRM_DELAY_MS, denyInput, login, loginOutcomeOf, orderActive, orderPending, priceBounds, priceWarningOf,
   readOutcomeOf, readSession, revoke, staleness, writeOutcomeOf,
 } from './approvals.ts'
 import { APPROVALS_STRINGS } from './approvalsStrings.ts'
-import { probeOutcomeOf } from '../ui/approver.ts'
+import { approvalsViewOf, probeOutcomeOf } from '../ui/approver.ts'
 
 const row = (over: Partial<PendingRequest> = {}): PendingRequest => ({
   card: 'SAL-09', side: 'buy', price: 260, asked_tick: 905, stale_after_tick: 1145, state: 'waiting', counterparty: 'chato', asked_by: 'accept_buy',
@@ -106,6 +106,20 @@ describe('the probe and the session', () => {
     expect(probeOutcomeOf(null, null)).toEqual({ kind: 'retry', retryS: 5 })
     expect(sessionOutcomeOf(404, null, null)).toEqual({ kind: 'unknown', retryS: 5 })
   })
+
+  it('renders /approvals: nothing before an answer, the show when off, the screen when on or still unknown', () => {
+    expect(approvalsViewOf(null)).toBe('blank')
+    expect(approvalsViewOf('off')).toBe('show')
+    expect(approvalsViewOf('on')).toBe('screen')
+    expect(approvalsViewOf('unknown')).toBe('screen')
+  })
+
+  it('shows the login form while the session is unknown, asks again, and keeps a token it already holds', () => {
+    expect(sessionStepOf({ kind: 'unknown', retryS: 7 }, undefined)).toEqual({ csrf: null, retryS: 7 })
+    expect(sessionStepOf({ kind: 'unknown', retryS: 7 }, 'held')).toEqual({ csrf: 'held', retryS: 7 })
+    expect(sessionStepOf({ kind: 'in', csrf: 'tok' }, null)).toEqual({ csrf: 'tok', retryS: null })
+    expect(sessionStepOf({ kind: 'out' }, 'held')).toEqual({ csrf: null, retryS: null })
+  })
 })
 
 describe('what a request does', () => {
@@ -113,7 +127,9 @@ describe('what a request does', () => {
 
   it('finds the live approval a Deny would revoke too', () => {
     expect(liveApprovalFor(row(), [active], 912)).toBe(active)
-    expect(liveApprovalFor(row(), [active], 1001)).toBeNull()
+    expect(liveApprovalFor(row(), [active], 999)).toBe(active)
+    // live while until_tick > tick, as bazaar-mcp counts it
+    expect(liveApprovalFor(row(), [active], 1000)).toBeNull()
     expect(liveApprovalFor(row({ side: 'sell' }), [active], 912)).toBeNull()
     expect(liveApprovalFor(row({ card: 'LAV-01' }), [active], 912)).toBeNull()
   })
