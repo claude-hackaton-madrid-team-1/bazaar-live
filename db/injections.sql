@@ -3,7 +3,7 @@
 --
 -- Applied by the coordinator with the ADMIN url, AFTER db/show.sql (and the other show files), each time:
 --     psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql \
---          -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql
+--          -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql -f db/rival_board.sql
 -- show.sql starts by revoking everything in schema show from bazaar_live_reader: a re-run of it drops this grant
 -- too, so re-run this file after it, every time.
 --

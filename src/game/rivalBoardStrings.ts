@@ -40,7 +40,7 @@ export interface RivalBoardStrings {
   /** A guarded team we may still trade with: why the board allows it (`ourRankKnown` false: every team is guarded). */
   readonly guardedTrade: (reason: GuardReason, ourRankKnown: boolean) => string
   readonly title: (team: string) => string
-  readonly sub: string
+  readonly sub: (tick: number) => string
   readonly versusUs: string
   readonly vs: (theirs: number | null, ours: number | null) => string
   readonly component: { readonly score: string; readonly negotiating: string; readonly market: string; readonly pages: string }
@@ -156,7 +156,7 @@ const EN: RivalBoardStrings = {
   guard: { top5: 'Top 5', near: 'Near us' },
   guardTitle: {
     top5: 'a top-5 team: we only trade when our gain is at least twice theirs (an estimate: theirs at book × their best set multiplier)',
-    near: 'within 3 ranks of us (or our rank is unknown): we only trade when our gain is at least twice theirs (an estimate: theirs at book × their best set multiplier)',
+    near: 'within 3 ranks of us, ranked above us, or any team while our rank is unknown: we only trade when our gain is at least twice theirs (an estimate: theirs at book × their best set multiplier)',
   },
   strength: EN_STRENGTH,
   weakness: EN_WEAKNESS,
@@ -166,7 +166,7 @@ const EN: RivalBoardStrings = {
   guardedTrade: (reason, ourRankKnown) =>
     `${reason === 'top5' ? 'A top-5 rival' : ourRankKnown ? 'Close to us in the ranking' : 'Guarded while our own rank is unknown'}, but by the board's estimate (theirs at book × their best set multiplier, page bonus not counted) we gain at least twice what they do.`,
   title: (team) => `Our move with ${team}`,
-  sub: 'private: our spares, the cards we miss and our estimates',
+  sub: (tick) => `private: our spares, the cards we miss and our estimates · leaderboard of tick ${tick}`,
   versusUs: 'Against us',
   vs: (theirs, ours) => `${theirs === null ? '—' : numIn('en')(theirs)} vs ${ours === null ? '—' : numIn('en')(ours)}`,
   component: { score: 'Score', negotiating: 'Negotiating', market: 'Market', pages: 'Pages' },
@@ -196,7 +196,7 @@ const ES: RivalBoardStrings = {
   guard: { top5: 'Top 5', near: 'Cerca' },
   guardTitle: {
     top5: 'un equipo del top 5: solo negociamos si ganamos al menos el doble que ellos (estimado: lo suyo a valor de libro × su mejor multiplicador)',
-    near: 'a 3 puestos o menos de nosotros (o no sabemos nuestro puesto): solo negociamos si ganamos al menos el doble que ellos (estimado: lo suyo a valor de libro × su mejor multiplicador)',
+    near: 'a 3 puestos o menos de nosotros, por encima de nosotros, o cualquiera mientras no sabemos nuestro puesto: solo negociamos si ganamos al menos el doble que ellos (estimado: lo suyo a valor de libro × su mejor multiplicador)',
   },
   strength: ES_STRENGTH,
   weakness: ES_WEAKNESS,
@@ -207,7 +207,7 @@ const ES: RivalBoardStrings = {
   guardedTrade: (reason, ourRankKnown) =>
     `${reason === 'top5' ? 'Rival del top 5' : ourRankKnown ? 'Cerca de nosotros en la clasificación' : 'Protegido mientras no sabemos nuestro puesto'}, pero según la estimación del tablero (lo suyo a valor de libro × su mejor multiplicador, sin bonus de página) ganamos al menos el doble que ellos.`,
   title: (team) => `Nuestra jugada con ${team}`,
-  sub: 'privado: nuestros repetidos, las cartas que nos faltan y nuestras estimaciones',
+  sub: (tick) => `privado: nuestros repetidos, las cartas que nos faltan y nuestras estimaciones · clasificación del turno ${tick}`,
   versusUs: 'Frente a nosotros',
   vs: (theirs, ours) => `${theirs === null ? '—' : numIn('es')(theirs)} vs ${ours === null ? '—' : numIn('es')(ours)}`,
   component: { score: 'Puntos', negotiating: 'Negociación', market: 'Mercado', pages: 'Páginas' },

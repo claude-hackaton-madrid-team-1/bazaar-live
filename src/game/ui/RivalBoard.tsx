@@ -2,6 +2,8 @@
  * The rival board on the Rivals screen (db/rival_board.sql): a move badge for each team of the standings, and the
  * picked team's panel, with where it beats or trails us, what it wants against what we hold, and our move in plain
  * words. Private (our spares, the cards we miss, our estimates). Plain text only: every string is a React text node.
+ * The panel says which leaderboard tick the board is from: a board that keeps failing keeps its last rows, so its own
+ * tick (not the screen's read time) tells how old it is.
  */
 import type { BoardRow, CardSignal } from '../../../shared/rivalBoard.ts'
 import { whoName } from '../humanize.ts'
@@ -50,7 +52,7 @@ export function BoardPanel({ row }: { row: BoardRow }) {
   const trend = rankTrend(row)
   const interests = interestsOf(row)
   return (
-    <Panel title={t.title(whoName(g, row.team))} sub={t.sub} className="rb-panel">
+    <Panel title={t.title(whoName(g, row.team))} sub={t.sub(row.tick)} className="rb-panel">
       <div className="rb-move" data-tone={moveTone(row.moveKind)}>
         <span className="rb-move-head">
           <Badge tone={moveTone(row.moveKind)}>{t.moveKind[row.moveKind]}</Badge>
