@@ -3,10 +3,12 @@
  * on events shaped like the real game's (tick 864: LAV-10 bought from Los Pícaros at 63).
  */
 import { assert, test } from 'vitest'
+import { MockGame } from '../mock.ts'
 import { NEG_LIVE_STRINGS } from '../negLiveStrings.ts'
 import { apply, createState, isOurs, type GameEvent, type Payload, type State } from '../state.ts'
 import { plainText } from '../teamThreads.ts'
 import { marketBoards, ourNegotiations, teamTalks, type DealerSentence, type DuelSentence, type SwapSentence } from './negotiations-live.ts'
+import { negRows } from './negotiations.ts'
 
 let nextId = 1
 let nextOffer = 100
@@ -141,4 +143,59 @@ test("a team's words are bounded plain text: no control or bidi characters, fold
   assert.isNull(plainText('​‍'))
   assert.equal(plainText('x'.repeat(400))?.length, 280)
   assert.isNull(plainText(42))
+})
+
+test('review: a thread keeps the kind it was first seen with, and thread.closed closes it wherever it lives', () => {
+  const s = fresh()
+  const [opened, msg] = swapWithT07()
+  feed(s, [opened!, msg!])
+  // a later message of the same thread without `kind: team` (the mock did this) stays a team thread
+  apply(s, ev('thread.message', { thread: 900, kind: 'persona', team: 't07', with: 't01', sender: 't01', offer: { maker: 't01', to: 't07', give: { cash: 0, assets: [{ id: 3, ref: 'SAL-01' }] }, want: { cash: 0, types: ['card:MAL-03'] }, expires_tick: 40 } }, 21))
+  assert.deepEqual([Object.keys(s.threads), s.teamThreads.get(900)?.offers.length], [[], 2])
+  apply(s, ev('thread.closed', { thread: 900, reason: 'deal' }, 22))
+  assert.equal(s.teamThreads.get(900)?.status, 'closed')
+})
+
+test('review: a team offer that lapsed ends the swap; a thread with words only is left out', () => {
+  const s = fresh()
+  feed(s, swapWithT07())
+  apply(s, ev('thread.opened', { thread: 901, kind: 'team', team: 't13', with: 't01', venue: 'v02' }, 5))
+  apply(s, ev('thread.message', { thread: 901, kind: 'team', team: 't13', with: 't01', sender: 't13', text: 'hola', offer: null }, 5))
+  s.teamThreads.get(900)!.offers[0] = { ...s.teamThreads.get(900)!.offers[0]!, expiresTick: 18 }
+  assert.deepEqual(teamTalks(s).map((x) => [x.id, x.status, x.kind === 'swap' ? x.closedReason : null]), [[900, 'closed', 'expired']])
+  assert.deepEqual(ourNegotiations(s).filter((x) => x.kind === 'swap'), [])
+})
+
+test('review: without GAME_VIEW_TOKEN the rows carry no cap, so no card, verdict or sentence can print one', () => {
+  const s = fresh()
+  feed(s, [
+    ev('thread.message', { thread: 61, kind: 'persona', team: 't01', with: 'picaros', sender: 't01', offer: { maker: 't01', to: 'picaros', give: { cash: 56 }, want: { types: ['card:LAV-10'] }, expires_tick: 24 } }, 19),
+    ev('thread.message', { thread: 61, kind: 'persona', team: 't01', with: 'picaros', sender: 'picaros', offer: { maker: 'picaros', to: 't01', give: { types: ['card:LAV-10'] }, want: { cash: 80 }, expires_tick: 24 } }, 19),
+    ev('agent.decision', {
+      decision: 5, agent: 'taker', kind: 'dealer_bid', item: 'LAV-10', counterparty: 'picaros', price: 70, value: null, status: 'rejected', verdict: 'denied',
+      rule: 'max_price_rare', text: 'price 70 > max_price_rare 67', jev: null, jevValue: null, method: null, error: null, outcome: null, surplus: null, jevRight: null,
+    }, 20),
+  ])
+  const hidden = negRows(s, { caps: false })[0]!
+  assert.deepEqual([hidden.cap, hidden.verdict.kind === 'capBelow', JSON.stringify(hidden).includes('67')], [null, false, false])
+  assert.equal(negRows(s)[0]?.cap?.cap, 67)
+  assert.isNull((ourNegotiations(s, negRows(s, { caps: false }))[0] as DealerSentence).cap)
+})
+
+test('review: the cut never splits an emoji, and stacked combining marks fold', () => {
+  const text = `${'a'.repeat(278)}😀😀😀`
+  const cut = plainText(text)!
+  assert.isFalse(cut.includes('\uFFFD'))
+  assert.equal(Array.from(cut).length, 280)
+  assert.equal(plainText('Z\u0336\u0335\u0334\u0333o'), 'Z\u0336\u0335o')
+})
+
+test('review: in the mock a sale to another team is a team thread only, never a dealer thread too', () => {
+  for (const seed of [1, 2, 3, 7]) {
+    const game = new MockGame(seed)
+    const s = createState()
+    for (let i = 0; i < 40; i++) game.step().forEach((e) => apply(s, e))
+    const both = [...s.teamThreads.keys()].filter((id) => id in s.threads)
+    assert.deepEqual(both, [], `seed ${seed}`)
+  }
 })

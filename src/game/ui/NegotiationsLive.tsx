@@ -34,7 +34,7 @@ function sentenceText(x: Sentence, t: GameStrings, l: NegLiveStrings, limits: bo
  * The page may show our private limits (caps, duel limits) only with GAME_VIEW_TOKEN, or in the made-up mock game.
  * The server already sends them only behind the token; this keeps them out of view when the page has none.
  */
-function useLimitsVisible(): boolean {
+export function useLimitsVisible(): boolean {
   const token = useParam('token')
   const { status } = useGame()
   return Boolean(token) || status === 'mock'
@@ -49,7 +49,7 @@ export function OurNegotiations({ rows, dealer }: { rows: readonly NegRow[]; dea
   const all = ourNegotiations(state, rows)
   const shown = dealer ? all.filter((x) => x.kind === 'dealer' && x.with === dealer) : all
   if (dealer && !shown.length) return null
-  const hasLimit = all.some((x) => (x.kind === 'dealer' && x.cap != null) || (x.kind === 'duel' && x.limit != null))
+  const hasLimit = shown.some((x) => (x.kind === 'dealer' && x.cap != null) || (x.kind === 'duel' && x.limit != null))
   return (
     <Panel title={l.ours} sub={l.oursSub(shown.length)} className="nl-ours">
       {shown.length ? (
@@ -120,8 +120,8 @@ function Board({ b }: { b: MarketBoard }) {
         <div className="nl-trades">
           <span className="eyebrow">{l.trades}</span>
           <ul>
-            {b.trades.map((x) => (
-              <li key={`${x.eventId}-${x.ref}`} data-ours={x.ours || undefined}>
+            {b.trades.map((x, i) => (
+              <li key={`${x.eventId}-${x.ref}-${i}`} data-ours={x.ours || undefined}>
                 <RefChip topic={x.ref} /> <span className="gm-muted">{l.trade(whoName(t, x.seller), whoName(t, x.buyer), x.price)}</span>
               </li>
             ))}

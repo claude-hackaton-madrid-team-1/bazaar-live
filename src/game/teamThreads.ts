@@ -16,6 +16,8 @@ export type TeamOffer = {
   readonly give: TeamSide
   readonly want: TeamSide
   readonly final: boolean
+  /** The tick the offer lapses after; null when the game gave none. */
+  readonly expiresTick: number | null
 }
 
 export type TeamThread = {
@@ -58,9 +60,18 @@ const sideOf = (v: Payload | undefined): TeamSide => {
 /** Plain text, bounded: control and format characters out (bidi tricks), whitespace folded. */
 export function plainText(v: unknown): string | null {
   if (typeof v !== 'string') return null
-  const plain = v.normalize('NFC').replace(/[\p{Cf}\p{Co}\p{Cs}]/gu, '').replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim()
+  const plain = v
+    .normalize('NFC')
+    .replace(/[\p{Cf}\p{Co}\p{Cs}]/gu, '')
+    .replace(/\p{Cc}/gu, ' ')
+    // stacked combining marks ("zalgo"): at most two on a letter
+    .replace(/(\p{M}{2})\p{M}+/gu, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
   if (!plain) return null
-  return plain.length <= TEAM_THREAD_LIMITS.text ? plain : `${plain.slice(0, TEAM_THREAD_LIMITS.text - 1).trimEnd()}…`
+  // cut by code point, never inside a surrogate pair
+  const chars = Array.from(plain)
+  return chars.length <= TEAM_THREAD_LIMITS.text ? plain : `${chars.slice(0, TEAM_THREAD_LIMITS.text - 1).join('').trimEnd()}…`
 }
 
 function threadOf(all: Map<number, TeamThread>, team: string, p: Payload, tick: number | null): TeamThread | null {
@@ -85,14 +96,17 @@ export function teamThreadOpened(all: Map<number, TeamThread>, team: string, e: 
 
 export function teamThreadMessage(all: Map<number, TeamThread>, team: string, e: GameEvent): void {
   const p = e.payload
-  if (!isOurTeamThread(team, p)) return
+  if (!all.has(p.thread) && !isOurTeamThread(team, p)) return
   const th = threadOf(all, team, p, e.tick ?? null)
   if (!th) return
   const ours = p.sender === team
   th.lastTick = e.tick ?? th.lastTick
   const offer: Payload | undefined = p.offer && typeof p.offer === 'object' ? p.offer : undefined
   if (offer) {
-    th.offers.push({ eventId: e.id, tick: e.tick ?? null, side: ours ? 'us' : 'them', give: sideOf(offer.give), want: sideOf(offer.want), final: Boolean(offer.final) })
+    // the offer's maker says whose side `give` is (a message may carry the other side's offer back)
+    const mine = offer.maker != null ? offer.maker === team : ours
+    const expires = typeof offer.expires_tick === 'number' ? offer.expires_tick : null
+    th.offers.push({ eventId: e.id, tick: e.tick ?? null, side: mine ? 'us' : 'them', give: sideOf(offer.give), want: sideOf(offer.want), final: Boolean(offer.final), expiresTick: expires })
     if (th.offers.length > TEAM_THREAD_LIMITS.offers) th.offers.splice(0, th.offers.length - TEAM_THREAD_LIMITS.offers)
   }
   if (!ours) th.lastText = plainText(p.text) ?? th.lastText

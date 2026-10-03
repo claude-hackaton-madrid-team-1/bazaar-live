@@ -251,7 +251,7 @@ export function isOurs(s: State, e: GameEvent): boolean {
   if (e.type.startsWith('agent.') || e.type === 'clock') return true
   // The feed's `duel.closed` is every team's: a duel event is ours when it came from our duel list, or names one of ours.
   if (e.type.startsWith('duel.')) return fromRelay(e) || p.duel in s.duels
-  if (e.type === 'thread.message') return isTeamThread(p) ? isOurTeamThread(s.team, p) : p.team === s.team
+  if (e.type === 'thread.message') return s.teamThreads.has(p.thread) || (isTeamThread(p) && !(p.thread in s.threads) ? isOurTeamThread(s.team, p) : p.team === s.team)
   if (e.type === 'thread.closed') return p.thread in s.threads || s.teamThreads.has(p.thread)
   if (e.type === 'settlement') return (p.parties ?? []).includes(s.team)
   // the board and the rest: ours when we are the actor or the maker (never when we have no team yet)
@@ -664,12 +664,12 @@ export function apply(s: State, e: GameEvent): State {
       teamThreadOpened(s.teamThreads, s.team, e)
       break
     case 'thread.message':
-      // a team thread is a swap between teams, never a dealer negotiation
-      if (isTeamThread(p)) teamThreadMessage(s.teamThreads, s.team, e)
+      // a team thread is a swap between teams, never a dealer negotiation; a thread keeps the kind it was first seen with
+      if (s.teamThreads.has(p.thread) || (isTeamThread(p) && !(p.thread in s.threads))) teamThreadMessage(s.teamThreads, s.team, e)
       else threadMessage(s, e)
       break
     case 'thread.closed': {
-      if (teamThreadClosed(s.teamThreads, e)) break
+      teamThreadClosed(s.teamThreads, e)
       const th = s.threads[p.thread]
       if (th) {
         th.status = 'closed'

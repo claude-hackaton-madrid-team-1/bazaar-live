@@ -333,17 +333,20 @@ function row(s: State, th: Thread, ended: boolean): ThreadRow {
 
 const tacticsOf = (th: Thread): string[] => [...new Set(th.offers.flatMap((o) => (o.side === 'us' && o.tactic ? [o.tactic] : [])))]
 
-export function negRow(s: State, th: Thread): NegRow {
+/** `caps: false` leaves our guardrail caps out (a page without GAME_VIEW_TOKEN): no cap, and no verdict read off one. */
+export function negRow(s: State, th: Thread, { caps = true }: { caps?: boolean } = {}): NegRow {
   const own = threadDecisions(s, th)
   const scoredAt = s.agents.outcomes.find((o) => o.subject === `thread:${th.id}`)?.tick
   const value = valueOf(s, th, own, th.closedTick ?? scoredAt ?? Infinity)
   const ended = endedOf(s, th, value, own)
   const base = row(s, th, ended != null)
-  const cap = th.side === 'buy' ? capOf(s, th, own) : null
+  const cap = caps && th.side === 'buy' ? capOf(s, th, own) : null
   const trend = trendOf(th)
   const quiet = base.lastTick == null ? null : s.tick - base.lastTick
   const state = statusOf({ ...base, cap, ended, trend, ticksLeft: base.expiresIn, quiet, value })
-  const partial = { ...base, state, value, cap, ticksLeft: base.expiresIn, trend, next: ended ? null : nextOf(own), ended }
+  const next = ended ? null : nextOf(own)
+  // a denial's text prints the cap it broke ("price 70 > max_price_rare 67"): left out with the caps
+  const partial = { ...base, state, value, cap, ticksLeft: base.expiresIn, trend, next: next && !caps ? { ...next, text: null } : next, ended }
   return { ...partial, verdict: verdictOf(partial) }
 }
 
@@ -351,8 +354,8 @@ export function negRow(s: State, th: Thread): NegRow {
  * Every thread of ours: the live ones newest first, in a stable order (a card that jumps on every move cannot
  * be watched), then the ended ones by their last activity.
  */
-export function negRows(s: State): NegRow[] {
-  const rows = Object.values(s.threads).map((th) => negRow(s, th))
+export function negRows(s: State, { caps = true }: { caps?: boolean } = {}): NegRow[] {
+  const rows = Object.values(s.threads).map((th) => negRow(s, th, { caps }))
   const live = rows.filter((r) => r.status === 'open').sort((a, b) => b.id - a.id)
   const last = (r: NegRow) => (s.threads[r.id] ? lastEvent(s.threads[r.id] as Thread) : r.id)
   const ended = rows.filter((r) => r.status !== 'open').sort((a, b) => last(b) - last(a) || b.id - a.id)

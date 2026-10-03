@@ -15,7 +15,7 @@ import { dealerGroups, dealerOf, selectedIn, type DealerGroup } from '../views/n
 import { nowTick } from '../views/decisions.ts'
 import { liveDuelCount } from '../views/duels.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
-import { Markets, OurNegotiations, TeamsWithUs } from './NegotiationsLive.tsx'
+import { Markets, OurNegotiations, TeamsWithUs, useLimitsVisible } from './NegotiationsLive.tsx'
 
 function Pill({ state }: { state: NegStatus }) {
   const t = useGameStrings()
@@ -316,7 +316,8 @@ export function NegotiationsScreen() {
   const t = useGameStrings()
   const requested = useParam('id')
   const requestedDealer = useParam('dealer')
-  const all = negRows(state)
+  // our caps only with GAME_VIEW_TOKEN (or the mock): without it no card, verdict or sentence shows one
+  const all = negRows(state, { caps: useLimitsVisible() })
   const groups = dealerGroups(state, all)
   const dealer = dealerOf(groups, requestedDealer)
   const rows = dealer ? [...dealer.live, ...dealer.ended] : all

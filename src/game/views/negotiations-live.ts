@@ -145,13 +145,21 @@ export type DuelTalk = {
 
 export type TeamTalk = SwapTalk | DuelTalk
 
-const swapOf = (th: TeamThread): SwapTalk => {
+/** A team thread is live while it is open and its latest offer has not lapsed (a thread may never get thread.closed). */
+const teamStatus = (s: State, th: TeamThread): { status: 'open' | 'closed'; reason: string | null } => {
+  const lapse = th.offers.at(-1)?.expiresTick
+  if (th.status === 'open' && lapse != null && lapse < s.tick) return { status: 'closed', reason: 'expired' }
+  return { status: th.status, reason: th.closedReason }
+}
+
+const swapOf = (s: State, th: TeamThread): SwapTalk => {
   const last = th.offers.at(-1)
+  const { status, reason } = teamStatus(s, th)
   // the maker gives `give` and wants `want`: from our side, our offer gives `give`, theirs asks us for `want`
   const weGive = last ? (last.side === 'us' ? last.give : last.want) : null
   const theyGive = last ? (last.side === 'us' ? last.want : last.give) : null
   return {
-    kind: 'swap', id: th.id, with: th.with, venue: th.venue, status: th.status, closedReason: th.closedReason,
+    kind: 'swap', id: th.id, with: th.with, venue: th.venue, status, closedReason: reason,
     weGive, theyGive, lastBy: last?.side ?? null, final: last?.final ?? false, lastText: th.lastText, lastTick: th.lastTick,
   }
 }
@@ -161,7 +169,8 @@ const swapOf = (th: TeamThread): SwapTalk => {
  * first), then the ones that ended in the last `recentTicks`, at most `limit` rows.
  */
 export function teamTalks(s: State, { recentTicks = 30, limit = 12 }: { recentTicks?: number; limit?: number } = {}): TeamTalk[] {
-  const swaps = [...s.teamThreads.values()].map(swapOf)
+  // a thread with no offer yet (words only) says nothing about what moves
+  const swaps = [...s.teamThreads.values()].filter((th) => th.offers.length > 0).map((th) => swapOf(s, th))
   const duels = Object.values(s.duels).map((d): DuelTalk => {
     const r = d.status === 'open' ? liveDuel(s, d) : null
     return {
@@ -219,8 +228,8 @@ const dealerSentence = (r: NegRow): DealerSentence => ({
 /** One sentence per open negotiation of ours: dealer threads, team swaps, duels. */
 export function ourNegotiations(s: State, rows: readonly NegRow[] = negRows(s)): Sentence[] {
   const dealers = rows.filter((r) => r.status === 'open').map(dealerSentence)
-  const swaps = [...s.teamThreads.values()].filter((th) => th.status === 'open').map((th): SwapSentence => {
-    const x = swapOf(th)
+  const swaps = [...s.teamThreads.values()].filter((th) => th.offers.length > 0 && teamStatus(s, th).status === 'open').map((th): SwapSentence => {
+    const x = swapOf(s, th)
     return { kind: 'swap', id: x.id, with: x.with, weGive: x.weGive, theyGive: x.theyGive, lastBy: x.lastBy, final: x.final }
   })
   const duels = Object.values(s.duels).filter((d) => d.status === 'open').sort((a, b) => b.id - a.id).map((d): DuelSentence => {
