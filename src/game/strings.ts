@@ -549,6 +549,8 @@ export interface GameStrings {
       readonly noMarks: string
       readonly focus: (series: string) => string
       readonly chartLabel: (series: string) => string
+      /** How to move the crosshair from the keyboard. */
+      readonly keys: string
     }
   }
 }
@@ -1203,6 +1205,7 @@ const EN: GameStrings = {
       noMarks: 'No change marked today yet: the chart shows the score alone.',
       focus: (series) => `Show ${series} on the big chart`,
       chartLabel: (series) => `${series} today, tick by tick, with the marks where something changed`,
+      keys: 'left and right arrows move through the readings',
     },
   },
 }
@@ -1767,6 +1770,7 @@ const ES: GameStrings = {
       noMarks: 'Hoy aún no hay cambios marcados: el gráfico muestra solo los puntos.',
       focus: (series) => `Ver ${series} en el gráfico grande`,
       chartLabel: (series) => `${series} de hoy, turno a turno, con las marcas donde algo cambió`,
+      keys: 'las flechas izquierda y derecha recorren las lecturas',
     },
   },
 }

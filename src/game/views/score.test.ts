@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ScoreMark, ScorePoint } from '../../../shared/history.ts'
 import { mockHistory } from '../history.ts'
-import { atTick, defaultMark, deltas, markGroups, minutesBetween, scoreDay, seriesChart, spanOf, valueAt, xScale } from './score.ts'
+import { atTick, defaultMark, deltas, markGroups, minutesBetween, nearestMark, readingAt, scoreDay, seriesChart, spanOf, stepTick, valueAt, xScale } from './score.ts'
 
 const D = '2026-10-03'
 const P = (tick: number, score: number, extra: Partial<ScorePoint> = {}): ScorePoint => ({
@@ -23,6 +23,43 @@ describe('score over the day', () => {
     expect(valueAt(points, 'score', 99)).toBeNull()
     expect(valueAt(points, 'score', 125)).toBe(12)
     expect(valueAt(points, 'bench', 115)).toBeNull()
+  })
+
+  it('reads what held at a hovered tick: the reading at or before it, each part against the reading before', () => {
+    const r = readingAt(points, 125)
+    expect([r.tick, r.index, r.at]).toEqual([125, 2, P(125, 0).at])
+    const of = (k: string) => r.values.find((v) => v.key === k)
+    // between two readings the earlier one holds, never a value in between
+    expect(of('score')).toEqual({ key: 'score', value: 12, change: 1 })
+    expect(of('neg')).toEqual({ key: 'neg', value: 5, change: 0 })
+    // a part that had no value at the reading before has no change, not one from zero
+    expect(of('bench')).toEqual({ key: 'bench', value: 0.5, change: null })
+    expect(readingAt(points, 130).values.find((v) => v.key === 'neg')?.change).toBe(15)
+    // before the first reading nothing held; at the first there is nothing to compare with
+    expect(readingAt(points, 99).index).toBe(-1)
+    expect(readingAt(points, 99).values.every((v) => v.value === null && v.change === null)).toBe(true)
+    expect(readingAt(points, 100).values.find((v) => v.key === 'score')).toEqual({ key: 'score', value: 10, change: null })
+    expect(readingAt(points, 999).index).toBe(4)
+  })
+
+  it('steps reading by reading, landing on the held one first, and stays within the day', () => {
+    expect(stepTick(points, 120, 1)).toBe(130)
+    expect(stepTick(points, 120, -1)).toBe(110)
+    expect(stepTick(points, 125, -1)).toBe(120)
+    expect(stepTick(points, 125, 1)).toBe(130)
+    expect(stepTick(points, 140, 1)).toBe(140)
+    expect(stepTick(points, 100, -1)).toBe(100)
+    expect(stepTick(points, 50, 1)).toBe(100)
+    expect(stepTick([], 10, 1)).toBeNull()
+  })
+
+  it('finds the mark nearest a tick within a few ticks, else none', () => {
+    const g = markGroups([M(1, 105), M(2, 112, 'game')], points)
+    expect(nearestMark(g, 108, 4)?.key).toBe('start1')
+    expect(nearestMark(g, 109, 4)?.key).toBe('game2')
+    expect(nearestMark(g, 101, 4)?.key).toBe('start1')
+    expect(nearestMark(g, 100, 4)).toBeNull()
+    expect(nearestMark(g, 125, 4)).toBeNull()
   })
 
   it("folds one agent's starts close together into one mark, not another agent's, and keeps the game's turns apart", () => {
