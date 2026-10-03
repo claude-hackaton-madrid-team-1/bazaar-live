@@ -189,6 +189,14 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
   minute; the relay never notices.
 - The caps are not in the database: `GUARDRAIL_SPEND_PER_HOUR` (150), `GUARDRAIL_CASH_FLOOR` (50),
   `GUARDRAIL_ACCEPTS_PER_TICK` (1) follow an edit of GUARDRAILS.md.
+- How the page reads them (`src/game/views/decisions.ts`, `agent.ts`): the feed keeps only its last window, so
+  "Now" falls back to the latest decision (goal, guardrail and Jev) and the latest one whose request went out,
+  and the counters (open threads, our trades, value gained) come from the same outcomes as the deals tile. A
+  dealer thread that ended with no fill is not a deal; a dealer fill is scored against the value our decisions
+  logged for that card and dealer, else "no value". The same refusal repeated (agent, kind, item, rule) is one
+  row with `×N, ticks A–B`; "no decision this tick" is one line, on the current tick only. A restart
+  (`process_started`) reads "restart (deploy)", and rows that write nothing carry no guardrail badge. Ids shown
+  are real ones (decision, settlement, thread): the server's own event ids count down from -1 and are never printed.
 - `?mock=1` plays decisions too: approved ones, blocks by several rules, an expired accept, the maker idle one
   tick in three, scored deals and a ledger.
 - Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` runs `db/agent_decisions.test.ts` after `db/show.test.ts`.
