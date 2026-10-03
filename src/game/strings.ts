@@ -11,6 +11,7 @@ import type { AgentName, DecisionStatus } from '../../shared/decisions.ts'
 import type { HealthError } from '../../shared/health.ts'
 import type { LimitSource } from './limits.ts'
 import type { ChipReason } from './views/health.ts'
+import type { OrderStatus, OrderVerb } from './views/history.ts'
 import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
 import { labelOf, rarityOfRule, type Denial, type ItemOf, type Who } from './humanize.ts'
 
@@ -416,6 +417,9 @@ export interface GameStrings {
     readonly ourOffersSub: (n: number) => string
     readonly weSell: string
     readonly weBuy: string
+    /** An offer of ours posted by hand, which no agent manages. */
+    readonly byHand: string
+    readonly byHandTitle: string
     readonly bestPrice: string
     readonly alone: string
     readonly beatenBy: (p: string) => string
@@ -546,6 +550,14 @@ export interface GameStrings {
     readonly ordersSub: (n: number) => string
     readonly noOrders: string
     readonly ordersHead: readonly string[]
+    /** Who wrote a ledger row when it was a person running a command, not an agent. */
+    readonly byHand: string
+    /** What a ledger row committed; the card is the chip after the word. */
+    readonly verbs: Readonly<Record<OrderVerb, string>>
+    readonly onVenue: (venue: string) => string
+    readonly orderStatus: Readonly<Record<OrderStatus, string>>
+    readonly orderDetails: string
+    readonly orderDetailsTitle: string
     readonly agent: string
     readonly allAgents: string
     readonly score: {
@@ -1066,6 +1078,8 @@ const EN: GameStrings = {
     ourOffersSub: (n) => plural(n, 'open offer', 'open offers'),
     weSell: 'we sell',
     weBuy: 'we buy',
+    byHand: 'by hand',
+    byHandTitle: 'Posted by hand: no agent reprices or cancels it',
     bestPrice: 'best price',
     alone: 'only offer',
     beatenBy: (p) => `beaten by ${p}`,
@@ -1214,7 +1228,13 @@ const EN: GameStrings = {
     orders: 'What our agents committed',
     ordersSub: (n) => `${plural(n, 'order', 'orders')} in the ledger · newest first`,
     noOrders: 'No order in the ledger yet.',
-    ordersHead: ['when', 'agent', 'order', 'card', 'price'],
+    ordersHead: ['when', 'who', 'what', 'price'],
+    byHand: 'by hand',
+    verbs: { buy: 'We buy', sell: 'We sell', swap: 'We swap', team: 'An offer to a team', duel: 'We accept the', spend: 'Spent on', refund: 'Spend given back on', hand: 'An offer posted by hand', other: 'Order' },
+    onVenue: (venue) => `on ${venue}`,
+    orderStatus: { open: 'open', bought: 'bought', sold: 'sold', swapped: 'swapped', cancelled: 'cancelled', expired: 'expired' },
+    orderDetails: 'details',
+    orderDetailsTitle: 'Show each ledger row as written: the item, the offer id and the command or agent',
     agent: 'Agent',
     allAgents: 'All',
     score: {
@@ -1644,6 +1664,8 @@ const ES: GameStrings = {
     ourOffersSub: (n) => plural(n, 'oferta abierta', 'ofertas abiertas'),
     weSell: 'vendemos',
     weBuy: 'compramos',
+    byHand: 'a mano',
+    byHandTitle: 'Puesta a mano: ningún agente la reprecia ni la cancela',
     bestPrice: 'mejor precio',
     alone: 'única',
     beatenBy: (p) => `superada por ${p}`,
@@ -1792,7 +1814,13 @@ const ES: GameStrings = {
     orders: 'Lo que comprometieron nuestros agentes',
     ordersSub: (n) => `${plural(n, 'orden', 'órdenes')} en el libro · las más recientes primero`,
     noOrders: 'Aún no hay órdenes en el libro.',
-    ordersHead: ['cuándo', 'agente', 'orden', 'carta', 'precio'],
+    ordersHead: ['cuándo', 'quién', 'qué', 'precio'],
+    byHand: 'a mano',
+    verbs: { buy: 'Compramos', sell: 'Vendemos', swap: 'Cambiamos', team: 'Una propuesta a un equipo', duel: 'Aceptamos el', spend: 'Gasto en', refund: 'Gasto devuelto de', hand: 'Una oferta puesta a mano', other: 'Orden' },
+    onVenue: (venue) => `en ${venue}`,
+    orderStatus: { open: 'abierta', bought: 'comprada', sold: 'vendida', swapped: 'cambiada', cancelled: 'cancelada', expired: 'caducada' },
+    orderDetails: 'detalles',
+    orderDetailsTitle: 'Muestra cada fila del libro tal cual: el artículo, el id de la oferta y el comando o el agente',
     agent: 'Agente',
     allAgents: 'Todos',
     score: {

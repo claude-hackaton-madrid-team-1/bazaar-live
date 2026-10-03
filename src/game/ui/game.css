@@ -4272,9 +4272,56 @@
   }
 }
 
-/* Our orders: the card's name is enough in a narrow column (its code is on hover). */
-.gm-orders .gm-card-code {
-  display: none;
+/* Our orders: each one a sentence that wraps ("Compramos Palacio de Velázquez RET-08 en v02 · caduca en ~4 min"). */
+.gm-orders td.gm-order-cell {
+  white-space: normal;
+  min-width: 13rem;
+}
+
+.gm-order {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+}
+
+/* on a phone each order is two lines: when, who and the price, then the sentence across */
+@media (max-width: 600px) {
+  .gm-orders thead {
+    display: none;
+  }
+
+  .gm-orders tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px var(--s-2);
+    padding: 6px var(--s-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .gm-orders td {
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .gm-orders td.gm-when {
+    text-align: left;
+  }
+
+  .gm-orders td.gm-order-cell {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+  }
+}
+
+.gm-order-raw {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
 }
 
 /* ---------------------------------------------------------------- negotiations, live: our words, teams, markets (nl-) */

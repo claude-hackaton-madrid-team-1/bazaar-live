@@ -3,13 +3,15 @@ import type { HistoryParts } from '../../../shared/history.ts'
 import { nameOfRef } from '../cards.ts'
 import { fmtP, setOf, signed } from '../game.ts'
 import { pagePush } from '../fresh.ts'
-import { agentName, itemOf, kindName, whoName } from '../humanize.ts'
+import { agentName, itemOf, whoName } from '../humanize.ts'
 import { useHistory } from '../history.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
-import { agentsOf, cashChart, cashSummary, filterMovements, movements, ordersOf, type MoveFilter, type MoveLine, type Movement } from '../views/history.ts'
+import { nowTick } from '../views/decisions.ts'
+import { agentsOf, cashChart, cashSummary, filterMovements, movements, orderLines, type MoveFilter, type MoveLine, type Movement, type OrderLine, type OrderStatus } from '../views/history.ts'
 import { Badge, CardRef, Empty, Fresh, Panel, Seg } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
+import { ByHand } from './MarketScreen.tsx'
 import { ScorePanel } from './ScorePanel.tsx'
 import { useWidth } from './useWidth.ts'
 import { Ago, ItemName } from './words.tsx'
@@ -147,6 +149,28 @@ function Chart({ points }: { points: Parameters<typeof cashChart>[0] }) {
   )
 }
 
+/** "a mano" for the commands a person runs, the agent's name otherwise. */
+const whoLabel = (t: GameStrings, who: string): string => (who === 'hand' ? t.history.byHand : agentName(t, who))
+
+const STATUS_TONE: Readonly<Record<OrderStatus, 'us' | 'good' | 'neutral' | 'warn'>> = { open: 'us', bought: 'good', sold: 'good', swapped: 'good', cancelled: 'neutral', expired: 'neutral' }
+
+/** What a ledger line committed, as words: "Compramos Palacio de Velázquez RET-08 en v02 · caduca en ~4 min · abierta". */
+function OrderWhat({ o }: { o: OrderLine }) {
+  const t = useGameStrings()
+  const { state } = useGame()
+  const card = o.item !== null && setOf(o.item) ? o.item : null
+  return (
+    <span className="gm-order">
+      <span>{t.history.verbs[o.verb]}</span>
+      {card ? <CardRef code={card} /> : o.item && o.verb !== 'team' && o.verb !== 'hand' ? <ItemName item={o.item} /> : null}
+      {o.venue && <span className="gm-muted">{t.history.onVenue(state.venues.get(o.venue)?.name ?? o.venue)}</span>}
+      {o.expiresIn !== null && <span className="gm-muted">· {t.market.expiresIn(o.expiresIn, o.expiresIn * state.tickSeconds)}</span>}
+      {o.status && <Badge tone={STATUS_TONE[o.status]}>{t.history.orderStatus[o.status]}</Badge>}
+      {o.count > 1 && <span className="gm-muted">×{o.count}</span>}
+    </span>
+  )
+}
+
 export function HistoryScreen() {
   const store = useGame()
   const t = useGameStrings()
@@ -158,7 +182,9 @@ export function HistoryScreen() {
   const rows = useMemo(() => movements(snapshot), [snapshot])
   const sum = useMemo(() => cashSummary(snapshot, rows), [snapshot, rows])
   const shown = useMemo(() => filterMovements(rows, filter), [rows, filter])
-  const orders = useMemo(() => ordersOf(snapshot.orders, agent), [snapshot.orders, agent])
+  const [details, setDetails] = useState(false)
+  const tickNow = nowTick(store.state)
+  const orders = useMemo(() => orderLines(snapshot.orders, agent, tickNow), [snapshot.orders, agent, tickNow])
   const agents = useMemo(() => agentsOf(snapshot.orders), [snapshot.orders])
   const live = status === 'live'
   // on the real game the header's cash is the game's own, live (the database's is a few seconds behind)
@@ -264,9 +290,14 @@ export function HistoryScreen() {
             </>
           }
           actions={
-            agents.length > 1 ? (
-              <Seg label={t.history.agent} value={agent} options={[['all', t.history.allAgents], ...agents.map((a) => [a, agentName(t, a)] as const)]} onChange={setAgent} />
-            ) : undefined
+            <>
+              {agents.length > 1 && (
+                <Seg label={t.history.agent} value={agent} options={[['all', t.history.allAgents], ...agents.map((a) => [a, whoLabel(t, a)] as const)]} onChange={setAgent} />
+              )}
+              <button type="button" className="gm-btn" aria-pressed={details} onClick={() => setDetails(!details)} title={t.history.orderDetailsTitle}>
+                {t.history.orderDetails}
+              </button>
+            </>
           }
         >
           {orders.length ? (
@@ -275,7 +306,7 @@ export function HistoryScreen() {
                 <thead>
                   <tr>
                     {t.history.ordersHead.map((h, i) => (
-                      <th key={h} className={i === 0 || i === 4 ? 'gm-r' : undefined}>
+                      <th key={h} className={i === 0 || i === 3 ? 'gm-r' : undefined}>
                         {h}
                       </th>
                     ))}
@@ -285,12 +316,16 @@ export function HistoryScreen() {
                   {orders.map((o) => (
                     <tr key={o.id}>
                       <td className="gm-r gm-when">{o.day === sum.day ? <Ago tick={o.tick} /> : <span title={`${t.tick} ${o.tick}`}>{o.day.slice(5)}</span>}</td>
-                      <td>{agentName(t, o.agent)}</td>
-                      <td>
-                        <Badge tone={o.kind === 'listing' ? 'neutral' : o.kind === 'accept' ? 'us' : 'warn'}>{kindName(t, o.kind)}</Badge>
+                      <td>{o.who === 'hand' ? <ByHand /> : agentName(t, o.who)}</td>
+                      <td className="gm-order-cell">
+                        <OrderWhat o={o} />
+                        {details && (
+                          <div className="gm-order-raw">
+                            {o.raw.map((r) => `${r.kind} ${r.item ?? '—'}${r.price === null ? '' : ` ${r.price}`} · ${r.agent}`).join(' · ')}
+                          </div>
+                        )}
                       </td>
-                      <td>{o.item ? setOf(o.item) ? <CardRef code={o.item} /> : <ItemName item={o.item} /> : '—'}</td>
-                      <td className="gm-r gm-mono">{o.price === null || (o.price === 0 && o.agent === 'duels') ? '—' : fmtP(o.price)}</td>
+                      <td className="gm-r gm-mono">{o.price === null || (o.price === 0 && (o.who === 'duels' || o.verb === 'team')) ? '—' : fmtP(o.price)}</td>
                     </tr>
                   ))}
                 </tbody>

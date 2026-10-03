@@ -293,4 +293,12 @@ describe('GameHub', () => {
     expect(hub.size).toBe(3)
     expect(hub.replay().map((e) => e.id)).toEqual([-1, -2, 2, 3])
   })
+
+  it('replays the snapshot of our open offers after the backlog, so older listings never undo it', () => {
+    const hub = new GameHub()
+    hub.publishStatus({ id: -10, type: 'offers.ours', payload: { offers: [] } })
+    hub.publish([{ id: -1, type: 'agent.hello', payload: {} }, { id: 5, type: 'offer.listed', payload: {} }])
+    hub.publishStatus({ id: -11, type: 'offers.ours', payload: { offers: [] } })
+    expect(hub.replay().map((e) => e.id)).toEqual([-1, 5, -11])
+  })
 })

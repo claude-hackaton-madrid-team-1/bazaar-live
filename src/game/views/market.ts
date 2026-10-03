@@ -238,6 +238,8 @@ export type OurOffer = {
   best: number | null
   /** How far that best price beats ours (null: ours is the best, or alone). */
   beatenBy: number | null
+  /** Posted by hand (`bazaar sell ... --live`): no agent reprices or cancels it. */
+  hand: boolean
 }
 
 export type WatchRow = CardStat & { need: Need; worth: Worth | null }
@@ -405,6 +407,7 @@ export function ourOffers(s: State): OurOffer[] {
         offerId: o.id, side, ref: o.ref, name: names.get(o.ref) ?? o.ref, price,
         worth: o.kind === 'card' ? worthOf(s, o.ref, cards) : null, venueName: s.venues.get(o.venue)?.name ?? o.venue,
         expiresIn: o.expiresTick == null ? null : o.expiresTick - s.tick, best, beatenBy: gap > 0 ? round1(gap) : null,
+        hand: s.byHand.has(o.id),
       }
     })
     .sort((a, b) => (a.expiresIn ?? Infinity) - (b.expiresIn ?? Infinity) || a.offerId - b.offerId)
