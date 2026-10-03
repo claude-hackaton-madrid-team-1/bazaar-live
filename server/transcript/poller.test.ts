@@ -38,8 +38,11 @@ describe('Poller', () => {
       if (!c.sql.includes('show.thread_lines')) return []
       const all = rows().sort((x, y) => Number(x.event_id) - Number(y.event_id))
       const id = (r: Record<string, unknown>) => Number(r.event_id)
+      if (c.sql.includes('event_id <= $2')) {
+        const inWindow = all.filter((r) => id(r) > (c.params[0] as number) && id(r) <= (c.params[1] as number))
+        return (c.sql.includes('order by event_id desc') ? inWindow.reverse() : inWindow).slice(0, c.params[2] as number)
+      }
       if (c.sql.includes('order by event_id desc')) return all.slice(-(c.params[0] as number))
-      if (c.sql.includes('event_id <= $2')) return all.filter((r) => id(r) > (c.params[0] as number) && id(r) <= (c.params[1] as number)).slice(0, c.params[2] as number)
       return all.filter((r) => id(r) > (c.params[0] as number)).slice(0, c.params[1] as number)
     })
 
@@ -163,6 +166,17 @@ describe('Poller', () => {
     rows.push(threadRow(9_000_001)) // the monitor's gap-fill (an older id) lands later
     await poller.pollOnce()
     expect(store.since(null).map((i) => i.id).sort()).toEqual(['f9000001', 'f9000002'])
+  })
+
+  it('reads the look-back newest first, so a late gap-fill near the mark is never cut by the cap', async () => {
+    const rows = [900, 901, 902, 903, 904, 1000].map((id) => threadRow(id))
+    const { db } = threadDb(() => rows)
+    const store = new TranscriptStore({ ring: 100 })
+    const poller = new Poller({ ...deps(db, store), cap: 3 })
+    await poller.pollOnce() // the backfill: the mark is 1000
+    rows.push(threadRow(998)) // inserted late, just under the mark
+    await poller.pollOnce() // the window holds 7 rows; an oldest-first look would return 900..902 and miss it
+    expect(store.has('f998')).toBe(true)
   })
 
   it('drains a burst bigger than the cap, and the look-back cannot starve the new rows', async () => {

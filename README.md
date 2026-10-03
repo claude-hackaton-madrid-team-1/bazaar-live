@@ -82,7 +82,8 @@ Spec: [`docs/specs/LIVE-T1.md`](docs/specs/LIVE-T1.md).
   `show.thread_lines` and `show.duel_lines`, role `bazaar_live_reader` (NOLOGIN in the file; add LOGIN and a
   password outside it). The role has no grant on `feed_events` or `duels`. A duel's words are exposed only
   after it closes, and ONLY once an admin opens the gate after the last session
-  (`update show.gate set open_all = true`; until then `show.duel_lines` is empty, in every session). A live
+  (`update show.gate set open_all = true`; until then `show.duel_lines` is empty, in every session; even then a closed
+  duel stays hidden beside a live sibling whose deadline has not passed). A live
   duel shows nothing. The server keeps duels off the page entirely unless `SHOW_DUELS=on` (our duel prices
   reveal our limits while rivals still play). The role also gets `temp_file_limit`, no TEMP and no CONNECT
   to the other databases (on Railway the only login role is the `postgres` superuser, so the revokes touch no

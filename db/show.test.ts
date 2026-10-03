@@ -65,6 +65,11 @@ const DUELS = [
   { duel: 81, session: 2, status: 'deal', role: 'buyer', item: 'LAST-ONE', rival: 'Rival Azul', price: 40, days: 2, payload: { messages: [{ from: 'Rival Azul', text: 'LAST-SESSION-HIDDEN', tick: 80, price: 40 }] } },
   { duel: 82, session: 0, status: 'deal', role: 'buyer', item: 'OLD-ONE', rival: 'Rival Gris', price: 10, days: 0, payload: { messages: [{ from: 'Rival Gris', text: 'SESSION-HAS-LIVE', tick: 5, price: 10 }] } },
   { duel: 83, session: 0, status: 'live', role: 'buyer', item: 'OTHER-ONE', rival: 'Rival Rosa', price: null, days: null, payload: { messages: [] } },
+  // Live siblings that are NOT stale (deadline ahead of the feed's newest tick, or unknown) hide their session's closed duels.
+  { duel: 91, session: 5, status: 'deal', role: 'buyer', item: 'ZZ-1', rival: 'Rival Uno', price: 9, days: 1, payload: { messages: [{ from: 'Rival Uno', text: 'FRESH-SIBLING-HIDES', tick: 90, price: 9 }] } },
+  { duel: 92, session: 5, status: 'live', role: 'buyer', item: 'ZZ-2', rival: 'Rival Dos', price: null, days: null, payload: { messages: [] }, deadline: 9999 },
+  { duel: 93, session: 6, status: 'deal', role: 'buyer', item: 'ZZ-3', rival: 'Rival Tres', price: 9, days: 1, payload: { messages: [{ from: 'Rival Tres', text: 'UNKNOWN-DEADLINE-HIDES', tick: 90, price: 9 }] } },
+  { duel: 94, session: 6, status: 'live', role: 'buyer', item: 'ZZ-4', rival: 'Rival Cuatro', price: null, days: null, payload: { messages: [] }, deadline: null },
   { duel: 72, session: 2, status: 'live', role: 'seller', item: 'Taxi Blanco', rival: 'Rival Rojo', price: null, days: null, payload: { messages: [] } },
 ]
 
@@ -105,8 +110,8 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     for (const e of FEED) await adminDb.query('insert into feed_events (id, tick, type, actor, payload) values ($1,$2,$3,$4,$5)', [e.id, e.tick, e.type, 'x', e.payload])
     for (const d of DUELS) {
       await adminDb.query(
-        'insert into duels (duel, session, tick, status, role, item, your_limit, rival, price, days, result, payload) values ($1,$11,50,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-        [d.duel, d.status, d.role, d.item, SECRET_LIMIT, d.rival, d.price, d.days, SECRET_RESULT, JSON.stringify(d.payload), d.session],
+        'insert into duels (duel, session, tick, status, role, item, your_limit, rival, price, days, result, payload, deadline_tick) values ($1,$11,50,$2,$3,$4,$5,$6,$7,$8,$9,$10,$12)',
+        [d.duel, d.status, d.role, d.item, SECRET_LIMIT, d.rival, d.price, d.days, SECRET_RESULT, JSON.stringify(d.payload), d.session, 'deadline' in d ? d.deadline : 5],
       )
     }
     await adminDb.query(SHOW_SQL)
@@ -214,18 +219,28 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     it('shows the conversation of CLOSED duels only, in every session, and nothing of a live one', async () => {
       const { rows } = await reader.query('select * from show.duel_lines order by duel, kind, n')
       const messages = rows.filter((r) => r.kind === 'message')
-      expect(messages.map((r) => r.duel).sort((a, b) => a - b)).toEqual([61, 61, 62, 71, 81, 82])
+      expect(messages.map((r) => r.duel).sort((a, b) => a - b)).toEqual([61, 61, 62, 71, 81, 82]) // 91 and 93 sit beside a live duel that is not stale
       expect(messages.find((r) => r.duel === 61 && r.n === 1)).toMatchObject({ speaker: 'them', text: 'Sesenta y no se hable más.', price: 60, days: 3, tick: 40, role: 'seller' })
       expect(messages.find((r) => r.duel === 61 && r.n === 2)).toMatchObject({ speaker: 'us', price: 50 })
-      expect(rows.filter((r) => [63, 72, 83].includes(r.duel))).toEqual([]) // the live ones: no row at all
+      expect(rows.filter((r) => [63, 72, 83, 92, 94].includes(r.duel))).toEqual([]) // the live ones: no row at all
       expect(rows.filter((r) => r.kind === 'live')).toEqual([])
       expect(rows.filter((r) => r.kind === 'closed').map((r) => r.duel).sort((a, b) => a - b)).toEqual([61, 62, 64, 71, 81, 82])
+    })
+
+    it('keeps a closed duel hidden beside a live sibling that is not stale, and shows it once that one is', async () => {
+      expect((await reader.query('select 1 from show.duel_lines where duel in (91, 93)')).rowCount).toBe(0)
+      await adminDb.query('update duels set deadline_tick = 5 where duel = 92') // its deadline is past the feed's newest tick (17)
+      await adminDb.query('update duels set deadline_tick = 5 where duel = 94')
+      const shown = await reader.query("select duel from show.duel_lines where kind = 'closed' and duel in (91, 93) order by duel")
+      expect(shown.rows).toEqual([{ duel: 91 }, { duel: 93 }])
+      await adminDb.query('update duels set deadline_tick = 9999 where duel = 92')
+      await adminDb.query('update duels set deadline_tick = null where duel = 94')
     })
 
     it('still never leaks a private value or a live duel text', async () => {
       const d = await reader.query('select * from show.duel_lines')
       const dump = JSON.stringify([d.rows, d.fields.map((f) => f.name)])
-      for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol', 'Rival Rojo', 'Rival Rosa']) {
+      for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol', 'Rival Rojo', 'Rival Rosa', 'Rival Dos', 'Rival Cuatro']) {
         expect(dump).not.toContain(secret)
       }
     })
