@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from 'react'
 import type { HistoryParts } from '../../../shared/history.ts'
 import { fmtP, signed } from '../game.ts'
+import { pagePush } from '../fresh.ts'
 import { useHistory } from '../history.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { agentsOf, cashChart, cashSummary, filterMovements, movements, ordersOf, type MoveFilter, type MoveLine, type Movement } from '../views/history.ts'
-import { Badge, CardRef, Empty, Panel, Seg } from './bits.tsx'
+import { Badge, CardRef, Empty, Fresh, Panel, Seg } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 import { ScorePanel } from './ScorePanel.tsx'
 import { useWidth } from './useWidth.ts'
@@ -150,7 +151,8 @@ export function HistoryScreen() {
   const store = useGame()
   const t = useGameStrings()
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token'), [])
-  const { status, snapshot } = useHistory(store.status === 'mock', token, store.state.tick)
+  const push = pagePush(store.status, store.state, 'history')
+  const { status, snapshot } = useHistory(store.status === 'mock', token, store.state.tick, push)
   const [filter, setFilter] = useState<MoveFilter>('all')
   const [agent, setAgent] = useState('all')
   const rows = useMemo(() => movements(snapshot), [snapshot])
@@ -159,14 +161,6 @@ export function HistoryScreen() {
   const orders = useMemo(() => ordersOf(snapshot.orders, agent), [snapshot.orders, agent])
   const agents = useMemo(() => agentsOf(snapshot.orders), [snapshot.orders])
   const live = status === 'live'
-  const at =
-    snapshot.at && live
-      ? new Date(snapshot.at).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        })
-      : null
   // on the real game the header's cash is the game's own, live (the database's is a few seconds behind)
   const own = live && store.state.team !== ''
   const now = own ? store.state.cash : sum.now
@@ -185,7 +179,7 @@ export function HistoryScreen() {
                 {sum.last.delta > 0 ? '▲' : '▼'} {signed(sum.last.delta)} · t{sum.last.tick}
               </Badge>
             )}
-            {at && <span className="gm-muted">{t.history.asOf(at)}</span>}
+            <Fresh page="history" status={status} at={snapshot.at} push={push} />
           </div>
         </div>
         <dl className="gm-cashstats">

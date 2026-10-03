@@ -1,8 +1,10 @@
 /**
- * The Learn screen's source: GET /api/learn every few seconds (with `?token=` when the page has one), or a
- * made-up snapshot with `?mock=1`. Keeps the last good snapshot through an error.
+ * The Learn screen's source: GET /api/learn as soon as the server says its rows changed, and on a timer as the
+ * fallback (with `?token=` when the page has one), or a made-up snapshot with `?mock=1`. Keeps the last good
+ * snapshot through an error.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { pollEvery, type PagePush } from './fresh.ts'
 import { EMPTY_LEARN, type Learning, type LearnSnapshot } from '../../shared/learn.ts'
 
 export type LearnStatus = 'loading' | 'live' | 'off' | 'locked' | 'error' | 'mock'
@@ -34,7 +36,13 @@ export function learnStateOf(httpStatus: number, body: unknown, prev: LearnSnaps
   }
 }
 
-export function useLearn(mock: boolean, token: string | null, tick: number, intervalMs = 10_000): LearnState {
+/**
+ * `push`: the server's notices for this screen (./fresh.ts): a new `at` refetches now, and while they come the
+ * timer only backs them up.
+ */
+export function useLearn(mock: boolean, token: string | null, tick: number, push: PagePush | null = null): LearnState {
+  const intervalMs = pollEvery('learn', push)
+  const wake = push?.at ?? null
   const [state, setState] = useState<LearnState>({ status: 'loading', snapshot: EMPTY_LEARN })
   // the mock follows the mock game's clock, so its cooloffs count down and lift
   const mocked = useMemo<LearnState | null>(() => (mock ? { status: 'mock', snapshot: mockLearn(tick) } : null), [mock, tick])
@@ -60,7 +68,8 @@ export function useLearn(mock: boolean, token: string | null, tick: number, inte
       clearInterval(timer)
       controller?.abort()
     }
-  }, [mock, token, intervalMs])
+    // a new `wake` reads now and starts the timer again from there
+  }, [mock, token, intervalMs, wake])
   return mocked ?? state
 }
 

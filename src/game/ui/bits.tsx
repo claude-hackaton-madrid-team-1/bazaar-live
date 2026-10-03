@@ -1,8 +1,9 @@
 /** The small pieces every game screen shares: a panel, an empty state, badges, a segmented control, event links. */
 import type { ReactNode } from 'react'
 import { fmtP, setOf } from '../game.ts'
+import { freshness, type ApiPage, type PagePush } from '../fresh.ts'
 import { useGameStrings } from '../strings.ts'
-import { useGame } from '../store.ts'
+import { useGame, useWallNow } from '../store.ts'
 import { eventLabel } from '../views/agent.ts'
 import { sparkEnd, sparkPath } from '../views/market.ts'
 
@@ -18,6 +19,24 @@ export function Panel({ title, sub, actions, children, className }: { title: Rea
       </header>
       {children}
     </section>
+  )
+}
+
+/**
+ * How fresh a screen that reads its own API is: `live` while its copy is current, else when it was last updated,
+ * in amber. Nothing for the mock, or while a notice above says why there is no copy.
+ */
+export function Fresh({ page, status, at, push }: { page: ApiPage; status: string; at: string | null; push: PagePush | null }) {
+  const t = useGameStrings()
+  const now = useWallNow(1000)
+  const f = freshness(page, status, at, push, now)
+  if (f === null || at === null) return null
+  const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return (
+    <span className="gm-fresh" data-tone={f.tone} title={f.tone === 'live' ? t.fresh.readAt(time) : `${t.fresh.stale} · ${t.fresh.readAt(time)}`}>
+      <span className="gm-dot" />
+      {f.tone === 'live' ? t.fresh.live : t.fresh.ago(f.ageS)}
+    </span>
   )
 }
 

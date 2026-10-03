@@ -48,6 +48,11 @@ export class HistoryPoller {
   private failures = 0
   private timer: unknown = null
   private running = false
+  private polling = false
+  private again = false
+  /** The last read's content (its time left out): a read that finds the same rows changes nothing. */
+  private signature = ''
+  private readonly listeners = new Set<(at: string) => void>()
   private readonly deps: HistoryPollerDeps
   private readonly intervalMs: number
   private readonly maxDelayMs: number
@@ -70,16 +75,64 @@ export class HistoryPoller {
 
   stop(): void {
     this.running = false
+    this.clearTimer()
+  }
+
+  /**
+   * Read now rather than at the timer's next turn (an agent's socket said something moved). While a read is
+   * running, one more follows it; while stopped or backing off after a failure, nothing: the backoff holds.
+   * True when a read is coming.
+   */
+  poke(): boolean {
+    if (!this.running || this.failures > 0) return false
+    if (this.polling) {
+      this.again = true
+      return true
+    }
+    this.clearTimer()
+    void this.loop()
+    return true
+  }
+
+  /** Called with the read's time after each read whose rows differ from the one before. */
+  onChange(listener: (at: string) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  private clearTimer(): void {
     if (this.timer !== null) (this.deps.clearTimer ?? clearTimeout)(this.timer as ReturnType<typeof setTimeout>)
     this.timer = null
   }
 
   private async loop(): Promise<void> {
     if (!this.running) return
+    this.polling = true
     await this.pollOnce()
+    this.polling = false
+    const again = this.again && this.failures === 0
+    this.again = false
     if (!this.running) return
+    if (again) return this.loop()
     const delay = this.failures === 0 ? this.intervalMs : Math.min(this.maxDelayMs, this.intervalMs * 2 ** this.failures)
-    this.timer = (this.deps.setTimer ?? setTimeout)(() => void this.loop(), delay)
+    this.timer = (this.deps.setTimer ?? setTimeout)(() => {
+      this.timer = null
+      void this.loop()
+    }, delay)
+  }
+
+  private changed(): void {
+    const { at, ...rows } = this.snapshot
+    const signature = JSON.stringify(rows)
+    if (signature === this.signature || at === null) return
+    this.signature = signature
+    for (const l of this.listeners) {
+      try {
+        l(at)
+      } catch (error: unknown) {
+        this.deps.log({ route: 'history', event: 'listener_failed', message: error instanceof Error ? error.name : 'ERR' })
+      }
+    }
   }
 
   /** One read of the six views. Never throws. */
@@ -114,6 +167,7 @@ export class HistoryPoller {
     const marks = await read('marks', scoreMarkOf, prev.marks)
     this.failures = failed ? this.failures + 1 : 0
     this.snapshot = { at: failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString(), parts, points, trades, orders, events, scores, marks }
+    this.changed()
   }
 
   private redact(error: unknown): string {

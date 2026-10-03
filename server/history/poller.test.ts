@@ -50,4 +50,23 @@ describe('HistoryPoller', () => {
     expect(poller.current().parts.orders).toBe(true)
     expect(logs.some((l) => l.event === 'poll_error' && l.part === 'points')).toBe(true)
   })
+
+  it('a poke reads the six views now and the timer starts again from there; the same rows say nothing', async () => {
+    const timers: { fn: () => void; ms: number }[] = []
+    const d = db()
+    let t = 0
+    const poller = new HistoryPoller({ db: d, log: () => undefined, intervalMs: 5_000, now: () => new Date(Date.UTC(2026, 9, 3, 10, 0, t++)), setTimer: (fn, ms) => (timers.push({ fn, ms }), timers.length), clearTimer: () => undefined })
+    const seen: string[] = []
+    poller.onChange((at) => seen.push(at))
+    poller.start()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(poller.poke()).toBe(true)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(d.params).toHaveLength(12)
+    expect(timers.map((x) => x.ms)).toEqual([5_000, 5_000])
+    expect(seen).toEqual(['2026-10-03T10:00:00.000Z'])
+    poller.stop()
+    expect(poller.poke()).toBe(false)
+  })
 })
+

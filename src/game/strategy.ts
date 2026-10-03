@@ -1,8 +1,9 @@
 /**
- * The Strategy screen's source: GET /api/strategy every few seconds (with `?token=` when the page has one), or a
- * made-up afternoon with `?mock=1`. Keeps the last good snapshot through an error, like ./history.ts.
+ * The Strategy screen's source: GET /api/strategy as soon as the server says its rows changed, and on a timer as
+ * the fallback (with `?token=` when the page has one), or a made-up afternoon with `?mock=1`. Keeps the last good snapshot through an error, like ./history.ts.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { pollEvery, type PagePush } from './fresh.ts'
 import { EMPTY_STRATEGY, type CatalogCard, type HeldCard, type OpenAsk, type StrategyDecision, type StrategySnapshot } from '../../shared/strategy.ts'
 import { SETS } from './game.ts'
 
@@ -36,7 +37,13 @@ export function strategyStateOf(httpStatus: number, body: unknown, prev: Strateg
   }
 }
 
-export function useStrategy(mock: boolean, token: string | null, tick: number, intervalMs = 5_000): StrategyState {
+/**
+ * `push`: the server's notices for this screen (./fresh.ts): a new `at` refetches now, and while they come the
+ * timer only backs them up.
+ */
+export function useStrategy(mock: boolean, token: string | null, tick: number, push: PagePush | null = null): StrategyState {
+  const intervalMs = pollEvery('strategy', push)
+  const wake = push?.at ?? null
   const [state, setState] = useState<StrategyState>({ status: 'loading', snapshot: EMPTY_STRATEGY })
   const mocked = useMemo<StrategyState | null>(() => (mock ? { status: 'mock', snapshot: mockStrategy(tick) } : null), [mock, tick])
   useEffect(() => {
@@ -61,7 +68,8 @@ export function useStrategy(mock: boolean, token: string | null, tick: number, i
       clearInterval(timer)
       controller?.abort()
     }
-  }, [mock, token, intervalMs])
+    // a new `wake` reads now and starts the timer again from there
+  }, [mock, token, intervalMs, wake])
   return mocked ?? state
 }
 

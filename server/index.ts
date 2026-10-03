@@ -5,7 +5,9 @@
  * The game screens: BAZAAR_KEY (the real game) or BAZAAR_SIM=1 with BAZAAR_SIM_KEY (the simulator, default
  * sim-team1); GAME_VIEW_TOKEN to require a token on their stream; GAME_POLL_MS (default 5000). No key = no feed.
  * The Learn screen reads db/learn.sql's views with the same SHOW_DATABASE_URL, behind the same GAME_VIEW_TOKEN;
- * the Movements screen reads db/history.sql's views the same way, and the Strategy screen db/strategy.sql's.
+ * the Movements screen reads db/history.sql's views the same way, and the Strategy screen db/strategy.sql's. All three
+ * are told on the game stream when their rows change (`pages.changed`) and read again as soon as our agents' sockets
+ * ring (PAGES_WAKE=off: their timers only).
  * With the game stream on, the taker's and the maker's /health join it every 10 s (AGENT_HEALTH=off turns it off;
  * RAILWAY_SERVICE_BAZAAR_TAKER_URL / _MAKER_URL override where they are).
  * With SHOW_DATABASE_URL (or a game key and the database), our agents' decisions join that stream (GUARDRAIL_* override the caps shown).
@@ -21,6 +23,7 @@ import { createApp } from './app.ts'
 import { startAgentsWs } from './game/agentsws.ts'
 import { startDecisions } from './game/decisions.ts'
 import { startHealth } from './game/health.ts'
+import { startPages } from './game/pages.ts'
 import { startGame } from './game/start.ts'
 import { startHistory } from './history/start.ts'
 import { startLearn } from './learn/start.ts'
@@ -55,6 +58,8 @@ const agentsWs = startAgentsWs(process.env, { database: show !== null, game, dec
 const history = startHistory(process.env, log, show)
 // What we aim for, why we hold what we hold and why we do not buy (db/strategy.sql), on the same pool.
 const strategy = startStrategy(process.env, log, show)
+// /history, /learn and /strategy told on the game stream when their rows change, and read as soon as our agents' sockets ring.
+const pages = startPages(process.env, { hub: game.hub, agents: agentsWs, pollers: { history: history.poller, learn: learn.poller, strategy: strategy.poller }, log })
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
 const server = createServer(
   createApp({
@@ -81,6 +86,7 @@ const shutdown = (): void => {
   health.stop()
   void transcript.stop()
   game.stop()
+  pages.stop()
   history.stop()
   strategy.stop()
   void learn.stop()

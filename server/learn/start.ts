@@ -11,13 +11,15 @@ export interface Learn {
   readonly enabled: () => boolean
   readonly snapshot: () => LearnSnapshot
   readonly token: string | null
+  /** The poller, to wake it and hear when its rows change (server/game/pages.ts); null while off. */
+  readonly poller: LearnPoller | null
   readonly stop: () => Promise<void>
 }
 
 /** `shared`: the server's one pool (`startShowPool`), never ended here; without it, a one-connection pool of its own. */
 export function startLearn(env: Readonly<Record<string, string | undefined>>, log: (entry: Record<string, unknown>) => void, shared?: SharedShowPool | null): Learn {
   const token = env.GAME_VIEW_TOKEN?.trim() || null
-  const off: Learn = { enabled: () => false, snapshot: () => EMPTY_LEARN, token, stop: () => Promise.resolve() }
+  const off: Learn = { enabled: () => false, snapshot: () => EMPTY_LEARN, token, poller: null, stop: () => Promise.resolve() }
   const config = readShowDatabase(env)
   if (!config.enabled) {
     log({ route: 'learn', event: 'off', reason: config.reason })
@@ -35,6 +37,7 @@ export function startLearn(env: Readonly<Record<string, string | undefined>>, lo
       enabled: () => true,
       snapshot: () => poller.current(),
       token,
+      poller,
       stop: async () => {
         poller.stop()
         if (!shared) await live.end().catch(() => undefined)
