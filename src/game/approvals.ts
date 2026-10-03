@@ -214,6 +214,21 @@ export function approveInputFrom(row: Pick<PendingRequest, 'card' | 'side' | 'ca
   return { card: row.card, side: row.side, price: price.price, ttl_ticks: ttl.ttl, ...(reason ? { reason } : {}) }
 }
 
+/** The confirm click must come on its own: not the second click of a double-click, nor this soon after the first. */
+export const CONFIRM_DELAY_MS = 600
+
+/** Whether a click on Confirm counts: `detail` is the click count (0 from the keyboard), `since` ms since Approve. */
+export function confirmClickCounts(detail: number, since: number): boolean {
+  return detail <= 1 && since >= CONFIRM_DELAY_MS
+}
+
+/** A price that costs us against the values the row carries: a buy above the official value, a sell below ours. */
+export function priceWarningOf(row: Pick<PendingRequest, 'side' | 'official_value' | 'our_value'>, price: number): { readonly kind: 'above_official' | 'below_ours'; readonly value: number } | null {
+  if (row.side === 'buy' && row.official_value !== null && price > row.official_value) return { kind: 'above_official', value: row.official_value }
+  if (row.side === 'sell' && row.our_value !== null && price < row.our_value) return { kind: 'below_ours', value: row.our_value }
+  return null
+}
+
 /** An approval's price as the human reads it: a buy up to its max, a sell down to its min. */
 export function approvalLimitOf(a: Pick<ActiveApproval, 'side' | 'max_price' | 'min_price'>): { readonly side: Side; readonly price: number | null } {
   return { side: a.side, price: a.side === 'buy' ? a.max_price : a.min_price }

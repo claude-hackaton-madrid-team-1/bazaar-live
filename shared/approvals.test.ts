@@ -7,7 +7,7 @@ describe('approvalsOf', () => {
       tick: 912,
       threshold: 250,
       pending: [
-        { card: 'SAL-09', side: 'buy', price: 260, state: 'waiting', why: 'price‮ 260\n≥ 250', extra: 1, album: { set: 'SAL', held: 'one' } },
+        { card: 'SAL-09', side: 'buy', price: 260, state: 'waiting', why: 'price\u202e 260\n≥ 250', extra: 1, album: { set: 'SAL', held: 'one' } },
         { card: 'SAL-09', side: 'buy', price: 0, state: 'waiting' },
         'junk',
       ],
@@ -68,7 +68,7 @@ describe('the write results', () => {
   })
 
   it('strips control characters and bidi overrides', () => {
-    expect(stripControls('a\u0000b‮c⁦d')).toBe('a b c d')
+    expect(stripControls('a\u0000b\u202ec\u2066d')).toBe('a b c d')
     expect(stripControls(3)).toBeNull()
   })
 })

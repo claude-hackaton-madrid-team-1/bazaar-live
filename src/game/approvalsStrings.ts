@@ -60,6 +60,10 @@ export interface ApprovalsStrings {
   readonly reasonLabel: string
   readonly approve: string
   readonly confirm: (card: string, side: Side, price: number) => string
+  /** What an approval covers, said before the confirm click. */
+  readonly scope: (card: string, side: Side, ttl: number) => string
+  readonly aboveOfficial: (official: number) => string
+  readonly belowOurs: (ours: number) => string
   readonly cancel: string
   readonly deny: string
   readonly sending: string
@@ -136,6 +140,9 @@ const EN: ApprovalsStrings = {
   reasonLabel: 'Reason (optional)',
   approve: 'Approve',
   confirm: (card, side, price) => `Confirm approve ${card} ${side} ${side === 'buy' ? 'up to' : 'down to'} ${price}?`,
+  scope: (card, side, ttl) => `It covers any counterparty for the next ${plural(ttl, 'tick', 'ticks')}, and replaces any live approval for ${card} ${side}.`,
+  aboveOfficial: (official) => `above the official value ${p(official)}`,
+  belowOurs: (ours) => `below what it is worth to us, ${p(ours)}`,
   cancel: 'Cancel',
   deny: 'Deny',
   sending: 'Sending…',
@@ -219,6 +226,9 @@ const ES: ApprovalsStrings = {
   reasonLabel: 'Motivo (opcional)',
   approve: 'Aprobar',
   confirm: (card, side, price) => `¿Confirmas aprobar ${side === 'buy' ? 'la compra' : 'la venta'} de ${card} ${side === 'buy' ? 'hasta' : 'como mínimo a'} ${price}?`,
+  scope: (card, side, ttl) => `Vale con cualquier contraparte durante los próximos ${plural(ttl, 'turno', 'turnos')} y sustituye cualquier aprobación en vigor de la ${side === 'buy' ? 'compra' : 'venta'} de ${card}.`,
+  aboveOfficial: (official) => `por encima del valor oficial, ${p(official)}`,
+  belowOurs: (ours) => `por debajo de lo que nos vale, ${p(ours)}`,
   cancel: 'Cancelar',
   deny: 'Vetar',
   sending: 'Enviando…',

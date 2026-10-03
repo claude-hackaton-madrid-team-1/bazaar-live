@@ -3,11 +3,11 @@
  * `human_approval_above`) waits here for a human yes or no. A password unlocks it; the server holds every token and
  * calls bazaar-mcp's human tools. Approve asks for a second click: it unlocks real money.
  */
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import type { ActiveApproval, ApprovalLimits, ApprovalsSnapshot, PendingRequest } from '../../../shared/approvals.ts'
 import { REASON_MAX } from '../../../shared/approvals.ts'
 import {
-  approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, denyInput, login, logout, orderActive, orderPending, priceBounds,
+  approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, denyInput, login, logout, orderActive, orderPending, priceBounds, priceWarningOf,
   readApprovals, readSession, reasonTooLong, REFRESH_MS, revoke, rowKey, staleness, ticksLeft, type LoginOutcome, type WriteOutcome,
 } from '../approvals.ts'
 import { p, useApprovalsStrings } from '../approvalsStrings.ts'
@@ -309,6 +309,7 @@ function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; 
   const [ttl, setTtl] = useState(String(limits.ttl_default))
   const [reason, setReason] = useState('')
   const [confirming, setConfirming] = useState(false)
+  const confirmingSince = useRef(0)
   const [busy, setBusy] = useState(false)
   const [out, setOut] = useState<WriteOutcome | null>(null)
   const bounds = priceBounds(row, limits)
@@ -327,11 +328,19 @@ function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; 
     setOut(result)
     onDone(result)
   }
-  const onApprove = () => {
+  // Approve turns its own button into Cancel and puts Confirm where Deny was: a double-click or a held Enter lands on
+  // Cancel, and a Confirm click too soon after (or the second of a double-click) does nothing.
+  const onApprove = (e: MouseEvent<HTMLButtonElement>) => {
     if (!input || busy) return
-    if (!confirming) return setConfirming(true)
+    // both clicks' own time stamps: the same clock, read from the events
+    confirmingSince.current = e.timeStamp
+    setConfirming(true)
+  }
+  const onConfirm = (e: MouseEvent<HTMLButtonElement>) => {
+    if (!input || busy || !confirmClickCounts(e.detail, e.timeStamp - confirmingSince.current)) return
     void run(() => approve(csrf, input))
   }
+  const warning = input ? priceWarningOf(row, input.price) : null
   const waiting = row.state === 'waiting'
   const id = rowKey(row).replace(/[^A-Za-z0-9]/g, '-')
   return (
@@ -379,24 +388,31 @@ function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; 
             <span>{t.reasonLabel}</span>
             <input className="ap-input" type="text" maxLength={REASON_MAX} value={reason} aria-invalid={reasonTooLong(reason)} onChange={(e) => edit(setReason)(e.target.value)} />
           </label>
-          <div className="ap-buttons">
-            <button type="button" className="gm-btn ap-primary" data-confirm={confirming || undefined} disabled={!input || busy} onClick={onApprove}>
-              {busy && confirming ? t.sending : confirming && input ? t.confirm(row.card, row.side, input.price) : t.approve}
-            </button>
-            {confirming ? (
+          {confirming && input ? (
+            <div className="ap-buttons">
               <button type="button" className="gm-btn" disabled={busy} onClick={() => setConfirming(false)}>
                 {t.cancel}
               </button>
-            ) : (
+              <button type="button" className="gm-btn ap-primary" data-confirm disabled={busy} onClick={onConfirm}>
+                {busy ? t.sending : t.confirm(row.card, row.side, input.price)}
+              </button>
+            </div>
+          ) : (
+            <div className="ap-buttons">
+              <button type="button" className="gm-btn ap-primary" disabled={!input || busy} onClick={onApprove}>
+                {t.approve}
+              </button>
               <button type="button" className="gm-btn ap-deny" disabled={busy} onClick={() => void run(() => revoke(csrf, denyInput(row)))}>
                 {busy ? t.sending : t.deny}
               </button>
-            )}
-          </div>
+            </div>
+          )}
           <p className="ap-hint" id={`${id}-price`}>
             {!priceCheck.ok && <span className="gm-bad">{t.priceError(priceCheck.error, bounds.min, bounds.max, bounds.cap?.rule ?? null)}</span>}
             {!ttlCheck.ok && <span className="gm-bad">{t.ttlError(limits.ttl_min, limits.ttl_max)}</span>}
             {reasonTooLong(reason) && <span className="gm-bad">{t.reasonError(REASON_MAX)}</span>}
+            {warning && <span className="gm-warn">{warning.kind === 'above_official' ? t.aboveOfficial(warning.value) : t.belowOurs(warning.value)}</span>}
+            {confirming && input && <span>{t.scope(row.card, row.side, input.ttl_ticks)}</span>}
           </p>
         </form>
       )}

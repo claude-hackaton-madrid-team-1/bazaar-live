@@ -1,5 +1,5 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer, type Server } from 'node:http'
+import { createServer, request, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -157,6 +157,47 @@ describe('the approver login', () => {
     expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': '192.0.2.200' })).status).toBe(429)
   })
 
+  it('compares at most 5 guesses even when their headers all arrive before any body (no race past the lock)', async () => {
+    const { base } = await start({ config: CONFIG })
+    const { hostname, port } = new URL(base)
+    // each login on its own socket, headers sent at once, the body held back
+    const open = (password: string) => {
+      const body = JSON.stringify({ password })
+      let status = 0
+      const req = request({ hostname, port, path: '/api/approver/login', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Origin: base, 'X-Real-IP': '198.51.100.77' } })
+      const done = new Promise<number>((resolve, reject) => {
+        req.on('response', (res) => {
+          status = res.statusCode ?? 0
+          res.resume()
+          res.on('end', () => resolve(status))
+        })
+        req.on('error', reject)
+      })
+      req.flushHeaders()
+      return { send: () => req.end(body), done }
+    }
+    const wrong = Array.from({ length: 12 }, (_, i) => open(`guess-number-${i}`))
+    const right = open(PASSWORD)
+    await new Promise((r) => setTimeout(r, 100))
+    wrong.forEach((w) => w.send())
+    const wrongStatuses = await Promise.all(wrong.map((w) => w.done))
+    right.send()
+    expect(await right.done).toBe(429)
+    expect(wrongStatuses.filter((s) => s === 401)).toHaveLength(5)
+    expect(wrongStatuses.filter((s) => s === 429)).toHaveLength(7)
+  })
+
+  it('lets an address that logged in recently past the global lock, never past its own', async () => {
+    const { base } = await start({ config: CONFIG })
+    const approver = { 'X-Real-IP': '203.0.113.50' }
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, approver)).status).toBe(200)
+    for (let i = 0; i < 20; i++) expect((await post(base, '/api/approver/login', { password: 'nope-nope' }, { 'X-Real-IP': `192.0.2.${i + 1}` })).status).toBe(401)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': '192.0.2.200' })).status).toBe(429)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, approver)).status).toBe(200)
+    for (let i = 0; i < 5; i++) expect((await post(base, '/api/approver/login', { password: `bad-${i}` }, approver)).status).toBe(401)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, approver)).status).toBe(429)
+  })
+
   it('unlocks after the lock time', () => {
     let now = 0
     const guard = new LoginGuard({ now: () => now })
@@ -311,6 +352,28 @@ describe('reading approvals through bazaar-mcp', () => {
     expect((body.pending as unknown[])[0]).not.toHaveProperty('secret_field')
     expect((body.pending as unknown[])[0]).toMatchObject({ card: 'SAL-09', album: { last_copy: true }, cap: { max_price: 95, rule: 'max_price_rare' } })
     expect(mcp.calls[0]!.body.params).toEqual({ name: 'approvals', arguments: {} })
+  })
+
+  it('keeps the approver\'s polls apart from anyone asking /session at the same address', async () => {
+    const mcp = fakeMcp((call) => toolReply(call, SNAPSHOT))
+    const { base } = await start({ config: CONFIG, fetchImpl: mcp.fetchImpl, readLimiter: new RateLimiter({ capacity: 1, refillPerSecond: 0.0001 }) })
+    const { cookie } = await login(base)
+    const shared = { 'X-Real-IP': '203.0.113.7' }
+    expect((await fetch(`${base}/api/approver/session`, { headers: shared })).status).toBe(200)
+    expect((await fetch(`${base}/api/approver/session`, { headers: shared })).status).toBe(429)
+    expect((await fetch(`${base}/api/approver/approvals`, { headers: { ...shared, Cookie: cookie } })).status).toBe(200)
+  })
+
+  it('refuses a reply larger than 512 KB, declared or streamed', async () => {
+    const big = 'x'.repeat(600 * 1024)
+    const declared = fakeMcp(() => new Response(big, { status: 200, headers: { 'content-length': String(big.length), 'content-type': 'application/json' } }))
+    const streamed = fakeMcp(() => new Response(new Blob([big]).stream(), { status: 200, headers: { 'content-type': 'application/json' } }))
+    for (const mcp of [declared, streamed]) {
+      const { base } = await start({ config: CONFIG, fetchImpl: mcp.fetchImpl })
+      const { cookie } = await login(base)
+      const res = await fetch(`${base}/api/approver/approvals`, { headers: { Cookie: cookie } })
+      expect(res.status).toBe(502)
+    }
   })
 
   it('reads the Streamable HTTP SSE form of a reply too', async () => {

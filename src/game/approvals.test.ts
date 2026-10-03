@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CONTRACT_LIMITS, type PendingRequest } from '../../shared/approvals.ts'
 import {
-  approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, denyInput, login, loginOutcomeOf, orderActive, orderPending, priceBounds,
+  approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, CONFIRM_DELAY_MS, denyInput, login, loginOutcomeOf, orderActive, orderPending, priceBounds, priceWarningOf,
   readOutcomeOf, readSession, revoke, staleness, writeOutcomeOf,
 } from './approvals.ts'
 import { APPROVALS_STRINGS } from './approvalsStrings.ts'
@@ -68,6 +68,21 @@ describe('the approve form', () => {
     expect(approveInputFrom(row(), { price: '260', ttl: '240', reason: 'x'.repeat(301) })).toBeNull()
     expect(approveInputFrom(row(), { price: '260', ttl: '999', reason: '' })).toBeNull()
     expect(approveInputFrom(row({ cap: { max_price: 95, rule: 'max_price_rare' } }), { price: '260', ttl: '240', reason: '' })).toBeNull()
+  })
+
+  it('counts a confirm click only on its own and not too soon after Approve', () => {
+    expect(confirmClickCounts(1, CONFIRM_DELAY_MS)).toBe(true)
+    expect(confirmClickCounts(0, CONFIRM_DELAY_MS + 1)).toBe(true)
+    expect(confirmClickCounts(2, 5000)).toBe(false)
+    expect(confirmClickCounts(1, CONFIRM_DELAY_MS - 1)).toBe(false)
+  })
+
+  it('warns on a buy above the official value and a sell below our value', () => {
+    expect(priceWarningOf(row(), 260)).toEqual({ kind: 'above_official', value: 177.1 })
+    expect(priceWarningOf(row(), 170)).toBeNull()
+    expect(priceWarningOf(row({ side: 'sell' }), 140)).toEqual({ kind: 'below_ours', value: 150 })
+    expect(priceWarningOf(row({ side: 'sell' }), 160)).toBeNull()
+    expect(priceWarningOf(row({ official_value: null }), 999)).toBeNull()
   })
 
   it('denies with the contract\'s reason', () => {
@@ -159,6 +174,7 @@ describe('the words', () => {
     expect(APPROVALS_STRINGS.en.confirm('SAL-09', 'buy', 260)).toBe('Confirm approve SAL-09 buy up to 260?')
     expect(APPROVALS_STRINGS.en.confirm('LAV-10', 'sell', 300)).toBe('Confirm approve LAV-10 sell down to 300?')
     expect(APPROVALS_STRINGS.es.confirm('SAL-09', 'buy', 260)).toBe('¿Confirmas aprobar la compra de SAL-09 hasta 260?')
+    expect(APPROVALS_STRINGS.en.scope('SAL-09', 'buy', 240)).toBe('It covers any counterparty for the next 240 ticks, and replaces any live approval for SAL-09 buy.')
   })
 
   it('names who asked, the cap and the time left', () => {
