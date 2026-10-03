@@ -108,7 +108,7 @@ export interface GameStrings {
     readonly now_: string
     readonly deals: (n: number) => string
   }
-  /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agent names and rule ids stay as the agents write them. */
+  /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agents, kinds and rules get their words from `hum` (via `../humanize.ts`). */
   readonly decide: {
     readonly idle: (agents: readonly { readonly agent: string; readonly last: number | null }[]) => string
     /** A run of the same refusal, folded into one row. */
@@ -147,7 +147,7 @@ export interface GameStrings {
     readonly jevWrong: string
     readonly target: Readonly<Record<'trade' | 'dealer' | 'duel', string>>
   }
-  /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agent names, kinds and rule ids stay as written. */
+  /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agents, kinds and rules get their words from `hum`. */
   readonly agt: {
     readonly agents: string
     readonly agentsSub: (silence: Silence, names: Readonly<Record<AgentName, string>>) => string
