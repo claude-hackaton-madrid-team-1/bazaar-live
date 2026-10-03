@@ -35,7 +35,7 @@ const SECRET = 'SECRET-xyzzy'
 const SECRET_LIMIT = 4242
 
 const ME = {
-  id: 't01', name: 'Team 1', cash: 176, tick_seconds: 30.0, affinity: { LAV: SECRET }, collection_value: SECRET, starter_broker_key: SECRET,
+  id: 't01', name: 'Team 1', cash: 176, tick_seconds: 30.0, affinity: { LAV: SECRET, SAL: 1.6 }, collection_value: SECRET, starter_broker_key: SECRET,
   score: { score: 23.1, rank: 6, deals: 17, luck_private: SECRET }, open_threads: [SECRET], badges: [SECRET],
   album: { pages: [{ set: 'LAV', name: 'Lavapiés', have: 8, of: 10, complete: false, master: false, hint: SECRET }] },
   assets: [{ id: 1, kind: 'card', ref: 'SAL-03', serial: 1, your_value: 3.2, note: SECRET }],
@@ -108,7 +108,7 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
     const r = await reader.query('select * from show.game_me')
     expect(r.rows).toHaveLength(1)
     expect(r.rows[0].tick_seconds).toBe(30)
-    expect(r.rows[0].me).toMatchObject({ id: 't01', cash: 176, score: { score: 23.1, rank: 6 }, album: { pages: [{ set: 'LAV', have: 8 }] }, assets: [{ ref: 'SAL-03', your_value: 3.2 }] })
+    expect(r.rows[0].me).toMatchObject({ id: 't01', cash: 176, score: { score: 23.1, rank: 6 }, album: { pages: [{ set: 'LAV', have: 8 }] }, assets: [{ ref: 'SAL-03', your_value: 3.2 }], affinity: { SAL: 1.6 } })
     expect(Object.keys(r.rows[0])).toEqual(['tick', 'read_at', 'tick_seconds', 'me'])
     expect(JSON.stringify(r.rows)).not.toContain(SECRET)
   })
