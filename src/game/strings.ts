@@ -210,6 +210,47 @@ export interface GameStrings {
     readonly over: (label: string, n: number) => string
   }
   readonly market: {
+    readonly now: string
+    readonly nowSub: (buy: number, sell: number) => string
+    readonly untakenSub: (n: number) => string
+    readonly buy: string
+    readonly sell: string
+    readonly buyHint: string
+    readonly sellHint: string
+    readonly noBuy: string
+    readonly noSell: string
+    readonly overCash: (n: number, cash: string) => string
+    readonly pay: string
+    readonly get: string
+    readonly worth: string
+    readonly estimated: string
+    readonly netTitle: string
+    readonly completes: Readonly<Record<'page' | 'master', string>>
+    readonly completesTitle: string
+    readonly need: Readonly<Record<'missing' | 'spare' | 'unneeded' | 'held', string>>
+    readonly forUs: string
+    readonly forUsTitle: string
+    readonly more: (n: number) => string
+    readonly expiresIn: (ticks: number, minutes: number | null) => string
+    readonly from: (maker: string, venue: string) => string
+    readonly untaken: (age: number) => string
+    readonly agentSaid: (agent: string, status: string, rule: string | null) => string
+    readonly noAgent: string
+    readonly ourOffers: string
+    readonly ourOffersSub: (n: number) => string
+    readonly weSell: string
+    readonly weBuy: string
+    readonly bestPrice: string
+    readonly alone: string
+    readonly beatenBy: (p: string) => string
+    readonly ourHead: readonly string[]
+    readonly ourPrices: string
+    readonly ourPricesSub: (traded: number, untraded: number) => string
+    readonly noOurPrices: string
+    readonly priceHead: readonly string[]
+    readonly showAll: string
+    readonly hideAll: string
+    readonly allSub: (offers: number, trades: number, venues: number) => string
     readonly tape: string
     readonly tapeSub: (n: number, volume: number) => string
     readonly which: string
@@ -217,25 +258,13 @@ export interface GameStrings {
     readonly all: string
     readonly search: string
     readonly searchLabel: string
-    readonly prices: string
-    readonly pricesSub: (n: number) => string
-    readonly teams: string
-    readonly teamsSub: (n: number) => string
     readonly noTrades: string
-    readonly noCards: string
-    readonly noTeams: string
     readonly tapeHead: readonly string[]
-    readonly cardHead: readonly string[]
-    readonly teamHead: readonly string[]
     readonly noBook: string
     readonly bookPrice: (p: string) => string
     readonly book: string
     readonly bookSub: (offers: number, venues: number) => string
-    readonly whose: string
-    readonly everyone: string
-    readonly ours: string
     readonly noOffers: string
-    readonly noOurOffers: string
     readonly bookHead: readonly string[]
     readonly offers: (n: number) => string
     readonly oursCount: (n: number) => string
@@ -243,11 +272,8 @@ export interface GameStrings {
     readonly venues: string
     readonly venuesSub: (open: number) => string
     readonly noVenues: string
-    readonly owner: string
     readonly venueStatus: Readonly<Record<'open' | 'closing' | 'closed', string>>
     readonly fee: (bps: number | null, perCard: number | null) => string
-    readonly noAnnouncement: string
-    readonly announcements: (n: number) => string
   }
   readonly debug: {
     readonly stream: string
@@ -561,32 +587,61 @@ const EN: GameStrings = {
     over: (label, n) => `${label} over ${plural(n, 'snapshot', 'snapshots')}`,
   },
   market: {
+    now: 'Right now for us',
+    nowSub: (buy, sell) => `${plural(buy, 'buy', 'buys')} · ${plural(sell, 'sell', 'sells')}`,
+    untakenSub: (n) => `${n} left untaken`,
+    buy: 'Buy',
+    sell: 'Sell',
+    buyHint: 'asks for cards we miss, under what they are worth to us',
+    sellHint: 'bids for our spares, at or over our value',
+    noBuy: 'No ask under our value for a card we miss.',
+    noSell: 'No bid at or over our value for a spare.',
+    overCash: (n, cash) => `${plural(n, 'more card is', 'more cards are')} under our value but over our cash (${cash}).`,
+    pay: 'pay',
+    get: 'get',
+    worth: 'worth',
+    estimated: 'Estimated: we have no affinity for this set yet, so book × 1',
+    netTitle: 'What we gain, before fees',
+    completes: { page: 'completes the page', master: 'completes master' },
+    completesTitle: 'Its value includes the bonus of the page it completes',
+    need: { missing: 'missing', spare: 'spare', unneeded: 'no page', held: 'held' },
+    forUs: 'for us',
+    forUsTitle: 'Addressed to our team alone',
+    more: (n) => `+${n} more`,
+    expiresIn: (ticks, minutes) => (ticks <= 0 ? 'expires now' : `expires in ${ticks}t${minutes == null ? '' : ` · ~${minutes} min`}`),
+    from: (maker, venue) => `${maker} on ${venue}`,
+    untaken: (age) => `Up for ${plural(age, 'tick', 'ticks')} and our agents have not taken it`,
+    agentSaid: (agent, status, rule) => `${agent}: ${status}${rule ? ` · ${rule}` : ''}`,
+    noAgent: 'no agent decision on this card',
+    ourOffers: 'Our offers on the board',
+    ourOffersSub: (n) => plural(n, 'open offer', 'open offers'),
+    weSell: 'we sell',
+    weBuy: 'we buy',
+    bestPrice: 'best price',
+    alone: 'only offer',
+    beatenBy: (p) => `beaten by ${p}`,
+    ourHead: ['', 'card', 'price', 'worth', 'venue', 'expires', 'vs others'],
+    ourPrices: 'Prices of our cards',
+    ourPricesSub: (traded, untraded) => `${plural(traded, 'card', 'cards')} traded · ${untraded} never traded`,
+    noOurPrices: 'None of the cards we miss or hold has traded yet.',
+    priceHead: ['card', 'worth to us', 'last', 'median', 'range'],
+    showAll: 'Show all market activity',
+    hideAll: 'Hide all market activity',
+    allSub: (offers, trades, venues) => `${plural(offers, 'offer', 'offers')} · ${plural(trades, 'trade', 'trades')} · ${plural(venues, 'venue', 'venues')}`,
     tape: 'Market tape',
     tapeSub: (n, volume) => `${plural(n, 'trade', 'trades')} · ${volume} P`,
     which: 'Which trades',
     others: 'Others',
     all: 'All',
-    search: 'team, card, venue, s/e/# id',
+    search: 'team, card, venue',
     searchLabel: 'Filter trades',
-    prices: 'Card prices',
-    pricesSub: (n) => `${plural(n, 'card', 'cards')} · by trades`,
-    teams: 'Most active teams',
-    teamsSub: (n) => plural(n, 'counterparty', 'counterparties'),
     noTrades: 'No trades match yet.',
-    noCards: 'No card has traded yet.',
-    noTeams: 'No counterparty has traded yet.',
-    tapeHead: ['tick', 'venue', 'seller → buyer', 'card', 'price', 'vs book', 'fee', 'settle', 'event'],
-    cardHead: ['card', 'trades', 'last', 'median', 'min – max', 'book', 'trend'],
-    teamHead: ['team', 'trades', 'volume', 'bought', 'sold', 'last tick'],
+    tapeHead: ['tick', 'venue', 'seller → buyer', 'card', 'price', 'vs book', 'fee', ''],
     noBook: 'no book price',
     bookPrice: (p) => `book ${p}`,
     book: 'Order book',
     bookSub: (offers, venues) => `${plural(offers, 'open offer', 'open offers')} · ${plural(venues, 'venue', 'venues')}`,
-    whose: 'Whose offers',
-    everyone: 'Everyone',
-    ours: 'Ours',
     noOffers: 'No open offers on any board yet.',
-    noOurOffers: 'We have no open offers on any board.',
     bookHead: ['card', 'best bid', 'best ask', 'bids / asks', 'book'],
     offers: (n) => plural(n, 'offer', 'offers'),
     oursCount: (n) => `${n} ours`,
@@ -594,11 +649,8 @@ const EN: GameStrings = {
     venues: 'Venues',
     venuesSub: (open) => `${open} open`,
     noVenues: 'No venue seen yet.',
-    owner: 'owner',
     venueStatus: { open: 'open', closing: 'closing', closed: 'closed' },
     fee: (bps, perCard) => [bps ? `${bps / 100}%` : '', perCard ? `${perCard} P/card` : ''].filter(Boolean).join(' + ') || 'no fee',
-    noAnnouncement: 'no announcement yet',
-    announcements: (n) => plural(n, 'announcement', 'announcements'),
   },
   debug: {
     stream: 'Event stream',
@@ -932,32 +984,61 @@ const ES: GameStrings = {
     over: (label, n) => `${label} en ${plural(n, 'instantánea', 'instantáneas')}`,
   },
   market: {
+    now: 'Ahora mismo para nosotros',
+    nowSub: (buy, sell) => `${plural(buy, 'compra', 'compras')} · ${plural(sell, 'venta', 'ventas')}`,
+    untakenSub: (n) => `${n} sin aprovechar`,
+    buy: 'Comprar',
+    sell: 'Vender',
+    buyHint: 'ofertas de cartas que nos faltan, por debajo de lo que valen para nosotros',
+    sellHint: 'pujas por nuestras repes, a nuestro valor o más',
+    noBuy: 'Ninguna oferta por debajo de nuestro valor para una carta que nos falte.',
+    noSell: 'Ninguna puja a nuestro valor o más por una repe.',
+    overCash: (n, cash) => `${plural(n, 'carta más está', 'cartas más están')} por debajo de nuestro valor pero por encima de nuestra caja (${cash}).`,
+    pay: 'pagar',
+    get: 'cobrar',
+    worth: 'vale',
+    estimated: 'Estimado: aún no sabemos nuestra afinidad por este barrio, así que libro × 1',
+    netTitle: 'Lo que ganamos, antes de comisiones',
+    completes: { page: 'completa la página', master: 'completa el máster' },
+    completesTitle: 'Su valor incluye el bonus de la página que completa',
+    need: { missing: 'falta', spare: 'repe', unneeded: 'sin página', held: 'tenemos' },
+    forUs: 'para nosotros',
+    forUsTitle: 'Dirigida solo a nuestro equipo',
+    more: (n) => `+${n} más`,
+    expiresIn: (ticks, minutes) => (ticks <= 0 ? 'caduca ya' : `caduca en ${ticks}t${minutes == null ? '' : ` · ~${minutes} min`}`),
+    from: (maker, venue) => `${maker} en ${venue}`,
+    untaken: (age) => `Lleva ${plural(age, 'turno', 'turnos')} y nuestros agentes no la han cogido`,
+    agentSaid: (agent, status, rule) => `${agent}: ${status}${rule ? ` · ${rule}` : ''}`,
+    noAgent: 'ningún agente ha decidido sobre esta carta',
+    ourOffers: 'Nuestras ofertas en los puestos',
+    ourOffersSub: (n) => plural(n, 'oferta abierta', 'ofertas abiertas'),
+    weSell: 'vendemos',
+    weBuy: 'compramos',
+    bestPrice: 'mejor precio',
+    alone: 'única',
+    beatenBy: (p) => `superada por ${p}`,
+    ourHead: ['', 'carta', 'precio', 'vale', 'puesto', 'caduca', 'frente a otros'],
+    ourPrices: 'Precios de nuestras cartas',
+    ourPricesSub: (traded, untraded) => `${plural(traded, 'carta con tratos', 'cartas con tratos')} · ${untraded} sin tratos`,
+    noOurPrices: 'Aún no se ha vendido ninguna carta que nos falte o tengamos.',
+    priceHead: ['carta', 'nos vale', 'último', 'mediana', 'rango'],
+    showAll: 'Ver toda la actividad del mercado',
+    hideAll: 'Ocultar la actividad del mercado',
+    allSub: (offers, trades, venues) => `${plural(offers, 'oferta', 'ofertas')} · ${plural(trades, 'trato', 'tratos')} · ${plural(venues, 'puesto', 'puestos')}`,
     tape: 'Cinta del mercado',
     tapeSub: (n, volume) => `${plural(n, 'trato', 'tratos')} · ${volume} P`,
     which: 'Qué tratos',
     others: 'Otros',
     all: 'Todos',
-    search: 'equipo, carta, puesto, id s/e/#',
+    search: 'equipo, carta, puesto',
     searchLabel: 'Filtrar tratos',
-    prices: 'Precios por carta',
-    pricesSub: (n) => `${plural(n, 'carta', 'cartas')} · por tratos`,
-    teams: 'Equipos más activos',
-    teamsSub: (n) => plural(n, 'contraparte', 'contrapartes'),
     noTrades: 'Aún no hay tratos que coincidan.',
-    noCards: 'Aún no se ha vendido ninguna carta.',
-    noTeams: 'Aún no ha tratado ninguna contraparte.',
-    tapeHead: ['turno', 'puesto', 'vende → compra', 'carta', 'precio', 'vs libro', 'comisión', 'liquidación', 'evento'],
-    cardHead: ['carta', 'tratos', 'último', 'mediana', 'mín – máx', 'libro', 'tendencia'],
-    teamHead: ['equipo', 'tratos', 'volumen', 'compró', 'vendió', 'último turno'],
+    tapeHead: ['turno', 'puesto', 'vende → compra', 'carta', 'precio', 'vs libro', 'comisión', ''],
     noBook: 'sin precio de libro',
     bookPrice: (p) => `libro ${p}`,
     book: 'Libro de órdenes',
     bookSub: (offers, venues) => `${plural(offers, 'oferta abierta', 'ofertas abiertas')} · ${plural(venues, 'puesto', 'puestos')}`,
-    whose: 'De quién',
-    everyone: 'Todos',
-    ours: 'Nuestras',
     noOffers: 'Aún no hay ofertas abiertas en ningún puesto.',
-    noOurOffers: 'No tenemos ofertas abiertas en ningún puesto.',
     bookHead: ['carta', 'mejor puja', 'mejor oferta', 'pujas / ofertas', 'libro'],
     offers: (n) => plural(n, 'oferta', 'ofertas'),
     oursCount: (n) => `${n} nuestras`,
@@ -965,11 +1046,8 @@ const ES: GameStrings = {
     venues: 'Puestos',
     venuesSub: (open) => `${open} abiertos`,
     noVenues: 'Aún no se ha visto ningún puesto.',
-    owner: 'dueño',
     venueStatus: { open: 'abierto', closing: 'cerrando', closed: 'cerrado' },
     fee: (bps, perCard) => [bps ? `${bps / 100} %` : '', perCard ? `${perCard} P/carta` : ''].filter(Boolean).join(' + ') || 'sin comisión',
-    noAnnouncement: 'aún sin anuncios',
-    announcements: (n) => plural(n, 'anuncio', 'anuncios'),
   },
   debug: {
     stream: 'Flujo de eventos',

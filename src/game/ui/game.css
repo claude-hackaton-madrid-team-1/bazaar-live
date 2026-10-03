@@ -1260,47 +1260,216 @@
   font-weight: 600;
 }
 
-.gm-venues {
+/* right now for us: what to buy, what to sell, side by side */
+.mkt-now {
+  border: 1px solid color-mix(in srgb, var(--buyer-1) 22%, var(--hairline));
+}
+
+.mkt-untaken {
+  color: var(--gm-warn);
+}
+
+.mkt-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .mkt-sides {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.mkt-side {
+  --c: var(--buyer-ink);
+  min-width: 0;
+}
+
+.mkt-side[data-side='sell'] {
+  --c: var(--seller-ink);
+}
+
+.mkt-side-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  margin: 0 0 var(--s-2);
+  font-size: 1.125rem;
+  color: var(--c);
+}
+
+.mkt-side-n {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.mkt-side-hint {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+.mkt-opps {
   display: grid;
   gap: var(--s-2);
-  max-height: 420px;
   margin: 0;
   padding: 0;
-  overflow: auto;
   list-style: none;
 }
 
-.gm-venues li {
+.mkt-opp {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px var(--s-3);
   padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
+  border-left: 3px solid var(--c);
+  border-radius: var(--r-sm);
   background: var(--gm-well);
   font-size: 0.8125rem;
 }
 
-.gm-venues li[data-ours] {
-  background: color-mix(in srgb, var(--buyer-1) 10%, transparent);
+.mkt-opp[aria-selected='true'] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.gm-venue-head {
+.mkt-opp-card {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px var(--s-2);
+  min-width: 0;
+  font-size: 0.875rem;
 }
 
-.gm-venue-meta {
+.mkt-net {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 650;
+  color: var(--gm-good);
+  font-variant-numeric: tabular-nums;
+}
+
+.mkt-opp-meta,
+.mkt-mine-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 2px var(--s-3);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
 
-.gm-venue-said {
+.mkt-opp-meta {
+  grid-column: 1 / -1;
+}
+
+.mkt-opp-meta b,
+.mkt-mine-meta b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.gm-app .mkt-opp-meta [data-soon],
+.gm-app .mkt-mine-meta [data-soon] {
+  color: var(--gm-warn);
+}
+
+.mkt-flag {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--s-2);
+  margin: 2px 0 0;
+  padding: 4px var(--s-2);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--dry) 12%, transparent);
+  color: var(--gm-warn);
+  font-size: 0.75rem;
+}
+
+.mkt-flag-why {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+.mkt-foot {
+  margin: var(--s-2) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+/* our offers: one line each, wrapping on a phone */
+.mkt-mine {
+  display: grid;
   margin: 0;
-  overflow-wrap: anywhere;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.mkt-mine li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* prices of our cards: on a phone, the code, our value, last and median fit without scrolling */
+@media (max-width: 600px) {
+  .mkt-prices .gm-card-name,
+  .mkt-prices th:nth-child(n + 5),
+  .mkt-prices td:nth-child(n + 5) {
+    display: none;
+  }
+}
+
+.mkt-mine-meta {
+  flex-basis: 100%;
+}
+
+/* the rest of the market, on request */
+.mkt-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px var(--s-2);
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-lg);
+  font-size: 0.875rem;
+  color: var(--text);
+  white-space: normal;
+}
+
+.mkt-venues {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.mkt-venues li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.mkt-venues li[data-ours] b {
+  color: var(--gm-us);
 }
 
 /* ---------------------------------------------------------------- debug */

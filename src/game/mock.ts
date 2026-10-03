@@ -143,6 +143,8 @@ export class MockGame {
   private pending: [number, Neg, number][] = []
   private duel: MockDuel | null = null
   private readonly board = new Map<number, Listing>()
+  /** The opening board's two offers: no other team fills or cancels them, they expire. */
+  private readonly pinned = new Set<number>()
   private packs: Asset[] = []
   private readonly decisionIds = counter(4100)
   /** The guardrail ledger per tick, as agent.ledger carries it; tick 0 is what was bought before the mock started. */
@@ -470,14 +472,39 @@ export class MockGame {
 
   private list(maker: string, venue: string, ref: string, side: Listing['side'], price: number): GameEvent {
     const asset = side === 'ask' ? (maker === this.team ? this.hand.get(ref)?.at(-1) ?? this.mint(ref) : this.mint(ref)) : null
-    const l: Listing = { id: this.offerIds(), maker, venue, ref, side, price, asset, expires: this.tick + this.int(3, OFFER_TICKS) }
+    return this.post({ id: this.offerIds(), maker, venue, ref, side, price, asset, expires: this.tick + this.int(3, OFFER_TICKS) })
+  }
+
+  private post(l: Listing): GameEvent {
     this.board.set(l.id, l)
-    const goods = asset ? { cash: 0, assets: [asset], types: [] } : { cash: 0, assets: [], types: [`card:${ref}`] }
-    const cash = { cash: price, assets: [], types: [] }
-    const [give, want] = side === 'ask' ? [goods, cash] : [cash, goods]
+    const goods = l.asset ? { cash: 0, assets: [l.asset], types: [] } : { cash: 0, assets: [], types: [`card:${l.ref}`] }
+    const cash = { cash: l.price, assets: [], types: [] }
+    const [give, want] = l.side === 'ask' ? [goods, cash] : [cash, goods]
     return this.ev('offer.listed', {
-      venue, offer: { id: l.id, maker, to: null, venue, thread: null, status: 'open', give, want, expires_tick: l.expires, created_tick: this.tick, final: false },
-    }, maker)
+      venue: l.venue, offer: { id: l.id, maker: l.maker, to: null, venue: l.venue, thread: null, status: 'open', give, want, expires_tick: l.expires, created_tick: this.tick, final: false },
+    }, l.maker)
+  }
+
+  /**
+   * Two offers on the opening board the Market screen should call out, with no randomness: an ask for a card
+   * we miss well under what it is worth to us (every set is worth at least 0.75 × book to us: 0.7 × book is
+   * under it), and a bid at book for one of our spares (a spare copy is worth at most 0.4 × book to us). The ask is in our third set, which our agent
+   * does not shop in while the first two have holes, and both stay up for a while: the screen also shows
+   * our agents leaving them there.
+   */
+  private openingBoard(): GameEvent[] {
+    const out: GameEvent[] = []
+    const third = [...SET_CODES].sort((a, b) => (this.affinity[b] ?? 0) - (this.affinity[a] ?? 0))[2] ?? 'LAT'
+    const want = [6, 7, 8, 1, 2, 3, 4, 5].map((i) => `${third}-${pad2(i)}`).find((r) => !this.count(r))
+    if (want) {
+      const rarity = RARITY[slot(want)] ?? 'common'
+      const asset: Asset = { id: this.assetIds(), kind: 'card', ref: want, serial: 7, set: third, rarity, print_run: PRINT_RUN[rarity] ?? 300 }
+      out.push(this.post({ id: this.offerIds(), maker: 't09', venue: 'rastro', ref: want, side: 'ask', price: Math.floor(book(want) * 0.7), asset, expires: this.tick + 15 }))
+    }
+    const spare = [...this.cards].filter(([, k]) => k > 1).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
+    if (spare) out.push(this.post({ id: this.offerIds(), maker: 't04', venue: 't07-puesto', ref: spare, side: 'bid', price: book(spare), asset: null, expires: this.tick + 15 }))
+    for (const e of out) this.pinned.add(e.payload.offer.id)
+    return out
   }
 
   private cancel(l: Listing, reason: string | null = null): GameEvent {
@@ -500,7 +527,7 @@ export class MockGame {
       const price = Math.max(1, Math.round(book(ref) * (side === 'ask' ? 1 + this.random() * 0.6 : 0.55 + this.random() * 0.4)))
       out.push(this.list(this.choice(TEAMS), this.choice(VENUES), ref, side, price))
     }
-    const theirs = [...this.board.values()].filter((l) => l.maker !== this.team)
+    const theirs = [...this.board.values()].filter((l) => l.maker !== this.team && !this.pinned.has(l.id))
     if (theirs.length && this.random() < 0.2) out.push(this.cancel(this.choice(theirs)))
     return out
   }
@@ -576,7 +603,7 @@ export class MockGame {
   private world(): GameEvent[] {
     if (this.random() > 0.45) return []
     // half the trades fill an ask on a board: the settlement names no offer, the offer just stops being open
-    const asks = [...this.board.values()].filter((l) => l.side === 'ask' && l.asset && l.maker !== this.team)
+    const asks = [...this.board.values()].filter((l) => l.side === 'ask' && l.asset && l.maker !== this.team && !this.pinned.has(l.id))
     if (asks.length && this.random() < 0.5) {
       const l = this.choice(asks)
       this.board.delete(l.id)
@@ -746,7 +773,7 @@ export class MockGame {
     const out: GameEvent[] = []
     if (this.n === 0) {
       const past = this.pastDuels()
-      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.duelStep())
+      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.duelStep(), ...this.openingBoard())
     }
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {

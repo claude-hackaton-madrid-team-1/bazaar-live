@@ -92,6 +92,8 @@ export type BookOffer = {
   eventId: number
   venue: string
   maker: string
+  /** The one team the offer is addressed to; null when anyone may take it. */
+  to: string | null
   side: 'ask' | 'bid' | 'swap'
   ref: string
   kind: string
@@ -360,7 +362,7 @@ function offerListed(s: State, e: GameEvent) {
   let offers = s.book.get(venue)
   if (!offers) s.book.set(venue, (offers = new Map()))
   offers.set(offer.id, {
-    id: offer.id, eventId: e.id, venue, maker: offer.maker ?? e.actor ?? '?', side,
+    id: offer.id, eventId: e.id, venue, maker: offer.maker ?? e.actor ?? '?', to: typeof offer.to === 'string' ? offer.to : null, side,
     ref: side === 'bid' ? topicOf({ want: offer.want }) : topicOf({ give: offer.give }),
     kind: first?.kind ?? goods?.types?.[0]?.split(':')[0] ?? 'card',
     assetIds: assets.map((a) => a.id).filter((id) => typeof id === 'number'),

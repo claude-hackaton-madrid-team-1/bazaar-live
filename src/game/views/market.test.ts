@@ -1,6 +1,6 @@
 import { assert, test } from 'vitest'
 import { apply, createState, type GameEvent, type Payload } from '../state.ts'
-import { cardStats, deltaText, deltaTone, marketTape, median, orderBook, sparkEnd, sparkPath, teamStats, venueRows } from './market.ts'
+import { cardStats, deltaText, deltaTone, marketTape, median, orderBook, sparkEnd, sparkPath, venueRows } from './market.ts'
 
 let nextId = 1
 let nextSettlement = 900
@@ -80,20 +80,6 @@ test('card prices per ref: count, last, median, min, max, book, trend, sorted by
   assert.deepEqual(lat!.trend, [8, 14, 99, 11])
   assert.deepEqual(cardStats(s, 'all')[0]!.trades, 4)
   assert.strictEqual(cardStats(s, 'all')[0]!.max, 99)
-})
-
-test('teams: trades, volume, buyer vs seller, last tick, never us, sorted by trades', () => {
-  const s = fresh()
-  apply(s, trade('t02', 't03', 'LAT-01', 10, { tick: 1 }))
-  apply(s, trade('abuela', 't02', 'RET-03', 8, { tick: 4 }))
-  apply(s, trade('t03', 't02', 'MAL-06', 25, { tick: 2 }))
-  apply(s, trade('t02', 't01', 'SAL-09', 70, { tick: 9 }))
-  const teams = teamStats(s)
-  assert.deepEqual(teams.map((t) => [t.team, t.trades, t.volume, t.asBuyer, t.asSeller, t.lastTick]),
-    [['t02', 3, 43, 2, 1, 4], ['t03', 2, 35, 1, 1, 2], ['abuela', 1, 8, 0, 1, 4]])
-  const all = teamStats(s, 'all')
-  assert.strictEqual(all.find((t) => t.team === 't01'), undefined)
-  assert.deepEqual(all.map((t) => [t.team, t.trades, t.volume, t.lastTick])[0], ['t02', 4, 113, 9])
 })
 
 test('sparkline path spans the box, flat and short series are safe', () => {
