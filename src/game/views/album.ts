@@ -39,6 +39,8 @@ export type AlbumSummary = {
   missing: number
   duplicates: { count: number; refs: { ref: string; spare: number }[] }
   cheapest: { ref: string; book: number; rarity: Rarity; page: string } | null
+  /** Our sealed packs, by kind, the most first. */
+  packs: { count: number; refs: { ref: string; name: string; count: number }[] }
 }
 
 export type ScoreBar = { key: string; label: string; points: number; pct: number }
@@ -103,6 +105,12 @@ export function albumSummary(s: State): AlbumSummary {
       cheapest = { ref: c.ref, book: c.book, rarity: c.rarity, page: row.name }
     }
   }
+  const packs = new Map<string, { ref: string; name: string; count: number }>()
+  for (const p of s.packs) {
+    const k = packs.get(p.ref)
+    if (k) k.count += 1
+    else packs.set(p.ref, { ref: p.ref, name: p.name, count: 1 })
+  }
   return {
     pages: rows.length,
     complete: rows.filter((r) => r.complete).length,
@@ -110,6 +118,7 @@ export function albumSummary(s: State): AlbumSummary {
     missing: rows.reduce((n, r) => n + r.missing, 0),
     duplicates: { count: refs.reduce((n, r) => n + r.spare, 0), refs },
     cheapest,
+    packs: { count: s.packs.length, refs: [...packs.values()].sort((a, b) => b.count - a.count || a.ref.localeCompare(b.ref)) },
   }
 }
 
@@ -118,6 +127,7 @@ const PARTS = [
   ['ladder_points', 'Ladder'],
   ['neg_points', 'Negotiation'],
   ['mm_points', 'Market-making'],
+  ['bench_points', 'Bench'],
 ] as const
 
 export function scoreBars(s: State): ScoreView {

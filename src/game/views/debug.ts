@@ -1,9 +1,10 @@
-import { KNOWN_TYPES, type GameEvent, type Payload, type State } from '../state.ts'
+import { topicText } from '../game.ts'
+import { KNOWN_TYPES, priceOf, topicOf, type GameEvent, type Payload, type State } from '../state.ts'
 
-export type Family = 'agent' | 'thread' | 'settlement' | 'duel' | 'clock' | 'unknown'
+export type Family = 'agent' | 'thread' | 'offer' | 'settlement' | 'venue' | 'pack' | 'gift' | 'duel' | 'clock' | 'unknown'
 export type Source = 'ours' | 'market' | 'all'
 
-export const FAMILIES: Family[] = ['agent', 'thread', 'settlement', 'duel', 'clock', 'unknown']
+export const FAMILIES: Family[] = ['agent', 'thread', 'offer', 'settlement', 'venue', 'pack', 'gift', 'duel', 'clock', 'unknown']
 
 export type DebugRow = {
   id: number
@@ -58,7 +59,11 @@ export function familyOf(type: string): Family {
   if (type.startsWith('agent.')) return 'agent'
   if (type.startsWith('thread.')) return 'thread'
   if (type.startsWith('duel.')) return 'duel'
-  if (type === 'settlement') return 'settlement'
+  if (type.startsWith('offer.')) return 'offer'
+  if (type.startsWith('venue.')) return 'venue'
+  if (type.startsWith('pack.')) return 'pack'
+  if (type.startsWith('gift.')) return 'gift'
+  if (type === 'settlement' || type.startsWith('settlement.')) return 'settlement'
   if (type === 'clock') return 'clock'
   return 'unknown'
 }
@@ -82,6 +87,40 @@ function settlement(p: Payload): string {
   ])
 }
 
+function offerListed(p: Payload): string {
+  const offer: Payload = p.offer && typeof p.offer === 'object' ? p.offer : {}
+  const side = offer.want?.cash ? 'ask' : offer.give?.cash ? 'bid' : 'swap'
+  const price = priceOf(offer)
+  return join([
+    `offer ${or(offer.id)}`,
+    `${or(offer.maker)} ${side} ${side === 'bid' ? topicOf({ want: offer.want }) : topicOf({ give: offer.give })}`,
+    price != null && `${text(price)} P`,
+    text(p.venue ?? offer.venue),
+    offer.expires_tick != null && `until t${text(offer.expires_tick)}`,
+  ])
+}
+
+const fee = (p: Payload): string | false =>
+  (p.fee_bps != null || p.fee_per_card != null) && `fee ${text(p.fee_bps ?? 0)} bps + ${text(p.fee_per_card ?? 0)} P/card`
+
+function gift(e: GameEvent, p: Payload): string {
+  const what = [p.cash ? `${text(p.cash)} P` : '', ...(Array.isArray(p.packs) ? p.packs : []), ...(Array.isArray(p.cards) ? p.cards : [])].map(text).filter(Boolean)
+  return join([`gift ${or(e.actor)} → ${or(p.team)}`, what.join(', '), p.reason && `“${cut(p.reason, 40)}”`])
+}
+
+function venue(e: GameEvent, p: Payload): string {
+  const v = `venue ${or(p.venue)}`
+  switch (e.type) {
+    case 'venue.opened': return join([`${v} opened`, p.name && `“${cut(p.name, 30)}”`, p.owner && `by ${text(p.owner)}`, fee(p)])
+    case 'venue.announcement': return join([v, `“${cut(p.text, 60)}”`])
+    case 'venue.fee_announced': return join([v, fee(p), p.effective_tick != null && `from t${text(p.effective_tick)}`])
+    case 'venue.fee_changed': return join([v, fee(p)])
+    case 'venue.closing': return join([`${v} closing`, p.bond_back_tick != null && `bond back at t${text(p.bond_back_tick)}`])
+    case 'venue.closed': return join([`${v} closed`, p.bond_returned != null && `${text(p.bond_returned)} P bond returned`])
+    default: return JSON.stringify(p) ?? ''
+  }
+}
+
 export function summarize(e: GameEvent): string {
   const p: Payload = e.payload && typeof e.payload === 'object' ? e.payload : {}
   let line: string
@@ -89,6 +128,18 @@ export function summarize(e: GameEvent): string {
     case 'thread.message': line = threadMessage(p); break
     case 'thread.closed': line = `thread ${or(p.thread)} closed`; break
     case 'settlement': line = settlement(p); break
+    case 'settlement.failed': line = join([`offer ${or(p.offer)} failed to settle`, text(p.reason)]); break
+    case 'offer.listed': line = offerListed(p); break
+    case 'offer.cancelled': line = join([`offer ${or(p.offer)} ${p.reason === 'expired' ? 'expired' : 'cancelled'}`, text(p.venue)]); break
+    case 'thread.opened': line = join([`thread ${or(p.thread)} opened`, `${or(p.team)} → ${or(p.with)}`, text(p.kind), topicText(p.topic)]); break
+    case 'pack.opened': line = join([`${or(p.team)} opened ${or(p.pack)}`, p.best && `best ${text(p.best)}`]); break
+    case 'gift.given': line = gift(e, p); break
+    case 'venue.opened':
+    case 'venue.announcement':
+    case 'venue.fee_announced':
+    case 'venue.fee_changed':
+    case 'venue.closing':
+    case 'venue.closed': line = venue(e, p); break
     case 'agent.thought': line = text(p.text); break
     case 'agent.action': line = join([text(p.kind), text(p.summary)]); break
     case 'agent.phase': line = join([text(p.phase), text(p.goal)]); break

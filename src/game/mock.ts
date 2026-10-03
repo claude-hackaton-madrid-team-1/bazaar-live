@@ -27,6 +27,11 @@ const COPY = [1.0, 0.25, 0.1]
 const PRINT_RUN: Readonly<Record<string, number>> = { common: 300, uncommon: 90, rare: 30, epic: 9, legendary: 3 }
 const TEAMS = Array.from({ length: 17 }, (_, i) => `t${String(i + 2).padStart(2, '0')}`)
 const VENUES = ['rastro', 'rastro', 'rastro', 't07-puesto', 't12-mercadillo']
+/** The two team venues, as their venue.opened says them: [id, name, owner, fee_bps, fee_per_card]. */
+const TEAM_VENUES = [['t07-puesto', 'El Puesto de Lola', 't07', 200, 0], ['t12-mercadillo', 'Mercadillo 12', 't12', 0, 1]] as const
+const VENUE_LINES = ['Fees down all afternoon.', 'Rares wanted, paying over book.', 'New stock of Malasaña commons.', 'Closing early today, list now.']
+const FAIL_REASONS = ['seller no longer holds the asset', 'buyer is short of cash', 'match no longer crosses']
+const OFFER_TICKS = 8
 const STEPS_PER_TICK = 8
 
 const ABUELA_LINES = [
@@ -47,12 +52,24 @@ const pad2 = (n: number): string => String(n).padStart(2, '0')
 
 interface Asset {
   readonly id: number
-  readonly kind: 'card'
+  readonly kind: 'card' | 'pack'
   readonly ref: string
   readonly serial: number
   readonly set: string
   readonly rarity: string
   readonly print_run: number
+}
+
+/** An open offer on a board, as offer.listed carries it. */
+interface Listing {
+  readonly id: number
+  readonly maker: string
+  readonly venue: string
+  readonly ref: string
+  readonly side: 'ask' | 'bid'
+  readonly price: number
+  readonly asset: Asset | null
+  readonly expires: number
 }
 
 interface Neg {
@@ -104,6 +121,8 @@ export class MockGame {
   private readonly negs = new Map<number, Neg>()
   private pending: [number, Neg, number][] = []
   private duel: MockDuel | null = null
+  private readonly board = new Map<number, Listing>()
+  private packs: Asset[] = []
 
   constructor(seed = 1, team = 't01', name = 'Team 1') {
     this.random = rng(seed)
@@ -114,6 +133,7 @@ export class MockGame {
     for (let i = 0; i < 11; i++) this.take(this.mint(this.ref(1, 5)))
     for (let i = 0; i < 3; i++) this.take(this.mint(this.ref(6, 8)))
     this.take(this.mint(this.ref(9, 10)))
+    for (let i = 0; i < 4; i++) this.packs.push({ id: this.assetIds(), kind: 'pack', ref: 'sobre_barrio', serial: i + 1, set: '', rarity: '', print_run: 0 })
   }
 
   // ---------------------------------------------------------------- randomness (Python's random, roughly)
@@ -195,7 +215,10 @@ export class MockGame {
         master: have === 10 && this.count(`${s}-11`) > 0 && this.count(`${s}-12`) > 0,
       }
     })
-    const assets = [...this.hand.keys()].sort().flatMap((r) => (this.hand.get(r) ?? []).map((a) => ({ ...a, name: card(r), your_value: this.value(r) })))
+    const assets = [
+      ...[...this.hand.keys()].sort().flatMap((r) => (this.hand.get(r) ?? []).map((a) => ({ ...a, name: card(r), your_value: this.value(r) }))),
+      ...this.packs.map((a) => ({ id: a.id, kind: a.kind, ref: a.ref, serial: a.serial, name: 'Neighbourhood pack' })),
+    ]
     const sc = this.score
     sc.score = Math.round((sc.duel_points + sc.ladder_points + sc.neg_points + sc.mm_points) * 10) / 10
     return this.ev('agent.me', { cash: this.cash, score: { ...sc }, album: { pages }, assets })
@@ -231,9 +254,12 @@ export class MockGame {
     }
     const tid = this.threadIds()
     this.negs.set(tid, neg)
+    const persona = neg.with === 'abuela'
+    const topic = neg.side === 'buy' ? { buy: { card: neg.ref } } : { sell: { assets: neg.asset ? [neg.asset.id] : [] } }
     return [
       this.ev('agent.thought', { text: `Open #${tid} with ${neg.with}: ${why}.` }),
       this.ev('agent.action', { kind: 'open', summary: `thread #${tid} with ${neg.with} · ${neg.side} ${neg.ref}` }),
+      this.ev('thread.opened', { thread: tid, kind: persona ? 'persona' : 'team', team: this.team, with: neg.with, topic }, this.team),
     ]
   }
 
@@ -359,8 +385,127 @@ export class MockGame {
     return out
   }
 
+  // ---------------------------------------------------------------- the board, venues, packs and gifts
+
+  private list(maker: string, venue: string, ref: string, side: Listing['side'], price: number): GameEvent {
+    const asset = side === 'ask' ? (maker === this.team ? this.hand.get(ref)?.at(-1) ?? this.mint(ref) : this.mint(ref)) : null
+    const l: Listing = { id: this.offerIds(), maker, venue, ref, side, price, asset, expires: this.tick + this.int(3, OFFER_TICKS) }
+    this.board.set(l.id, l)
+    const goods = asset ? { cash: 0, assets: [asset], types: [] } : { cash: 0, assets: [], types: [`card:${ref}`] }
+    const cash = { cash: price, assets: [], types: [] }
+    const [give, want] = side === 'ask' ? [goods, cash] : [cash, goods]
+    return this.ev('offer.listed', {
+      venue, offer: { id: l.id, maker, to: null, venue, thread: null, status: 'open', give, want, expires_tick: l.expires, created_tick: this.tick, final: false },
+    }, maker)
+  }
+
+  private cancel(l: Listing, reason: string | null = null): GameEvent {
+    this.board.delete(l.id)
+    return this.ev('offer.cancelled', reason ? { offer: l.id, venue: l.venue, reason } : { offer: l.id, venue: l.venue })
+  }
+
+  /** At a tick's start the game expires the offers past their tick, one offer.cancelled each. */
+  private expire(): GameEvent[] {
+    return [...this.board.values()].filter((l) => l.expires < this.tick).map((l) => this.cancel(l, 'expired'))
+  }
+
+  /** The other teams list and cancel all the time: most of the real feed is this. */
+  private boardMoves(): GameEvent[] {
+    const out: GameEvent[] = []
+    const n = this.weighted([0, 1, 2, 3], [40, 40, 15, 5])
+    for (let i = 0; i < n; i++) {
+      const ref = this.ref(1, this.weighted([5, 8, 10], [75, 20, 5]))
+      const side = this.random() < 0.55 ? 'ask' : 'bid'
+      const price = Math.max(1, Math.round(book(ref) * (side === 'ask' ? 1 + this.random() * 0.6 : 0.55 + this.random() * 0.4)))
+      out.push(this.list(this.choice(TEAMS), this.choice(VENUES), ref, side, price))
+    }
+    const theirs = [...this.board.values()].filter((l) => l.maker !== this.team)
+    if (theirs.length && this.random() < 0.2) out.push(this.cancel(this.choice(theirs)))
+    return out
+  }
+
+  /** Our agent lists a spare copy, or bids for a missing card, now and then; and sometimes one of ours fails to settle. */
+  private ourBoard(): GameEvent[] {
+    const out: GameEvent[] = []
+    const listed = new Set([...this.board.values()].filter((l) => l.maker === this.team).map((l) => l.ref))
+    if (this.tick % 2 === 0) {
+      const spare = [...this.cards].filter(([r, k]) => k > 1 && !listed.has(r)).map(([r]) => r)
+      if (spare.length) {
+        const ref = this.choice(spare)
+        const price = Math.round(book(ref) * 1.4)
+        out.push(this.ev('agent.action', { kind: 'list', summary: `list spare ${card(ref)} at ${price} P on rastro` }), this.list(this.team, 'rastro', ref, 'ask', price))
+      }
+    } else {
+      const ref = this.missing()
+      if (ref && !listed.has(ref)) {
+        const price = Math.max(1, Math.round(book(ref) * 0.7))
+        out.push(this.ev('agent.action', { kind: 'list', summary: `bid ${price} P for ${card(ref)} on t07-puesto` }), this.list(this.team, 't07-puesto', ref, 'bid', price))
+      }
+    }
+    const ours = [...this.board.values()].filter((l) => l.maker === this.team)
+    if (ours.length && this.random() < 0.12) {
+      const l = this.choice(ours)
+      this.board.delete(l.id)
+      out.push(this.ev('settlement.failed', { offer: l.id, reason: this.choice(FAIL_REASONS) }))
+    }
+    return out
+  }
+
+  private venues(): GameEvent[] {
+    const out: GameEvent[] = []
+    if (this.n === 0) {
+      for (const [venue, name, owner, bps, perCard] of TEAM_VENUES) {
+        out.push(this.ev('venue.opened', { venue, name, owner, fee_bps: bps, fee_per_card: perCard, rules: { mechanism: 'board' }, bond: 50 }, owner))
+      }
+    }
+    if (this.tick === 6) out.push(this.ev('venue.fee_announced', { venue: 't12-mercadillo', fee_bps: 100, fee_per_card: 0, effective_tick: 9 }))
+    if (this.tick === 9) out.push(this.ev('venue.fee_changed', { venue: 't12-mercadillo', fee_bps: 100, fee_per_card: 0 }))
+    if (this.tick === 1 || this.random() < 0.15) {
+      const [venue, name] = this.choice(TEAM_VENUES)
+      out.push(this.ev('venue.announcement', { venue, name, text: this.choice(VENUE_LINES) }, venue))
+    }
+    return out
+  }
+
+  /** Packs opened and gifts: ours on a schedule, the others' by chance. */
+  private luck(): GameEvent[] {
+    const out: GameEvent[] = []
+    const teamName = (t: string) => `Team ${Number(t.slice(1))}`
+    if (this.tick % 7 === 3 && this.packs.length > 1) {
+      const pack = this.packs.pop() as Asset
+      const pulled = [this.mint(this.ref(1, 5)), this.mint(this.ref(1, 5)), this.mint(this.ref(1, 10))]
+      pulled.forEach((a) => this.take(a))
+      const best = pulled.map((a) => a.ref).find((r) => slot(r) >= 8) ?? null
+      out.push(this.ev('pack.opened', { team: this.team, name: this.name, pack: pack.ref, best }), this.me())
+    } else if (this.random() < 0.1) {
+      const team = this.choice(TEAMS)
+      out.push(this.ev('pack.opened', { team, name: teamName(team), pack: 'sobre_barrio', best: this.random() < 0.3 ? this.ref(9, 10) : null }))
+    }
+    if (this.tick % 9 === 4) {
+      const ref = this.ref(1, 5)
+      this.take(this.mint(ref))
+      out.push(this.ev('gift.given', { team: this.team, name: this.name, cash: 0, packs: [], cards: [ref], reason: 'gift from Abuela Carmen' }, 'abuela'), this.me())
+    } else if (this.random() < 0.05) {
+      const team = this.choice(TEAMS)
+      out.push(this.ev('gift.given', { team, name: teamName(team), cash: 5, packs: [], cards: [], reason: 'gift from Abuela Carmen' }, 'abuela'))
+    }
+    return out
+  }
+
   private world(): GameEvent[] {
     if (this.random() > 0.45) return []
+    // half the trades fill an ask on a board: the settlement names no offer, the offer just stops being open
+    const asks = [...this.board.values()].filter((l) => l.side === 'ask' && l.asset && l.maker !== this.team)
+    if (asks.length && this.random() < 0.5) {
+      const l = this.choice(asks)
+      this.board.delete(l.id)
+      const buyer = this.choice(TEAMS.filter((t) => t !== l.maker))
+      return [this.ev('settlement', {
+        settlement: this.settlementIds(), kind: 'trade', parties: [l.maker, buyer], venue: l.venue, persona: null,
+        fee: l.venue === 'rastro' ? 0 : Math.max(1, Math.floor(l.price / 20)), price: l.price,
+        items: [{ ...l.asset, name: card(l.ref), frm: l.maker, to: buyer }],
+      })]
+    }
     const hi = this.weighted([5, 8, 10, 12], [70, 20, 8, 2])
     const ref = this.ref(1, hi)
     const [first, second] = this.shuffle([...TEAMS]).slice(0, 2) as [string, string]
@@ -413,10 +558,13 @@ export class MockGame {
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {
       this.tick += 1
-      out.push(this.ev('clock', { day: 'fri', tick_seconds: (STEPS_PER_TICK * MOCK_STEP_MS) / 1000 }), ...this.settle(), ...this.observe())
+      out.push(this.ev('clock', { day: 'fri', tick_seconds: (STEPS_PER_TICK * MOCK_STEP_MS) / 1000 }), ...this.expire(), ...this.settle(), ...this.observe())
     } else if (at === 2) {
       out.push(this.ev('agent.phase', { phase: 'decide' }))
       if (this.negs.size < 3) out.push(...this.open())
+      out.push(...this.ourBoard())
+    } else if (at === 3) {
+      out.push(...this.venues(), ...this.luck())
     } else if (at === 4) {
       out.push(this.ev('agent.phase', { phase: 'act' }), ...this.ourMove())
     } else if (at === 5 && this.tick % 2 === 0) {
@@ -424,7 +572,8 @@ export class MockGame {
     } else if (at === 6) {
       out.push(...this.theirMove())
     }
-    out.push(...this.world())
+    if (this.n === 0) out.push(...this.venues())
+    out.push(...this.boardMoves(), ...this.world())
     this.n += 1
     return out
   }

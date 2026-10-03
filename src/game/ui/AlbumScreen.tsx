@@ -44,6 +44,24 @@ function Summary({ sum }: { sum: AlbumSummary }) {
           {sum.cheapest ? `${t.album.rarity[sum.cheapest.rarity] ?? sum.cheapest.rarity} · ${t.album.book} ${fmtP(sum.cheapest.book)} · ${sum.cheapest.page}` : t.album.nothingMissing}
         </div>
       </div>
+      <div className="gm-tile material">
+        <div className="eyebrow">{t.album.packs}</div>
+        <div className="gm-tile-value">
+          {sum.packs.count}
+          {sum.packs.refs.length > 1 && <small>{t.album.packsFoot(sum.packs.refs.length)}</small>}
+        </div>
+        <div className="gm-tile-foot gm-refs">
+          {sum.packs.refs.length ? (
+            sum.packs.refs.map((p) => (
+              <span key={p.ref} title={p.name}>
+                {p.ref} ×{p.count}
+              </span>
+            ))
+          ) : (
+            <span className="gm-muted">{t.album.noPacks}</span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -9,7 +9,7 @@ const card = (id: number, ref: string, serial: number, your_value: number) => ({
 
 const ME = {
   cash: 412,
-  score: { score: 18.4, rank: 9, duel_points: 4, ladder_points: 6.5, neg_points: 7.9, mm_points: 0, deals: 3 },
+  score: { score: 18.4, rank: 9, duel_points: 4, ladder_points: 6.5, neg_points: 7.9, mm_points: 0, bench_points: 2.5, deals: 3 },
   album: {
     pages: [
       { set: 'LAT', name: 'La Latina', have: 2, of: 10, complete: false, master: false },
@@ -26,7 +26,9 @@ const ME = {
     card(30, 'RET-11', 1, 200),
     ...Array.from({ length: 9 }, (_, i) => card(40 + i, `MAL-${String(i + 1).padStart(2, '0')}`, 1, 15)),
     card(50, 'MAL-02', 2, 15),
-    { id: 99, kind: 'pack', ref: 'sobre_barrio' },
+    { id: 99, kind: 'pack', ref: 'sobre_barrio', name: 'Neighbourhood pack' },
+    { id: 98, kind: 'pack', ref: 'sobre_barrio', name: 'Neighbourhood pack' },
+    { id: 97, kind: 'pack', ref: 'sobre_dorado', name: 'Golden pack' },
   ],
 }
 
@@ -47,7 +49,7 @@ const loaded = () => {
 test('no agent.me yet means no rows and an empty summary', () => {
   const s = fresh()
   assert.deepEqual(albumRows(s), [])
-  assert.deepEqual(albumSummary(s), { pages: 0, complete: 0, master: 0, missing: 0, duplicates: { count: 0, refs: [] }, cheapest: null })
+  assert.deepEqual(albumSummary(s), { pages: 0, complete: 0, master: 0, missing: 0, duplicates: { count: 0, refs: [] }, cheapest: null, packs: { count: 0, refs: [] } })
 })
 
 test('each page row has twelve slots with rarity, copies held and prices', () => {
@@ -99,6 +101,13 @@ test('summary counts complete pages, missing slots, spare copies and the cheapes
   assert.deepEqual(sum.cheapest, { ref: 'LAT-01', book: 10, rarity: 'common', page: 'La Latina' })
 })
 
+test('summary counts the sealed packs we hold, by kind', () => {
+  assert.deepEqual(albumSummary(loaded()).packs, {
+    count: 3, refs: [{ ref: 'sobre_barrio', name: 'Neighbourhood pack', count: 2 }, { ref: 'sobre_dorado', name: 'Golden pack', count: 1 }],
+  })
+  assert.deepEqual(albumSummary(fresh()).packs, { count: 0, refs: [] })
+})
+
 test('cheapest missing prefers the page closest to completion on a book tie', () => {
   const s = fresh()
   apply(s, ev('agent.me', {
@@ -108,13 +117,14 @@ test('cheapest missing prefers the page closest to completion on a book tie', ()
   assert.deepEqual(albumSummary(s).cheapest, { ref: 'SAL-02', book: 10, rarity: 'common', page: 'Salamanca' })
 })
 
-test('score bars break the total into its four sources', () => {
+test('score bars break the total into its five sources', () => {
   const sc = scoreBars(loaded())
   assert.deepEqual([sc.total, sc.rank, sc.deals], [18.4, 9, 3])
   assert.deepEqual(sc.bars.map((b) => [b.key, b.label, b.points]), [
     ['duel_points', 'Duels', 4], ['ladder_points', 'Ladder', 6.5], ['neg_points', 'Negotiation', 7.9], ['mm_points', 'Market-making', 0],
+    ['bench_points', 'Bench', 2.5],
   ])
-  assert.deepEqual(sc.bars.map((b) => Math.round(b.pct)), [40, 65, 79, 0])
+  assert.deepEqual(sc.bars.map((b) => Math.round(b.pct)), [40, 65, 79, 0, 25])
 })
 
 test('score bars scale to the largest part and never go negative', () => {
@@ -122,8 +132,10 @@ test('score bars scale to the largest part and never go negative', () => {
   apply(s, ev('agent.me', { score: { score: 22, duel_points: 30, ladder_points: -8, neg_points: 15 } }))
   const sc = scoreBars(s)
   assert.deepEqual([sc.total, sc.rank, sc.deals], [22, null, null])
-  assert.deepEqual(sc.bars.map((b) => [b.points, b.pct]), [[30, 100], [-8, 0], [15, 50], [0, 0]])
-  assert.deepEqual(scoreBars(fresh()).bars.map((b) => b.pct), [0, 0, 0, 0])
+  assert.deepEqual(sc.bars.map((b) => [b.points, b.pct]), [[30, 100], [-8, 0], [15, 50], [0, 0], [0, 0]])
+  assert.deepEqual(scoreBars(fresh()).bars.map((b) => b.pct), [0, 0, 0, 0, 0])
+  apply(s, ev('agent.me', { score: { score: 22, bench_points: null } }))
+  assert.strictEqual(scoreBars(s).bars.at(-1)!.points, 0, 'the game sends bench_points null until a bench run')
 })
 
 test('series reads score or cash per snapshot, and a sparkline draws it', () => {

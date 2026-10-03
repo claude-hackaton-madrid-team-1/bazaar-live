@@ -1,4 +1,4 @@
-import { LOG_ICON, PHASES, fmtP, isSuspicious, signed } from '../game.ts'
+import { LOG_ICON, PHASES, fmtP, isSuspicious, signed, topicText } from '../game.ts'
 import { priceOf, topicOf, type GameEvent, type Payload, type Phase, type State } from '../state.ts'
 
 export type Lane = 'observe' | 'decide' | 'act' | 'result'
@@ -38,7 +38,10 @@ const toneOf = (gain: number | null): Tone => (gain == null || gain === 0 ? 'neu
 
 type Snapshot = { cash: number | null; score: number | null; rank: number | null }
 
-type Walk = { phase: Phase; goal: string; tick: number; me: Snapshot | null }
+/** Our board offers seen so far in the walk, by id: a cancel or a failure names only the offer id. */
+type Listed = { ref: string; side: string; price: number | null; venue: string }
+
+type Walk = { phase: Phase; goal: string; tick: number; me: Snapshot | null; offers: Map<number, Listed> }
 
 const base = (e: GameEvent, lane: Lane, text: string, extra: Partial<Line> = {}): Line => ({
   eventId: e.id, type: e.type, lane, icon: '•', text, tone: 'neutral', who: null, price: null, final: false,
@@ -130,6 +133,58 @@ function meLine(e: GameEvent, w: Walk): Line | null {
   return base(e, 'observe', parts.join(' · '), { icon: '◉' })
 }
 
+/** Our listing on a board: what we give or want, and for how much. */
+function listedLine(s: State, e: GameEvent, w: Walk): Line | null {
+  const p = e.payload
+  const offer: Payload = p.offer ?? {}
+  if (!s.team || offer.maker !== s.team) return null
+  const venue: string = p.venue ?? offer.venue ?? 'direct'
+  const price = priceOf(offer)
+  const side = offer.want?.cash ? 'ask' : offer.give?.cash ? 'bid' : 'swap'
+  const ref = side === 'bid' ? topicOf({ want: offer.want }) : topicOf({ give: offer.give })
+  if (typeof offer.id === 'number') w.offers.set(offer.id, { ref, side, price, venue })
+  const text = side === 'ask' ? `list ${ref} at ${fmtP(price)} on ${venue}`
+    : side === 'bid' ? `bid ${fmtP(price)} for ${ref} on ${venue}`
+    : `offer ${ref} for ${topicOf({ want: offer.want })} on ${venue}`
+  return base(e, 'act', text, { icon: LOG_ICON.list, tone: 'us', price, action: true, deal: true })
+}
+
+const offerName = (id: unknown, o: Listed | undefined) => (o ? `${o.side} #${String(id)} (${o.ref} at ${fmtP(o.price)})` : `offer #${String(id)}`)
+
+function boardLine(s: State, e: GameEvent, w: Walk): Line | null {
+  const p = e.payload
+  switch (e.type) {
+    case 'offer.listed':
+      return listedLine(s, e, w)
+    case 'offer.cancelled': {
+      const o = typeof p.offer === 'number' ? w.offers.get(p.offer) : undefined
+      const why = p.reason === 'expired' ? 'expired' : 'cancelled'
+      return base(e, 'result', `${offerName(p.offer, o)} ${why}${o ? ` on ${o.venue}` : ''}`, { icon: LOG_ICON.walk, deal: true })
+    }
+    case 'settlement.failed': {
+      const o = typeof p.offer === 'number' ? w.offers.get(p.offer) : undefined
+      return base(e, 'result', `${offerName(p.offer, o)} failed to settle: ${p.reason ?? '?'}`, { icon: LOG_ICON.walk, tone: 'bad', deal: true })
+    }
+    case 'thread.opened': {
+      const topic = topicText(p.topic)
+      if (p.team === s.team) {
+        return base(e, 'act', `opened thread #${p.thread} with ${p.with ?? '?'}${topic ? ` · ${topic}` : ''}`, {
+          icon: LOG_ICON.open, tone: 'us', who: p.with ?? null, action: true, deal: true,
+        })
+      }
+      return base(e, 'result', `${p.team ?? '?'} opened thread #${p.thread} with us${topic ? ` · ${topic}` : ''}`, { icon: '↘', tone: 'them', who: p.team ?? null, deal: true })
+    }
+    case 'pack.opened':
+      return base(e, 'result', `opened ${p.pack ?? 'a pack'}${p.best ? ` · best ${p.best}` : ''}`, { icon: '✦', tone: p.best ? 'good' : 'neutral' })
+    case 'gift.given': {
+      const what = [p.cash ? fmtP(p.cash) : null, ...(p.packs ?? []), ...(p.cards ?? [])].filter(Boolean).join(', ')
+      return base(e, 'result', `gift from ${e.actor || '?'}${what ? `: ${what}` : ''}`, { icon: '✦', tone: 'good', who: e.actor || null })
+    }
+    default:
+      return null
+  }
+}
+
 function linesOf(s: State, e: GameEvent, w: Walk): Line[] {
   const p = e.payload ?? {}
   switch (e.type) {
@@ -165,6 +220,15 @@ function linesOf(s: State, e: GameEvent, w: Walk): Line[] {
     case 'duel.message':
     case 'duel.result':
       return [duelLine(s, e)]
+    case 'offer.listed':
+    case 'offer.cancelled':
+    case 'settlement.failed':
+    case 'thread.opened':
+    case 'pack.opened':
+    case 'gift.given': {
+      const line = boardLine(s, e, w)
+      return line ? [line] : []
+    }
     default:
       return []
   }
@@ -173,7 +237,7 @@ function linesOf(s: State, e: GameEvent, w: Walk): Line[] {
 const keep = (filter: Filter, line: Line) => filter === 'all' || (filter === 'actions' ? line.action : line.deal)
 
 export function timeline(s: State, { limitTicks = 40, filter = 'all', upToTick = null }: TimelineOptions = {}): TickCard[] {
-  const w: Walk = { phase: 'observe', goal: '', tick: 0, me: null }
+  const w: Walk = { phase: 'observe', goal: '', tick: 0, me: null, offers: new Map() }
   const byTick = new Map<number, Line[]>()
   for (const e of s.mine) {
     if (e.type === 'clock' && e.tick != null) w.tick = e.tick
