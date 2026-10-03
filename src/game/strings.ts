@@ -474,7 +474,6 @@ export interface GameStrings {
     readonly notice: Readonly<Record<'loading' | 'off' | 'locked' | 'error' | 'mock', string>>
     readonly missing: string
     readonly now: string
-    readonly nowSub: (tick: number | null) => string
     readonly stats: Readonly<Record<'open' | 'low' | 'high' | 'in' | 'out' | 'fees' | 'trades', string>>
     readonly tradesValue: (buys: number, sells: number) => string
     readonly chart: string
@@ -488,8 +487,9 @@ export interface GameStrings {
     readonly filters: Readonly<Record<'all' | 'in' | 'out', string>>
     readonly head: readonly string[]
     readonly line: {
-      readonly buy: (card: string, from: string, fee: number) => string
-      readonly sell: (card: string, to: string) => string
+      /** The card is the chip beside the sentence. */
+      readonly buy: (from: string, fee: number) => string
+      readonly sell: (to: string) => string
       readonly bond: (venue: string, bond: number | null) => string
       readonly gift: string
       readonly pack: (pack: string, best: string | null) => string
@@ -556,6 +556,7 @@ const HUM_EN: GameStrings['hum'] = {
     dealer_sell: 'sell to a dealer', dealer_bid: 'bid to a dealer', dealer_open: 'open with a dealer', dealer_opened: 'dealer thread opened',
     dealer_closed: 'dealer thread closed', dealer_accept: "take the dealer's price", dealer_walk: 'walk away from the dealer', pack_open: 'open a pack',
     duel_offer: 'offer', duel_hold: 'hold', duel_accept: 'accept', process_started: 'restart (deploy)',
+    listing: 'listed', accept: 'accepted', spend: 'spent',
   },
   jevVerdicts: JEV_EN,
   denial: (d) => {
@@ -597,6 +598,7 @@ const HUM_ES: GameStrings['hum'] = {
     dealer_sell: 'vender a un tratante', dealer_bid: 'pujar a un tratante', dealer_open: 'abrir trato con un tratante', dealer_opened: 'trato con tratante abierto',
     dealer_closed: 'trato con tratante cerrado', dealer_accept: 'aceptar el precio del tratante', dealer_walk: 'dejar al tratante', pack_open: 'abrir un sobre',
     duel_offer: 'ofertar', duel_hold: 'esperar', duel_accept: 'aceptar', process_started: 'reinicio (despliegue)',
+    listing: 'a la venta', accept: 'aceptada', spend: 'gasto',
   },
   jevVerdicts: JEV_ES,
   denial: (d) => {
@@ -1113,7 +1115,6 @@ const EN: GameStrings = {
     },
     missing: 'not applied yet (db/history.sql)',
     now: 'Cash now',
-    nowSub: (tick) => (tick === null ? 'no reading yet' : `at tick ${tick}`),
     stats: { open: 'first today', low: 'lowest', high: 'highest', in: 'money in', out: 'money out', fees: 'fees paid', trades: 'trades' },
     tradesValue: (buys, sells) => `${buys} bought · ${sells} sold`,
     chart: 'Cash today',
@@ -1125,13 +1126,13 @@ const EN: GameStrings = {
     noMoves: 'No movement matches.',
     filter: 'Show',
     filters: { all: 'All', in: 'Money in', out: 'Money out' },
-    head: ['tick', 'change', 'cash after', 'what moved it'],
+    head: ['when', 'change', 'cash after', 'what moved it'],
     line: {
-      buy: (card, from, fee) => `Bought ${card} from ${from}${fee ? ` (+${fee} P fee)` : ''}`,
-      sell: (card, to) => `Sold ${card} to ${to}`,
+      buy: (from, fee) => `bought from ${from}${fee ? ` (+${fee} P fee)` : ''}`,
+      sell: (to) => `sold to ${to}`,
       bond: (venue, bond) => `Opened our market ${venue}${bond ? `: a ${bond} P bond` : ''}`,
       gift: 'A gift',
-      pack: (pack, best) => `Opened a pack (${pack})${best ? `, best card ${best}` : ''}`,
+      pack: (pack, best) => `Opened a ${pack}${best ? `; best card ${best}` : ''}`,
       level: (level, why) => `Level ${level ?? '?'} unlocked${why ? `: ${why}` : ''}`,
       failed: 'A settlement failed',
       closed: (venue) => `Market ${venue} closed`,
@@ -1142,7 +1143,7 @@ const EN: GameStrings = {
     orders: 'What our agents committed',
     ordersSub: (n) => `${plural(n, 'order', 'orders')} in the ledger · newest first`,
     noOrders: 'No order in the ledger yet.',
-    ordersHead: ['tick', 'agent', 'order', 'card', 'price'],
+    ordersHead: ['when', 'agent', 'order', 'card', 'price'],
     agent: 'Agent',
     allAgents: 'All',
     score: {
@@ -1152,13 +1153,13 @@ const EN: GameStrings = {
       until: 'Compare until',
       untilNow: 'until now',
       untilNext: 'until the next mark',
-      start: (agent, count, first, last) => `${agent} restart${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      start: (agent, count) => `${agent} restart${count > 1 ? ` ×${count}` : ''}`,
       startWhy: 'the process started: a deploy or a restart',
       game: { round: 'New round', bench: 'Market Test', duels: 'Duels', day: 'New day' },
       from: 'since',
       to: 'until',
       now: 'now',
-      ticks: (n, minutes) => `${plural(n, 'tick', 'ticks')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      ticks: (n, minutes) => (minutes === null ? plural(n, 'tick', 'ticks') : `${minutes} min`),
       after: 'since the mark',
       before: (ticks) => `the ${ticks} ticks before`,
       better: 'moving faster than before the mark',
@@ -1664,7 +1665,6 @@ const ES: GameStrings = {
     },
     missing: 'aún sin aplicar (db/history.sql)',
     now: 'Caja ahora',
-    nowSub: (tick) => (tick === null ? 'aún sin lectura' : `en el turno ${tick}`),
     stats: { open: 'primera de hoy', low: 'mínima', high: 'máxima', in: 'entra', out: 'sale', fees: 'comisiones', trades: 'tratos' },
     tradesValue: (buys, sells) => `${buys} compras · ${sells} ventas`,
     chart: 'Caja de hoy',
@@ -1676,13 +1676,13 @@ const ES: GameStrings = {
     noMoves: 'Ningún movimiento coincide.',
     filter: 'Mostrar',
     filters: { all: 'Todo', in: 'Entra', out: 'Sale' },
-    head: ['turno', 'cambio', 'caja después', 'qué la movió'],
+    head: ['cuándo', 'cambio', 'caja después', 'qué la movió'],
     line: {
-      buy: (card, from, fee) => `Compramos ${card} a ${from}${fee ? ` (+${fee} P de comisión)` : ''}`,
-      sell: (card, to) => `Vendimos ${card} a ${to}`,
+      buy: (from, fee) => `comprada a ${from}${fee ? ` (+${fee} P de comisión)` : ''}`,
+      sell: (to) => `vendida a ${to}`,
       bond: (venue, bond) => `Abrimos nuestro mercado ${venue}${bond ? `: ${bond} P de fianza` : ''}`,
       gift: 'Un regalo',
-      pack: (pack, best) => `Abrimos un sobre (${pack})${best ? `, mejor carta ${best}` : ''}`,
+      pack: (pack, best) => `Abrimos un ${pack}${best ? `; la mejor carta, ${best}` : ''}`,
       level: (level, why) => `Nivel ${level ?? '?'} desbloqueado${why ? `: ${why}` : ''}`,
       failed: 'Falló una liquidación',
       closed: (venue) => `Se cerró el mercado ${venue}`,
@@ -1693,7 +1693,7 @@ const ES: GameStrings = {
     orders: 'Lo que comprometieron nuestros agentes',
     ordersSub: (n) => `${plural(n, 'orden', 'órdenes')} en el libro · las más recientes primero`,
     noOrders: 'Aún no hay órdenes en el libro.',
-    ordersHead: ['turno', 'agente', 'orden', 'carta', 'precio'],
+    ordersHead: ['cuándo', 'agente', 'orden', 'carta', 'precio'],
     agent: 'Agente',
     allAgents: 'Todos',
     score: {
@@ -1703,13 +1703,13 @@ const ES: GameStrings = {
       until: 'Comparar hasta',
       untilNow: 'hasta ahora',
       untilNext: 'hasta la siguiente',
-      start: (agent, count, first, last) => `reinicio de ${agent}${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      start: (agent, count) => `${agent} reiniciado${count > 1 ? ` ×${count}` : ''}`,
       startWhy: 'arrancó el proceso: un despliegue o un reinicio',
       game: { round: 'Nueva ronda', bench: 'Prueba de mercado', duels: 'Duelos', day: 'Nuevo día' },
       from: 'desde',
       to: 'hasta',
       now: 'ahora',
-      ticks: (n, minutes) => `${plural(n, 'turno', 'turnos')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      ticks: (n, minutes) => (minutes === null ? plural(n, 'turno', 'turnos') : `${minutes} min`),
       after: 'desde la marca',
       before: (ticks) => `${ticks} turnos antes`,
       better: 'avanza más rápido que antes de la marca',

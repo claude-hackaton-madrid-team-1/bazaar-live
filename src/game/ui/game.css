@@ -4031,3 +4031,8 @@
     grid-template-columns: minmax(0, 1fr) auto;
   }
 }
+
+/* Our orders: the card's name is enough in a narrow column (its code is on hover). */
+.gm-orders .gm-card-code {
+  display: none;
+}
