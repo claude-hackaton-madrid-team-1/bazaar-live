@@ -32,6 +32,52 @@ export function valueAt(points: readonly ScorePoint[], key: SeriesKey, tick: num
   return v
 }
 
+/** A series at a reading: its value, and how much it moved against the reading before (null at the first, or across a gap). */
+export interface ReadingValue {
+  readonly key: SeriesKey
+  readonly value: number | null
+  readonly change: number | null
+}
+
+/** What held at a tick: the last reading at or before it (the lines are steps, so never a value between two readings). */
+export interface Reading {
+  readonly tick: number
+  /** The reading's index in the points, or -1 before the first. */
+  readonly index: number
+  /** When the tick happened (ISO), or null without times. */
+  readonly at: string | null
+  readonly values: readonly ReadingValue[]
+}
+
+export function readingAt(points: readonly ScorePoint[], tick: number): Reading {
+  let index = -1
+  while (index + 1 < points.length && (points[index + 1] as ScorePoint).tick <= tick) index++
+  const p = points[index]
+  const prev = points[index - 1]
+  return {
+    tick,
+    index,
+    at: atTick(points, tick),
+    values: SERIES.map((key) => ({ key, value: p?.[key] ?? null, change: prev && p ? diff(prev[key], p[key]) : null })),
+  }
+}
+
+/** The reading's tick one step before or after a tick (the held reading first, when the tick sits between two), kept within the day. */
+export function stepTick(points: readonly ScorePoint[], tick: number, dir: -1 | 1): number | null {
+  if (!points.length) return null
+  const { index } = readingAt(points, tick)
+  const held = points[index]
+  const to = dir > 0 ? index + 1 : held && held.tick < tick ? index : index - 1
+  return points[Math.min(Math.max(to, 0), points.length - 1)]?.tick ?? null
+}
+
+/** The mark closest to a tick within `within` ticks either side, or null. */
+export function nearestMark(groups: readonly MarkGroup[], tick: number, within: number): MarkGroup | null {
+  let best: MarkGroup | null = null
+  for (const g of groups) if (Math.abs(g.tick - tick) <= within && (!best || Math.abs(g.tick - tick) < Math.abs(best.tick - tick))) best = g
+  return best
+}
+
 /** One marker on the chart: a single mark, or a burst of starts of one agent folded together. */
 export interface MarkGroup {
   readonly key: string
