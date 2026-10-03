@@ -192,6 +192,9 @@ export interface GameStrings {
     readonly blockedBy: (rule: string) => string
     readonly opened: (price: number) => string
     readonly rounds: (n: number) => string
+    /** Repeated ended threads on one dealer and item, shown as one row. */
+    readonly times: (n: number) => string
+    readonly timesTitle: (ids: string) => string
     readonly details: string
     readonly detailsLine: (b: { round: number; tick: number | null; offerId: number | null; messageId: number | null; expiresTick: number | null }) => string
     readonly we: string
@@ -643,7 +646,8 @@ const EN: GameStrings = {
             ? `${side === 'buy' ? 'Bought' : 'Sold'} at ${v.price} P.`
             : `${side === 'buy' ? 'Bought' : 'Sold'} at ${v.price} P vs our value ${v.value} P = ${v.edge >= 0 ? '+' : '−'}${Math.abs(v.edge)} P.`
         case 'lost':
-          return { walked: 'We walked away.', idle: 'It went idle.', expired: 'The last offer lapsed.', closed: 'Closed without a deal.', deal: 'Closed.' }[v.how]
+          if (v.how === 'final' && v.theirs != null && v.ours != null) return `Their final ${v.theirs} P stayed ${side === 'sell' ? 'below' : 'above'} our ${v.ours} P.`
+          return { walked: 'We walked away.', idle: 'It went idle.', expired: 'The last offer lapsed.', closed: 'Closed without a deal.', deal: 'Closed.', final: 'They named a final; no deal.' }[v.how]
       }
     },
     agent: 'Agent',
@@ -652,6 +656,8 @@ const EN: GameStrings = {
     blockedBy: (rule) => `blocked by ${rule}`,
     opened: (p) => `opened at ${p} P`,
     rounds: (n) => `${n} ${n === 1 ? 'round' : 'rounds'}`,
+    times: (n) => `×${n}`,
+    timesTitle: (ids) => `The same dealer and card, again: threads ${ids}`,
     details: 'details',
     detailsLine: (b) => `round ${b.round} · tick ${b.tick ?? '—'} · offer ${b.offerId ?? '—'} · message ${b.messageId ?? '—'} · expires t${b.expiresTick ?? '—'}`,
     we: 'we',
@@ -1126,7 +1132,8 @@ const ES: GameStrings = {
             ? `${side === 'buy' ? 'Comprada' : 'Vendida'} a ${v.price} P.`
             : `${side === 'buy' ? 'Comprada' : 'Vendida'} a ${v.price} P frente a nuestro valor ${v.value} P = ${v.edge >= 0 ? '+' : '−'}${Math.abs(v.edge)} P.`
         case 'lost':
-          return { walked: 'Nos fuimos.', idle: 'Se quedó parado.', expired: 'La última oferta caducó.', closed: 'Cerrado sin trato.', deal: 'Cerrado.' }[v.how]
+          if (v.how === 'final' && v.theirs != null && v.ours != null) return `Su oferta final de ${v.theirs} P se quedó por ${side === 'sell' ? 'debajo' : 'encima'} de nuestros ${v.ours} P.`
+          return { walked: 'Nos fuimos.', idle: 'Se quedó parado.', expired: 'La última oferta caducó.', closed: 'Cerrado sin trato.', deal: 'Cerrado.', final: 'Dijo su oferta final; sin trato.' }[v.how]
       }
     },
     agent: 'Agente',
@@ -1135,6 +1142,8 @@ const ES: GameStrings = {
     blockedBy: (rule) => `bloqueada por ${rule}`,
     opened: (p) => `abrió en ${p} P`,
     rounds: (n) => `${n} ${n === 1 ? 'ronda' : 'rondas'}`,
+    times: (n) => `×${n}`,
+    timesTitle: (ids) => `El mismo tratante y el mismo cromo, otra vez: hilos ${ids}`,
     details: 'detalles',
     detailsLine: (b) => `ronda ${b.round} · turno ${b.tick ?? '—'} · oferta ${b.offerId ?? '—'} · mensaje ${b.messageId ?? '—'} · caduca t${b.expiresTick ?? '—'}`,
     we: 'nosotros',

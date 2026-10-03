@@ -3,8 +3,8 @@ import { fmtP } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
-  conversation, dealerTactics, duelColumns, duelRows, negRows, rivalSummary, selectedThreadId,
-  type Bubble, type Conversation, type DealerTactics, type DuelRow, type NegRow, type NegStatus, type RivalRow,
+  conversation, dealerTactics, duelColumns, duelRows, endedGroups, negRows, rivalSummary, selectedThreadId,
+  type Bubble, type Conversation, type DealerTactics, type DuelRow, type EndedGroup, type NegRow, type NegStatus, type RivalRow,
 } from '../views/negotiations.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
 
@@ -94,10 +94,15 @@ function Tactic({ id }: { id: string }) {
   )
 }
 
-/** An ended thread in one line: how it ended against our value, how far the dealer came down, and the tactics we used. */
-function EndedLine({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSelect: () => void }) {
+/**
+ * Ended threads on one dealer and card in one line: how the newest ended against our value, how far the dealer came
+ * down, the tactics we used, and ×N when we tried more than once. Selecting it opens the newest.
+ */
+function EndedLine({ g, selected, onSelect }: { g: EndedGroup; selected: boolean; onSelect: () => void }) {
   const t = useGameStrings()
+  const r = g.latest
   const first = r.ended?.firstAsk
+  const many = g.rows.length > 1
   return (
     <li>
       <button type="button" className="neg-ended" aria-current={selected ? 'true' : undefined} onClick={onSelect}>
@@ -106,6 +111,11 @@ function EndedLine({ r, selected, onSelect }: { r: NegRow; selected: boolean; on
           {r.with}
         </span>
         <RefChip topic={r.topic} />
+        {many && (
+          <Badge tone="neutral" title={t.neg.timesTitle(g.rows.map((x) => `#${x.id}`).join(', '))}>
+            {t.neg.times(g.rows.length)}
+          </Badge>
+        )}
         <span className="neg-ended-text" data-state={r.state}>
           {t.neg.verdict(r.verdict, r.side)}
         </span>
@@ -311,8 +321,8 @@ export function NegotiationsScreen() {
           <Panel title={t.neg.ended} sub={t.neg.endedSub(won, ended.length - won)}>
             <Worked rows={dealerTactics(state, rows)} />
             <ul className="neg-ended-list">
-              {ended.map((r) => (
-                <EndedLine key={r.id} r={r} selected={r.id === selected} onSelect={() => select(r.id)} />
+              {endedGroups(ended).map((g) => (
+                <EndedLine key={g.key} g={g} selected={g.rows.some((r) => r.id === selected)} onSelect={() => select(g.latest.id)} />
               ))}
             </ul>
           </Panel>

@@ -303,7 +303,7 @@ test('verdict: cap below their ask says it plainly, with the rounds it takes at 
   assert.deepEqual(row({ gap: null, theirPrice: null }), { kind: 'waiting' })
   assert.deepEqual(row({ trend: { theirStep: null, ourStep: null, roundsToMeet: null, theirs: [], ours: [] } }), { kind: 'apart', gap: 11 })
   assert.deepEqual(row({ ended: { how: 'deal', price: 95, edge: 82.1, firstAsk: 97 } }), { kind: 'won', price: 95, value: 177.1, edge: 82.1 })
-  assert.deepEqual(row({ ended: { how: 'walked', price: null, edge: null, firstAsk: 97 } }), { kind: 'lost', how: 'walked' })
+  assert.deepEqual(row({ ended: { how: 'walked', price: null, edge: null, firstAsk: 97 } }), { kind: 'lost', how: 'walked', theirs: null, ours: null })
 })
 
 test('a live thread: our value from its decisions, the cap of its rarity from a denial elsewhere, the trend and the agent\'s last call', () => {
