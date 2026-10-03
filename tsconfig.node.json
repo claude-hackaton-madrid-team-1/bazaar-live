@@ -6,7 +6,7 @@
     "types": ["node"],
     "skipLibCheck": true,
 
-    /* Bundler mode */
+    /* Node runs server/*.ts with type stripping: imports carry their .ts extension */
     "module": "nodenext",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -14,10 +14,13 @@
     "noEmit": true,
 
     /* Linting */
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "server", "shared"]
 }

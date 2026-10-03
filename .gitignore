@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test coverage
+coverage
+
+# Local env (TTS keys live in Railway, never here)
+.env
+.env.*
