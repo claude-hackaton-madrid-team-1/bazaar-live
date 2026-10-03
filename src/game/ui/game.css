@@ -1130,12 +1130,6 @@
 
 /* ---------------------------------------------------------------- album */
 
-.gm-tiles {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--s-4);
-}
-
 .gm-tile {
   display: grid;
   gap: 4px;
@@ -1160,116 +1154,6 @@
 .gm-tile-foot {
   font-size: 0.8125rem;
   color: var(--text-2);
-}
-
-.gm-refs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px var(--s-2);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-}
-
-.gm-album-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
-  gap: var(--s-4);
-  align-items: start;
-}
-
-.gm-album {
-  display: grid;
-  gap: var(--s-3);
-}
-
-.gm-page {
-  display: grid;
-  grid-template-columns: minmax(9rem, auto) auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--s-3);
-}
-
-.gm-page-name {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.gm-page-count {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-2);
-}
-
-.gm-page-count b {
-  color: var(--text);
-}
-
-.gm-cells {
-  display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr)) 6px repeat(2, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.gm-cell {
-  position: relative;
-  display: grid;
-  place-items: center;
-  aspect-ratio: 1;
-  min-width: 22px;
-  border: 1.5px dashed var(--hairline);
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.65625rem;
-  color: var(--text-2);
-}
-
-.gm-cell[data-have] {
-  border: 0;
-  color: #ffffff;
-  font-weight: 600;
-  text-shadow: 0 1px 1px rgb(0 0 0 / 0.35);
-}
-
-.gm-dup {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  padding: 0 3px;
-  border-radius: var(--r-pill);
-  background: var(--text);
-  font-size: 0.5625rem;
-  color: var(--bg);
-  text-shadow: none;
-}
-
-.gm-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2) var(--s-4);
-  margin-top: var(--s-4);
-  font-size: 0.75rem;
-  color: var(--text-2);
-}
-
-.gm-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.gm-legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-}
-
-.gm-legend .gm-legend-outline {
-  border: 1.5px dashed var(--text-3);
 }
 
 .gm-total {
@@ -1331,31 +1215,6 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-}
-
-@media (max-width: 1100px) {
-  .gm-tiles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  /* five tiles in two columns: the last one takes the row */
-  .gm-tile:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
-
-  .gm-album-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 640px) {
-  .gm-page {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .gm-cells {
-    grid-column: 1 / -1;
-  }
 }
 
 /* ---------------------------------------------------------------- market */
@@ -1675,9 +1534,7 @@
     color: HighlightText;
   }
 
-  .gm-cell,
-  .gm-swatch,
-  .gm-legend i {
+  .gm-swatch {
     forced-color-adjust: none;
   }
 }
@@ -1807,4 +1664,375 @@
 
 .gm-table tr[data-live] td:first-child {
   box-shadow: inset 2px 0 0 var(--gm-warn);
+}
+
+/* ---------------------------------------------------------------- album: value to us (alb-) */
+
+.alb-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+
+/* the best next moves: buy, sell, pages, side by side */
+.alb-moves {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+
+.alb-col {
+  --c: var(--gm-good);
+  min-width: 0;
+  padding: var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--c) 28%, var(--hairline));
+  border-top: 3px solid var(--c);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--c) 5%, transparent);
+}
+
+.alb-col[data-kind='sell'] {
+  --c: var(--gm-them);
+}
+
+.alb-col[data-kind='pages'] {
+  --c: var(--gm-us);
+}
+
+.alb-col-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  margin: 0 0 var(--s-2);
+  font-size: 0.9375rem;
+  color: var(--c);
+}
+
+.alb-col-head span {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+.alb-list {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alb-move {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--s-2);
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.alb-move:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.alb-what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.alb-how {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.alb-net {
+  font-family: var(--font-mono);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--gm-good);
+  white-space: nowrap;
+}
+
+.alb-net[data-sign='-'] {
+  color: var(--gm-bad);
+}
+
+.alb-move .alb-bar {
+  grid-column: 1 / -1;
+}
+
+.alb-empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.alb-rar {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.alb-bar {
+  display: block;
+  height: 6px;
+  min-width: 3rem;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--gm-well-hover);
+}
+
+.alb-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gm-us);
+}
+
+.alb-details {
+  margin-top: var(--s-3);
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.alb-details summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.alb-details p {
+  max-width: 70ch;
+  margin: var(--s-2) 0 0;
+}
+
+.alb-score {
+  margin-top: 0;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-lg);
+}
+
+.alb-score[open] summary {
+  margin-bottom: var(--s-3);
+}
+
+/* the pages: a head (name, our multiplier, progress, what it is worth) and twelve cells */
+.alb-pages {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.alb-page {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) minmax(0, 36rem);
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+}
+
+.alb-page-head {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.alb-page-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+.alb-aff {
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--gm-well-hover);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.alb-aff[data-high] {
+  background: color-mix(in srgb, var(--gm-us) 16%, transparent);
+  color: var(--gm-us);
+}
+
+.alb-page-meta {
+  display: grid;
+  grid-template-columns: 3.5rem auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.alb-page-meta b {
+  color: var(--text);
+}
+
+.alb-cells {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr)) 6px repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+/* a cell: its fill is what the card is worth to us, its bottom edge the rarity */
+.alb-cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  border: 1.5px dashed color-mix(in srgb, var(--r) 55%, var(--hairline));
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.alb-cell[data-have] {
+  border: 0;
+  box-shadow: inset 0 -3px 0 var(--r);
+}
+
+.alb-cell[data-tier='1'],
+.alb-swatch[data-tier='1'] {
+  background: color-mix(in srgb, var(--buyer-ink) 14%, transparent);
+}
+
+.alb-cell[data-tier='2'],
+.alb-swatch[data-tier='2'] {
+  background: color-mix(in srgb, var(--buyer-ink) 38%, transparent);
+}
+
+.alb-cell[data-tier='3'],
+.alb-swatch[data-tier='3'] {
+  background: color-mix(in srgb, var(--buyer-ink) 80%, var(--bg));
+}
+
+.alb-cell[data-tier='4'],
+.alb-swatch[data-tier='4'] {
+  background: var(--buyer-ink);
+}
+
+.alb-cell[data-tier='3'],
+.alb-cell[data-tier='4'] {
+  color: var(--bg);
+}
+
+.alb-cell[data-move='buy'],
+.alb-swatch[data-move='buy'] {
+  border: 2px solid var(--gm-good);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--gm-good);
+}
+
+.alb-dup {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  padding: 0 3px;
+  border-radius: var(--r-pill);
+  background: var(--text-2);
+  font-size: 0.5625rem;
+  line-height: 1.5;
+  color: var(--bg);
+}
+
+.alb-cell[data-move='sell'] .alb-dup,
+.alb-dup-inline {
+  background: var(--seller-ink);
+  color: var(--bg);
+}
+
+.alb-dup-inline {
+  position: static;
+}
+
+.alb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-top: var(--s-4);
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.alb-details .alb-legend {
+  margin-top: var(--s-2);
+}
+
+.alb-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alb-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--gm-well-hover);
+}
+
+.alb-swatch[data-missing] {
+  border: 1.5px dashed var(--text-3);
+  background: none;
+}
+
+@media (max-width: 1100px) {
+  .alb-moves {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .alb-tiles {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .alb-tiles > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .alb-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .alb-cells {
+    gap: 2px;
+  }
+
+  .alb-cell {
+    border-radius: 4px;
+    font-size: 0.5625rem;
+    letter-spacing: -0.03em;
+  }
+}
+
+@media (forced-colors: active) {
+  .alb-cell,
+  .alb-swatch,
+  .alb-rar,
+  .alb-bar i {
+    forced-color-adjust: none;
+  }
 }
