@@ -279,6 +279,20 @@ export interface GameStrings {
     readonly workedDealer: (threads: number, deals: number) => string
     readonly workedTally: (deals: number, threads: number) => string
     readonly workedTallyTitle: string
+    /** The dealer chooser: every dealer, or one. */
+    readonly dealers: string
+    readonly allDealers: string
+    /** Our edge on the deals with one dealer, summed; null without a measured deal. */
+    readonly edge: string
+    readonly edgeTitle: string
+    readonly noDeal: string
+    /** Their average move per round towards us. */
+    readonly moves: (step: number) => string
+    readonly movesTitle: string
+    readonly finals: (n: number, of: number) => string
+    /** The tactics we used with a dealer that never closed a deal. */
+    readonly tried: string
+    readonly lastContact: (ago: string) => string
   }
   readonly album: {
     readonly album: string
@@ -899,6 +913,16 @@ const EN: GameStrings = {
     workedDealer: (threads, deals) => `${plural(threads, 'thread', 'threads')} · ${plural(deals, 'deal', 'deals')}`,
     workedTally: (deals, threads) => `${deals}/${threads}`,
     workedTallyTitle: 'threads that closed a deal / threads where we used it',
+    dealers: 'Dealers',
+    allDealers: 'All',
+    edge: 'our edge',
+    edgeTitle: 'What our deals with this dealer made against our value, summed',
+    noDeal: 'no deal yet',
+    moves: (step) => (step > 0 ? `gives ~${step} P a round` : step < 0 ? `moves away ${-step} P a round` : 'does not move'),
+    movesTitle: 'Their average move per round towards us, first price to last',
+    finals: (n, of) => `ends on a final in ${n} of ${of}`,
+    tried: 'Tried, no deal',
+    lastContact: (ago) => `last offer ${ago}`,
   },
   album: {
     album: 'Album',
@@ -1451,6 +1475,16 @@ const ES: GameStrings = {
     workedDealer: (threads, deals) => `${plural(threads, 'hilo', 'hilos')} · ${plural(deals, 'trato', 'tratos')}`,
     workedTally: (deals, threads) => `${deals}/${threads}`,
     workedTallyTitle: 'hilos que cerraron trato / hilos donde la usamos',
+    dealers: 'Tratantes',
+    allDealers: 'Todos',
+    edge: 'nuestro margen',
+    edgeTitle: 'Lo que nos dejaron los tratos con este tratante frente a nuestro valor, sumado',
+    noDeal: 'aún sin trato',
+    moves: (step) => (step > 0 ? `cede ~${step} P por ronda` : step < 0 ? `se aleja ${-step} P por ronda` : 'no se mueve'),
+    movesTitle: 'Lo que se acerca de media por ronda, del primer precio al último',
+    finals: (n, of) => `cierra con oferta final en ${n} de ${of}`,
+    tried: 'Probado sin trato',
+    lastContact: (ago) => `última oferta ${ago}`,
   },
   album: {
     album: 'Álbum',
