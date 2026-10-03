@@ -1,13 +1,16 @@
 /**
- * Reads db/rival_albums.sql's four views every few seconds and keeps the last snapshot in memory for GET /api/rivals.
+ * Reads db/rival_albums.sql's four views and db/rival_board.sql's one every few seconds and keeps the last snapshot in
+ * memory for GET /api/rivals.
  * Like the history poller: on the server's one shared pool (the reader role has a connection limit), one capped
- * query after the other; a view not applied yet (42P01) or not granted (42501) only blanks its part, logged once;
+ * query after the other; a view not applied yet (42P01), not granted (42501) or older than this code (42703) only
+ * blanks its part, logged once;
  * any other error keeps the last good part and backs off; no exception leaves `pollOnce()`; error text is redacted.
  * `poke()` reads now (an agent's socket said something moved); `onChange` hears when a read's rows differ.
  */
 import { EMPTY_RIVALS, type RivalsParts, type RivalsSnapshot } from '../../shared/rivals.ts'
 import { parseAll } from '../learn/rows.ts'
 import type { Db } from '../transcript/poller.ts'
+import { BOARD_COLUMNS, boardOf } from './boardRows.ts'
 import { headOf, holdingOf, teamOf, wantOf } from './rows.ts'
 
 export const SQL = {
@@ -15,10 +18,11 @@ export const SQL = {
   teams: 'select team, rank, score, level, pages, deals, tick, set_interest from show.rival_teams order by rank, team limit $1',
   wants: 'select team, card, via, times, last_tick, top_bid from show.rival_wants order by last_tick desc, team, card limit $1',
   head: 'select tick from show.rival_head limit $1',
+  board: `select ${BOARD_COLUMNS.join(', ')} from show.rival_board order by rank, team limit $1`,
 } as const
 
 /** About 500 holdings and 500 wants on Saturday afternoon, for 18 teams and three dealers: room to double. */
-export const CAPS = { holdings: 3000, teams: 50, wants: 2000, head: 1 } as const
+export const CAPS = { holdings: 3000, teams: 50, wants: 2000, head: 1, board: 50 } as const
 
 type Part = keyof RivalsParts
 
@@ -113,7 +117,7 @@ export class RivalsPoller {
         return parseAll(rows, parse)
       } catch (error: unknown) {
         const code = codeOf(error)
-        if (code === '42P01' || code === '42501') {
+        if (code === '42P01' || code === '42501' || code === '42703') {
           parts[part] = false
           if (!this.missingLogged.has(part)) this.deps.log({ route: 'rivals', event: 'view_missing', part, code })
           this.missingLogged.add(part)
@@ -128,10 +132,12 @@ export class RivalsPoller {
     const teams = await read('teams', teamOf, prev.teams)
     const wants = await read('wants', wantOf, prev.wants)
     const tick = (await read('head', headOf, prev.tick === null ? [] : [prev.tick]))[0] ?? null
+    const board = await read('board', boardOf, prev.board)
     this.failures = failed ? this.failures + 1 : 0
     const at = failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString()
-    const changed = JSON.stringify([parts, holdings, teams, wants]) !== JSON.stringify([prev.parts, prev.holdings, prev.teams, prev.wants])
-    this.snapshot = { at, parts, tick, holdings, teams, wants }
+    const changed =
+      JSON.stringify([parts, holdings, teams, wants, board]) !== JSON.stringify([prev.parts, prev.holdings, prev.teams, prev.wants, prev.board])
+    this.snapshot = { at, parts, tick, holdings, teams, wants, board }
     if (changed && at) for (const listener of this.listeners) listener(at)
   }
 

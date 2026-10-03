@@ -7,6 +7,7 @@ const ROWS: Record<string, unknown[]> = {
   [SQL.teams]: [{ team: 't14', rank: 1, score: 30.36, set_interest: { RET: 9 } }],
   [SQL.wants]: [{ team: 't03', card: 'LAV-10', via: 'bid', times: 12, last_tick: 842, top_bid: 71 }],
   [SQL.head]: [{ tick: 856 }],
+  [SQL.board]: [{ team: 't14', tick: 850, rank: 1, our_team: 't01', our_rank: 4, guarded: true, guard_reason: 'top5', move_kind: 'hold', suggested_move: "don't trade: top-5 rival (rank 1)" }],
 }
 
 const db = (fail: (sql: string) => unknown = () => null): Db & { params: unknown[] } => {
@@ -26,12 +27,24 @@ describe('RivalsPoller', () => {
     const d = db()
     const poller = new RivalsPoller({ db: d, log: () => undefined, now: () => new Date('2026-10-03T10:00:00Z') })
     await poller.pollOnce()
-    expect(d.params).toEqual([[CAPS.holdings], [CAPS.teams], [CAPS.wants], [CAPS.head]])
+    expect(d.params).toEqual([[CAPS.holdings], [CAPS.teams], [CAPS.wants], [CAPS.head], [CAPS.board]])
     const s = poller.current()
     expect(s).toMatchObject({ at: '2026-10-03T10:00:00.000Z', tick: 856, parts: { holdings: true, teams: true, wants: true, head: true } })
     expect(s.holdings[0]).toMatchObject({ holder: 't03', card: 'LAV-10', since: 844 })
     expect(s.teams[0]?.interest).toEqual({ RET: 9 })
     expect(s.wants[0]?.topBid).toBe(71)
+    expect(s.parts.board).toBe(true)
+    expect(s.board[0]).toMatchObject({ team: 't14', rank: 1, guarded: true, guardReason: 'top5', moveKind: 'hold' })
+  })
+
+  it('the board read from an older agents\' view (42703) blanks only the board', async () => {
+    const logs: Record<string, unknown>[] = []
+    const d = db((sql) => (sql === SQL.board ? { code: '42703' } : null))
+    const poller = new RivalsPoller({ db: d, log: (e) => logs.push(e) })
+    await poller.pollOnce()
+    expect(poller.current().parts).toEqual({ holdings: true, teams: true, wants: true, head: true, board: false })
+    expect(poller.current().teams).toHaveLength(1)
+    expect(logs).toEqual([{ route: 'rivals', event: 'view_missing', part: 'board', code: '42703' }])
   })
 
   it('a view not applied yet blanks only its part, logged once; another error keeps the last good part, redacted', async () => {

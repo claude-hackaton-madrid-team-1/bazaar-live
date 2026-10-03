@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { pollEvery, type PagePush } from './fresh.ts'
 import { HOW_KNOWN, EMPTY_RIVALS, type RivalCard, type RivalsSnapshot, type RivalTeam, type RivalWant } from '../../shared/rivals.ts'
 import { SLOT_RARITY } from './game.ts'
+import { mockBoard } from './rivalBoardMock.ts'
 
 export type RivalsStatus = 'loading' | 'live' | 'off' | 'locked' | 'error' | 'mock'
 
@@ -28,11 +29,12 @@ export function rivalsStateOf(httpStatus: number, body: unknown, prev: RivalsSna
     status: 'live',
     snapshot: {
       at: typeof body.at === 'string' ? body.at : null,
-      parts: { holdings: parts.holdings === true, teams: parts.teams === true, wants: parts.wants === true, head: parts.head === true },
+      parts: { holdings: parts.holdings === true, teams: parts.teams === true, wants: parts.wants === true, head: parts.head === true, board: parts.board === true },
       tick: typeof body.tick === 'number' ? body.tick : null,
       holdings: list(body.holdings),
       teams: list(body.teams),
       wants: list(body.wants),
+      board: list(body.board),
     },
   }
 }
@@ -120,5 +122,5 @@ export function mockRivals(tick: number): RivalsSnapshot {
       }
     }
   }
-  return { at: new Date(0).toISOString(), parts: { holdings: true, teams: true, wants: true, head: true }, tick, holdings, teams: rows, wants }
+  return { at: new Date(0).toISOString(), parts: { holdings: true, teams: true, wants: true, head: true, board: true }, tick, holdings, teams: rows, wants, board: mockBoard(rows, tick) }
 }

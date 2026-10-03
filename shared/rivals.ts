@@ -1,8 +1,10 @@
 /**
  * The wire type of GET /api/rivals: what the Rivals screen reads of db/rival_albums.sql, as the server last read it.
  * Every field is checked on the server (server/rivals/rows.ts). Public game facts only (the feed, the leaderboard),
- * never a value of ours; the route still sits behind GAME_VIEW_TOKEN like every game screen.
+ * never a value of ours; the route still sits behind GAME_VIEW_TOKEN like every game screen. One exception, `board`
+ * (db/rival_board.sql, ./rivalBoard.ts): our private read of each team and the move we would make with it.
  */
+import type { BoardRow } from './rivalBoard.ts'
 
 /** How we know a holder has a card: a settlement moved a copy to it, a pack showed it, a gift or a craft named it, or it listed one. */
 export type HowKnown = 'bought' | 'pack' | 'gift' | 'crafted' | 'listed'
@@ -57,6 +59,7 @@ export interface RivalsParts {
   readonly teams: boolean
   readonly wants: boolean
   readonly head: boolean
+  readonly board: boolean
 }
 
 export interface RivalsSnapshot {
@@ -68,13 +71,16 @@ export interface RivalsSnapshot {
   readonly holdings: readonly RivalCard[]
   readonly teams: readonly RivalTeam[]
   readonly wants: readonly RivalWant[]
+  /** One row per other team, best rank first: strengths, what it wants vs what we hold, our move. */
+  readonly board: readonly BoardRow[]
 }
 
 export const EMPTY_RIVALS: RivalsSnapshot = {
   at: null,
-  parts: { holdings: false, teams: false, wants: false, head: false },
+  parts: { holdings: false, teams: false, wants: false, head: false, board: false },
   tick: null,
   holdings: [],
   teams: [],
   wants: [],
+  board: [],
 }

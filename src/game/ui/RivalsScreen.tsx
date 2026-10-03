@@ -1,9 +1,11 @@
 /**
  * The Rivals screen: who is ahead, who holds the cards we need, and one team's album as far as the public feed shows it
  * (GET /api/rivals). The answer first (the cards we need and who has them), then the standings, then the album of the
- * team picked there. A card we never saw a team hold is drawn as unknown, never as missing.
+ * team picked there. A card we never saw a team hold is drawn as unknown, never as missing. The rival board (private,
+ * ./RivalBoard.tsx) adds our move with each team to the standings and the picked team's panel.
  */
 import { useMemo, type CSSProperties, type ReactNode } from 'react'
+import type { BoardRow } from '../../../shared/rivalBoard.ts'
 import { setParam, useParam } from '../../ui/route'
 import { pagePush } from '../fresh.ts'
 import { agoText, whoName } from '../humanize.ts'
@@ -14,8 +16,10 @@ import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { nowTick } from '../views/decisions.ts'
 import { compareAlbums, needRows, needsOf, pickTeam, teamRows, type ComparedPage, type NeedRow, type OurSlot, type RivalSlot, type TeamRow } from '../views/rivals.ts'
+import { boardOfTeam } from '../views/rivalBoard.ts'
 import { Badge, CardRef, Empty, Fresh, Panel } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
+import { BoardPanel, MoveBadge } from './RivalBoard.tsx'
 import { Ago } from './words.tsx'
 import './rivals.css'
 
@@ -88,7 +92,7 @@ function NeedCard({ n, onPick }: { n: NeedRow; onPick: (team: string) => void })
   )
 }
 
-function Standings({ rows, selected, onPick }: { rows: TeamRow[]; selected: string | null; onPick: (team: string) => void }) {
+function Standings({ rows, board, selected, onPick }: { rows: TeamRow[]; board: readonly BoardRow[]; selected: string | null; onPick: (team: string) => void }) {
   const t = useRivalStrings()
   const g = useGameStrings()
   if (!rows.length) return <Empty>{t.noTeam}</Empty>
@@ -104,6 +108,7 @@ function Standings({ rows, selected, onPick }: { rows: TeamRow[]; selected: stri
       </div>
       <ol className="rv-rows">
         {rows.map((r) => {
+          const move = r.us ? null : boardOfTeam(board, r.team)
           const cells = (
             <>
               <span className="gm-mono">{r.rank}</span>
@@ -118,6 +123,7 @@ function Standings({ rows, selected, onPick }: { rows: TeamRow[]; selected: stri
               <span className="rv-col-chase">
                 {r.chases && <SetName set={r.chases} />}
                 {r.rival && <Badge tone="warn" title={t.sameSetTitle}>{t.sameSet}</Badge>}
+                {move && <MoveBadge row={move} />}
               </span>
             </>
           )
@@ -265,6 +271,7 @@ export function RivalsScreen() {
   }, [snapshot, state])
   const team = pickTeam(v.teams, asked)
   const pages = useMemo(() => (team ? compareAlbums(snapshot, state, team, v.needList) : []), [snapshot, state, team, v.needList])
+  const boardRow = boardOfTeam(snapshot.board, team)
   const pick = (id: string) => {
     setParam('team', id)
     document.getElementById('rv-album')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -295,9 +302,10 @@ export function RivalsScreen() {
       </Panel>
       <div className="rv-grid">
         <Panel title={t.standings} sub={t.standingsSub} className="rv-standings">
-          <Standings rows={v.teams} selected={team} onPick={pick} />
+          <Standings rows={v.teams} board={snapshot.board} selected={team} onPick={pick} />
         </Panel>
         <div id="rv-album" className="rv-album-wrap">
+          {boardRow && <BoardPanel row={boardRow} />}
           {team ? <CompareAlbum team={team} row={v.teams.find((r) => r.team === team) ?? null} us={v.teams.find((r) => r.us) ?? null} pages={pages} /> : null}
         </div>
       </div>

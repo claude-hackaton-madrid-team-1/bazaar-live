@@ -1,0 +1,102 @@
+/* The rival board on the Rivals screen (RivalBoard.tsx): our move with the picked team, and where it stands against us. */
+.rb-panel {
+  margin: 0 0 var(--s-4);
+}
+
+.rb-move {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border-radius: 8px;
+  background: var(--gm-well-hover);
+  box-shadow: inset 3px 0 0 var(--text-3);
+}
+
+.rb-move[data-tone='good'] {
+  box-shadow: inset 3px 0 0 var(--gm-good);
+}
+
+.rb-move[data-tone='warn'] {
+  box-shadow: inset 3px 0 0 var(--gm-warn);
+}
+
+.rb-move-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rb-sentence {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.rb-note,
+.rb-line {
+  margin: var(--s-2) 0 0;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.rb-vs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: var(--s-2);
+  margin: var(--s-3) 0 0;
+}
+
+.rb-vs div {
+  min-width: 0;
+}
+
+.rb-vs dt {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.rb-vs dd {
+  margin: 0;
+}
+
+.rb-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--s-2);
+  font-size: 0.8125rem;
+}
+
+.rb-badges > b {
+  margin-right: 4px;
+}
+
+.rb-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+
+.rb-list {
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+
+.rb-list ul {
+  margin: var(--s-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rb-list li {
+  overflow-wrap: anywhere;
+}
+
+.rb-list p {
+  margin: var(--s-1) 0 0;
+}

@@ -329,10 +329,19 @@ can reach them; the page works out what we lack from its own game stream. The ga
 - `show.rival_wants`: per team and card, its board bids (with the best cash) and its dealer asks.
 - `show.rival_head`: the newest feed tick.
 
+`db/rival_board.sql` adds the screen's one private view, `show.rival_board`: the agents' `rival_board` (bazaar #224,
+created by their `init_schema`), its contract columns only. One row per other team: rank and score trend over 60 ticks,
+strengths and weaknesses against us, what it wants and offers against our spares and the cards we miss, and our move
+(swap, sell, buy, hold, watch; a top-5 team or one within 3 ranks of us only when our estimated gain is at least twice
+theirs). The standings show each team's move; the picked team's panel says it in words (EN/ES), with the lists behind
+it. It carries our spares and estimates, so it stays behind `GAME_VIEW_TOKEN` and out of the public show views; it
+refuses to apply before the agents' view exists, and until then the screen says the board is not applied.
+
 Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/rival_board.sql`.
 The server reads them every 15 s on the shared pool, and 5 s after the taker's tick, and serves `GET /api/rivals` (the
-same token). `?mock=1` shows a made-up market. Proof: `sh scripts/test-sql.sh` runs `db/rival_albums.test.ts`.
+same token). `?mock=1` shows a made-up market and board. Proof: `sh scripts/test-sql.sh` runs `db/rival_albums.test.ts` and
+`db/rival_board.test.ts`.
 
 ## Real conversations (LIVE-T1)
 
