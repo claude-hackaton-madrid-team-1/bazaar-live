@@ -22,6 +22,7 @@ describe('projectMe', () => {
   it('keeps exactly what the screens read', () => {
     expect(projectMe(ME)).toEqual({
       id: 't01', name: 'Team 1', cash: 392,
+      affinity: { LAV: 1.1, MAL: 0.5 },
       score: { score: 18.4, rank: 9, deals: 3, duel_points: 4, ladder_points: 6.5, neg_points: 7.9, mm_points: 0, bench_points: null },
       album: { pages: [{ set: 'LAV', name: 'Lavapiés', have: 5, of: 10, complete: false, master: false }] },
       assets: [
@@ -36,9 +37,14 @@ describe('projectMe', () => {
     expect(score).toEqual({ score: 18.4, rank: 9, deals: 3, duel_points: 4, ladder_points: 6.5, neg_points: 7.9, mm_points: 0, bench_points: 2.5 })
   })
 
-  it('never carries a key, the affinity or what it prices our hand at', () => {
+  it('never carries a key or what the game prices our hand at', () => {
     const text = JSON.stringify(projectMe({ ...ME, broker_key: 'bk-2', api_key: 'k' }))
-    for (const leak of ['bk-live-secret', 'bk-2', 'affinity', 'collection_value', 'luck_private', 'key', 'open_threads']) expect(text).not.toContain(leak)
+    for (const leak of ['bk-live-secret', 'bk-2', 'collection_value', 'luck_private', 'key', 'open_threads']) expect(text).not.toContain(leak)
+  })
+
+  it('carries the affinity as set → number only, for the album\'s value to us', () => {
+    expect(projectMe({ affinity: { LAV: 1.6, SAL: '1.3', RET: null, CHA: 0.9, x: { y: 1 } } })).toEqual({ affinity: { LAV: 1.6, CHA: 0.9 } })
+    expect(projectMe({ affinity: [1.6] })).toEqual({})
   })
 
   it('a body with parts missing or of the wrong shape yields what is there', () => {

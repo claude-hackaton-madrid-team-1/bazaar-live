@@ -156,6 +156,44 @@ export interface GameStrings {
     readonly cheapest: string
     readonly nothingMissing: string
     readonly book: string
+    readonly worth: string
+    readonly worthFoot: string
+    readonly copies: (n: number) => string
+    readonly sparesFoot: (market: string) => string
+    readonly cashFoot: (total: string) => string
+    readonly cashPlain: string
+    readonly moves: string
+    readonly movesSub: string
+    readonly movesNote: string
+    readonly buyNext: string
+    readonly buyHint: string
+    readonly buyHow: (gain: string, where: string) => string
+    readonly noBuy: string
+    readonly sell: string
+    readonly sellHint: string
+    readonly sellHow: (lose: string, where: string) => string
+    readonly spareOf: (n: number) => string
+    readonly lowSet: string
+    readonly noSell: string
+    readonly closestPages: string
+    readonly pagesHint: string
+    readonly needs: (cards: string) => string
+    readonly pays: (gain: string, bonus: string, cost: string) => string
+    readonly noPages: string
+    readonly completes: Readonly<Record<'page' | 'master', string>>
+    /** Where a price comes from: a board's offer (at a venue), the last trade, or book. */
+    readonly where: Readonly<Record<'board' | 'tape' | 'book', (side: 'ask' | 'bid', venue: string) => string>>
+    readonly affTitle: string
+    readonly pageWorth: (worth: string, bonus: string) => string
+    readonly pageEarned: (worth: string, bonus: string) => string
+    readonly valueLegend: string
+    readonly tiers: readonly [string, string, string, string]
+    readonly rarityLegend: string
+    readonly buyLegend: string
+    readonly sellLegend: string
+    readonly gridSub: string
+    readonly howValue: string
+    readonly scoreDetails: string
     readonly total: string
     readonly dealsCount: (n: number) => string
     readonly parts: Readonly<Record<'duel_points' | 'ladder_points' | 'neg_points' | 'mm_points' | 'bench_points', string>>
@@ -424,6 +462,47 @@ const EN: GameStrings = {
     cheapest: 'Cheapest missing',
     nothingMissing: 'nothing missing',
     book: 'book',
+    worth: 'Album worth to us',
+    worthFoot: 'every copy at book × our multiplier, page bonuses included',
+    copies: (n) => plural(n, 'copy', 'copies'),
+    sparesFoot: (market) => `worth this to us · ~${market} at market`,
+    cashFoot: (total) => `~${total} with the spares sold`,
+    cashPlain: 'to spend',
+    moves: 'Best next moves',
+    movesSub: 'ranked by surplus at our values',
+    movesNote: 'Only trade surplus scores: what a card is worth to us minus what we pay, or what we get minus what it was worth. A complete page adds 25 % of its value (the epic and legendary 10 % more) but scores nothing by itself. ~ = book price (nobody has offered or traded it) or a guessed multiplier.',
+    buyNext: 'Buy next',
+    buyHint: 'missing cards cheaper than they are worth',
+    buyHow: (gain, where) => `worth ${gain} · ${where}`,
+    noBuy: 'Nothing on offer beats what it is worth to us.',
+    sell: 'Sell',
+    sellHint: 'copies the market pays more for',
+    sellHow: (lose, where) => `we lose ${lose} · ${where}`,
+    spareOf: (n) => `spare of ×${n}`,
+    lowSet: 'only copy, low set',
+    noSell: 'No spare copy fetches more than it is worth to us.',
+    closestPages: 'Closest pages',
+    pagesHint: 'one or two cards from the bonus',
+    needs: (cards) => `needs ${cards}`,
+    pays: (gain, bonus, cost) => `pays ${gain} (bonus ${bonus}) for ${cost}`,
+    noPages: 'No page is one or two cards from done.',
+    completes: { page: 'completes the page', master: 'completes the master' },
+    where: {
+      board: (side, venue) => `${side === 'ask' ? 'ask' : 'bid'} on ${venue}`,
+      tape: () => 'last trade',
+      book: () => 'book',
+    },
+    affTitle: 'Our multiplier for this set: a card is worth book × this to us',
+    pageWorth: (worth, bonus) => `${worth} to us · +${bonus} at 10/10`,
+    pageEarned: (worth, bonus) => `${worth} to us · bonus ${bonus} earned`,
+    valueLegend: 'Worth to us',
+    tiers: ['< 10 P', '10–30', '30–80', '80+'],
+    rarityLegend: 'Rarity',
+    buyLegend: 'buy: + net P',
+    sellLegend: 'sell a copy',
+    gridSub: 'number = worth to us in P',
+    howValue: 'How value is counted',
+    scoreDetails: 'Score breakdown',
     total: 'total',
     dealsCount: (n) => plural(n, 'deal', 'deals'),
     parts: { duel_points: 'Duels', ladder_points: 'Ladder', neg_points: 'Negotiation', mm_points: 'Market-making', bench_points: 'Bench' },
@@ -706,6 +785,47 @@ const ES: GameStrings = {
     cheapest: 'La que menos cuesta',
     nothingMissing: 'no falta nada',
     book: 'libro',
+    worth: 'Lo que vale el álbum para nosotros',
+    worthFoot: 'cada copia a libro × nuestro multiplicador, con los bonus de página',
+    copies: (n) => plural(n, 'copia', 'copias'),
+    sparesFoot: (market) => `esto valen para nosotros · ~${market} en el mercado`,
+    cashFoot: (total) => `~${total} vendiendo las repetidas`,
+    cashPlain: 'para gastar',
+    moves: 'Mejores jugadas',
+    movesSub: 'por excedente a nuestros valores',
+    movesNote: 'Solo puntúa el excedente de un trato: lo que una carta vale para nosotros menos lo que pagamos, o lo que cobramos menos lo que valía. Una página completa suma el 25 % de su valor (la épica y la legendaria, un 10 % más), pero no puntúa por sí sola. ~ = precio de libro (nadie la ha ofrecido ni vendido) o un multiplicador supuesto.',
+    buyNext: 'Comprar ahora',
+    buyHint: 'cartas que faltan, más baratas de lo que valen',
+    buyHow: (gain, where) => `vale ${gain} · ${where}`,
+    noBuy: 'Nada a la venta supera lo que vale para nosotros.',
+    sell: 'Vender',
+    sellHint: 'copias que el mercado paga por encima',
+    sellHow: (lose, where) => `perdemos ${lose} · ${where}`,
+    spareOf: (n) => `repetida de ×${n}`,
+    lowSet: 'única copia, barrio flojo',
+    noSell: 'Ninguna repetida se paga por encima de lo que vale para nosotros.',
+    closestPages: 'Páginas más cerca',
+    pagesHint: 'a una o dos cartas del bonus',
+    needs: (cards) => `falta ${cards}`,
+    pays: (gain, bonus, cost) => `rinde ${gain} (bonus ${bonus}) por ${cost}`,
+    noPages: 'Ninguna página está a una o dos cartas.',
+    completes: { page: 'completa la página', master: 'completa la maestra' },
+    where: {
+      board: (side, venue) => `${side === 'ask' ? 'venta' : 'compra'} en ${venue}`,
+      tape: () => 'último trato',
+      book: () => 'libro',
+    },
+    affTitle: 'Nuestro multiplicador de este barrio: una carta vale libro × esto para nosotros',
+    pageWorth: (worth, bonus) => `${worth} para nosotros · +${bonus} al 10/10`,
+    pageEarned: (worth, bonus) => `${worth} para nosotros · bonus ${bonus} ganado`,
+    valueLegend: 'Vale para nosotros',
+    tiers: ['< 10 P', '10–30', '30–80', '80+'],
+    rarityLegend: 'Rareza',
+    buyLegend: 'comprar: + neto P',
+    sellLegend: 'vender una copia',
+    gridSub: 'número = lo que vale para nosotros en P',
+    howValue: 'Cómo se cuenta el valor',
+    scoreDetails: 'Desglose de la puntuación',
     total: 'total',
     dealsCount: (n) => plural(n, 'trato', 'tratos'),
     parts: { duel_points: 'Duelos', ladder_points: 'Escalera', neg_points: 'Negociación', mm_points: 'Creación de mercado', bench_points: 'Banco de pruebas' },

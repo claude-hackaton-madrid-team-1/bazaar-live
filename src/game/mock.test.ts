@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MockGame } from './mock'
 import { apply, createState, KNOWN_TYPES, type GameEvent } from './state'
+import { albumSummary, bestMoves } from './views/album'
 
 const play = (steps: number, seed = 7): GameEvent[] => {
   const game = new MockGame(seed)
@@ -74,6 +75,19 @@ describe('MockGame', () => {
     const events = play(400).filter((e) => e.type.startsWith('duel.'))
     expect(events.every((e) => typeof e.payload.rival === 'string' && e.payload.rival.startsWith('Rival '))).toBe(true)
     expect(events.filter((e) => e.type === 'duel.message' && e.payload.sender !== 't01').every((e) => e.payload.sender === e.payload.rival)).toBe(true)
+  })
+
+  it('opens mid-game: the album has something to buy, to sell and a page to finish from the first ticks', () => {
+    for (const seed of [7, 3]) {
+      const s = createState()
+      play(15, seed).forEach((e) => apply(s, e))
+      expect(Object.keys(s.affinity).length).toBe(4)
+      const moves = bestMoves(s)
+      expect(moves.buy.some((m) => m.quote.source === 'board')).toBe(true)
+      expect(moves.sell.length).toBeGreaterThan(0)
+      expect(moves.pages.some((p) => p.missing.length === 1)).toBe(true)
+      expect(albumSummary(s).duplicates.count).toBeGreaterThan(0)
+    }
   })
 
   it('is the same game for the same seed', () => {
