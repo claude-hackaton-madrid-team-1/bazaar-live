@@ -1,0 +1,162 @@
+/**
+ * Reads db/injections.sql's view every few seconds and keeps the last snapshot in memory for GET /api/injections.
+ *
+ * One capped query per poll on the server's shared pool. The view missing (42P01: db/injections.sql not applied,
+ * or bazaar's table not created yet) or not granted (42501) is the empty state, logged once; any other error keeps
+ * the last good rows and backs off. No exception ever leaves `pollOnce()`, and error text is redacted against the
+ * connection's secrets before it is logged.
+ */
+import { EMPTY_INJECTIONS, INJECTION_SOURCES, RAW_MAX, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
+import type { Db } from '../transcript/poller.ts'
+
+/** The newest `$1` rows of each severity, and each severity's total. */
+export const SQL = `select id, tick, source, from_team, to_us, tags, severity, raw, our_response, proof, seen_at, total
+  from (select v.*, row_number() over (partition by v.severity order by v.seen_at desc, v.id desc) as rn,
+               count(*) over (partition by v.severity) as total
+          from show.injection_attempts v) x
+ where rn <= $1
+ order by seen_at desc, id desc`
+
+export const CAP = 100
+
+type Row = Record<string, unknown>
+
+const int = (raw: unknown): number | null => {
+  const n = typeof raw === 'string' && /^-?\d{1,15}$/.test(raw.trim()) ? Number(raw) : raw
+  return typeof n === 'number' && Number.isSafeInteger(n) ? n : null
+}
+
+/** A short identifier-like word (a team, a dealer, a venue, a tag), or null. */
+const word = (raw: unknown, max = 40): string | null => (typeof raw === 'string' && /^[\w:.-]{1,40}$/u.test(raw) ? raw.slice(0, max) : null)
+
+/** Text as it was, only capped: hidden characters stay, so the page can show them (as markers). */
+const text = (raw: unknown, max: number): string | null => (typeof raw === 'string' && raw.length > 0 ? Array.from(raw).slice(0, max).join('') : null)
+
+/** One printable line, capped: our own response and the proof are short labels. */
+const label = (raw: unknown, max: number): string | null => {
+  if (typeof raw !== 'string') return null
+  const clean = Array.from(raw, (ch) => (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(ch) ? ' ' : ch)).join('').replace(/\s+/g, ' ').trim()
+  return clean ? clean.slice(0, max) : null
+}
+
+const isSource = (v: unknown): v is InjectionSource => typeof v === 'string' && (INJECTION_SOURCES as readonly string[]).includes(v)
+
+/** A row of the view → the wire type, or null when it lacks what the panel needs (id, source, severity, raw, proof). */
+export function attemptOf(raw: unknown): InjectionAttempt | null {
+  const r: Row = typeof raw === 'object' && raw !== null ? (raw as Row) : {}
+  const id = int(r.id)
+  const severity = r.severity === 'attempt' || r.severity === 'weak' ? r.severity : null
+  const said = text(r.raw, RAW_MAX)
+  const proof = label(r.proof, 200)
+  if (id === null || !isSource(r.source) || severity === null || said === null || proof === null) return null
+  const seen = r.seen_at instanceof Date ? r.seen_at : typeof r.seen_at === 'string' ? new Date(r.seen_at) : null
+  return {
+    id,
+    tick: int(r.tick),
+    source: r.source,
+    from: word(r.from_team),
+    toUs: r.to_us === true,
+    tags: Array.isArray(r.tags) ? r.tags.map((t) => word(t)).filter((t): t is string => t !== null).slice(0, 12) : [],
+    severity,
+    raw: said,
+    ourResponse: label(r.our_response, 300) ?? '',
+    proof,
+    seenAt: seen && Number.isFinite(seen.getTime()) ? seen.toISOString() : null,
+  }
+}
+
+export interface InjectionsPollerDeps {
+  readonly db: Db
+  readonly log: (entry: Record<string, unknown>) => void
+  readonly intervalMs?: number
+  readonly maxDelayMs?: number
+  readonly secrets?: readonly string[]
+  readonly now?: () => Date
+  readonly setTimer?: (fn: () => void, ms: number) => unknown
+  readonly clearTimer?: (handle: unknown) => void
+}
+
+const codeOf = (error: unknown): string => {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === 'string' ? code : 'ERR'
+}
+
+export class InjectionsPoller {
+  private snapshot: InjectionsSnapshot = EMPTY_INJECTIONS
+  private missingLogged = false
+  private failures = 0
+  private timer: unknown = null
+  private running = false
+  private readonly deps: InjectionsPollerDeps
+  private readonly intervalMs: number
+  private readonly maxDelayMs: number
+
+  constructor(deps: InjectionsPollerDeps) {
+    this.deps = deps
+    this.intervalMs = deps.intervalMs ?? 10_000
+    this.maxDelayMs = deps.maxDelayMs ?? 120_000
+  }
+
+  current(): InjectionsSnapshot {
+    return this.snapshot
+  }
+
+  start(): void {
+    if (this.running) return
+    this.running = true
+    void this.loop()
+  }
+
+  stop(): void {
+    this.running = false
+    if (this.timer !== null) (this.deps.clearTimer ?? clearTimeout)(this.timer as ReturnType<typeof setTimeout>)
+    this.timer = null
+  }
+
+  private async loop(): Promise<void> {
+    if (!this.running) return
+    await this.pollOnce()
+    if (!this.running) return
+    const delay = this.failures === 0 ? this.intervalMs : Math.min(this.maxDelayMs, this.intervalMs * 2 ** this.failures)
+    this.timer = (this.deps.setTimer ?? setTimeout)(() => {
+      this.timer = null
+      void this.loop()
+    }, delay)
+  }
+
+  /** One read of the view. Never throws. */
+  async pollOnce(): Promise<void> {
+    const at = (this.deps.now ?? (() => new Date()))().toISOString()
+    try {
+      const { rows } = await this.deps.db.query(SQL, [CAP])
+      const counts = { attempt: 0, weak: 0 }
+      const parsed: InjectionAttempt[] = []
+      for (const raw of rows) {
+        const row = attemptOf(raw)
+        if (row === null) continue
+        parsed.push(row)
+        counts[row.severity] = Math.max(counts[row.severity], int((raw as Row).total) ?? 0)
+      }
+      this.failures = 0
+      this.missingLogged = false
+      this.snapshot = { at, ready: true, counts, rows: parsed }
+    } catch (error: unknown) {
+      const code = codeOf(error)
+      if (code === '42P01' || code === '42501') {
+        this.failures = 0
+        if (!this.missingLogged) this.deps.log({ route: 'injections', event: 'view_missing', code })
+        this.missingLogged = true
+        this.snapshot = { ...EMPTY_INJECTIONS, at }
+        return
+      }
+      this.failures += 1
+      this.deps.log({ route: 'injections', event: 'poll_error', code, message: this.redact(error) })
+    }
+  }
+
+  private redact(error: unknown): string {
+    let msg = error instanceof Error ? error.message : String(error)
+    for (const s of this.deps.secrets ?? []) if (s) msg = msg.split(s).join('***')
+    return msg.slice(0, 200)
+  }
+}

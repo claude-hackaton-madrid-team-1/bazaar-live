@@ -9,6 +9,7 @@
  * are. Spanish never reaches an English voice, nor the reverse.
  */
 import { detectLang, type QuoteLang } from '../../shared/detect-lang.ts'
+import { looksLikeInjection } from '../../shared/injections.ts'
 import type { Lang } from '../../shared/lang.ts'
 import { duelEndLine, duelOfferLine, offerLine, openedLine, settlementLine } from '../../shared/real-lines.ts'
 import { dealerSpeaker, isGuest } from '../../shared/tags.ts'
@@ -35,9 +36,10 @@ export interface QuotePlan {
   readonly lang: QuoteLang
 }
 
+/** A quote with an injection's shape is never voiced, whatever its language: it stays a caption. */
 export function planQuote(text: string, selected: Lang): QuotePlan {
   const lang = detectLang(text)
-  return { speak: lang === selected, lang }
+  return { speak: lang === selected && !looksLikeInjection(text), lang }
 }
 
 /** The most duel lines one replay plays: the end of a haggle is the story. */

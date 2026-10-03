@@ -4,6 +4,7 @@ import { readConfig } from './config'
 import { Stage } from './stage/Stage'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
+import { InjectionsPanel } from './ui/InjectionsPanel'
 import { useLang, useStrings } from './ui/lang'
 import { useRoute } from './ui/route'
 import { soundMemory } from './ui/soundChoice'
@@ -78,6 +79,8 @@ function ShowApp() {
           </ErrorBoundary>
           <Transcript entries={state.transcript} />
         </main>
+        {/* their words as plain text only; this panel never reaches the director or a voice */}
+        <InjectionsPanel mock={config.mock} className="inj-show" />
       </div>
       {!started && (
         <StartGate

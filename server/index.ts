@@ -8,6 +8,7 @@
  * the Movements screen reads db/history.sql's views the same way, and the Strategy screen db/strategy.sql's. All three
  * are told on the game stream when their rows change (`pages.changed`) and read again as soon as our agents' sockets
  * ring (PAGES_WAKE=off: their timers only).
+ * /api/injections reads db/injections.sql's view on the same pool, public (the show has no token), never voiced.
  * With the game stream on, the taker's and the maker's /health join it every 10 s (AGENT_HEALTH=off turns it off;
  * RAILWAY_SERVICE_BAZAAR_TAKER_URL / _MAKER_URL override where they are).
  * With SHOW_DATABASE_URL (or a game key and the database), our agents' decisions join that stream (GUARDRAIL_* override the caps shown).
@@ -27,6 +28,7 @@ import { startHealth } from './game/health.ts'
 import { startPages } from './game/pages.ts'
 import { startGame } from './game/start.ts'
 import { startHistory } from './history/start.ts'
+import { startInjections } from './injections/start.ts'
 import { startLearn } from './learn/start.ts'
 import { startStrategy } from './strategy/start.ts'
 import { readLimits } from './limits.ts'
@@ -59,6 +61,8 @@ const agentsWs = startAgentsWs(process.env, { database: show !== null, game, dec
 const history = startHistory(process.env, log, show)
 // What we aim for, why we hold what we hold and why we do not buy (db/strategy.sql), on the same pool.
 const strategy = startStrategy(process.env, log, show)
+// The prompt-injection attempts our agents recorded (db/injections.sql), on the same pool: public, never voiced.
+const injections = startInjections(log, show)
 // /history, /learn and /strategy told on the game stream when their rows change, and read as soon as our agents' sockets ring.
 const pages = startPages(process.env, { hub: game.hub, agents: agentsWs, pollers: { history: history.poller, learn: learn.poller, strategy: strategy.poller }, log })
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
@@ -74,6 +78,7 @@ const server = createServer(
     learn,
     history,
     strategy,
+    injections,
     dealerNames: createDealerNames({ url: dealersUrl(process.env) }),
   }),
 )
@@ -91,6 +96,7 @@ const shutdown = (): void => {
   pages.stop()
   history.stop()
   strategy.stop()
+  injections.stop()
   void learn.stop()
   void show?.pool.end().catch(() => undefined)
   server.close(() => process.exit(0))

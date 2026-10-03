@@ -100,6 +100,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
 | `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
+| `/injections` | Who tried to prompt-inject our agents, and what did they do? | The judges' view: every recorded injection attempt, its exact text (plain text, hidden characters shown as markers), the proof to verify it and what our agent did. See [Injection attempts](#injection-attempts-the-show-debug-and-injections). |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
 
 `?mock=1` plays a TypeScript port of bazaar's mock game (`src/game/mock.ts`, seeded): our agent
@@ -311,6 +312,32 @@ denial shows. The window is the last 300 ticks of the current run. Apply after t
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql`.
 The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
+
+### Injection attempts (the show, `/debug` and `/injections`)
+
+Prompt injection is allowed in this game: our agents only RECORD it (bazaar's `injection_attempts` table) and never
+report a team. The panel shows each attempt with its proof, on the show (under the stage), on `/debug` (under the
+stream) and full page on `/injections`, the judges' view: when (time and tick), from whom (team, dealer or venue), the
+channel (feed, team thread, duel, dealer thread, offer text), the tags, their exact text, the proof to check it
+(`GET /api/threads/412 message 2210`) and what our agent did. `weak` rows (code, a url or money words only, often a
+venue's own format notice) sit behind a toggle with their count.
+
+- `db/injections.sql` adds `show.injection_attempts` for the same read-only role: the real world only, never the
+  recorder's `normalised` text or its unique-key ids, and a duel's row only once an admin opens `show.gate` (as
+  `show.duel_lines`). Until bazaar creates the table the file creates nothing and succeeds: re-run it after. Apply
+  after the other show files, each time: `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql
+  -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/injections.sql`.
+- The server reads the view every 10 s on the shared pool (`server/injections/`) and serves `GET /api/injections`,
+  **public** like `/api/transcript` (the show has no token). A view not applied yet is the empty state.
+- Their text is HOSTILE: it is rendered only as React text nodes (no `dangerouslySetInnerHTML`, no markdown, never
+  in an attribute), cut after 280 characters with "Show all", and every hidden character (zero-width, bidi
+  override, tag, filler) is shown as a marker such as `⟨U+200B⟩`, so the trick is visible and cannot reorder the line.
+- No voice ever reads it: the panel and the voice pipeline do not import each other
+  (`server/injections/isolation.test.ts`), the TTS proxy refuses a quote it vouches for when it has an injection's
+  shape or matches a recorded attempt (`shared/injections.ts` `looksLikeInjection`, `server/app.ts`), and the show
+  keeps such a quote a caption even with `?quotes=speak` (`src/show/real.ts`).
+- `?mock=1` shows made-up attempts, hostile on purpose. Proof on a throwaway local Postgres: `sh scripts/test-sql.sh`
+  runs `db/injections.test.ts`.
 
 ## Real conversations (LIVE-T1)
 
