@@ -13,14 +13,16 @@ export const ENDPOINTS: Readonly<Record<AgentId, AgentEndpoint>> = {
 }
 
 export type TtsChoice = 'auto' | 'webspeech' | 'elevenlabs' | 'gemini' | 'off'
-export const TTS_CHOICES: readonly TtsChoice[] = ['auto', 'webspeech', 'elevenlabs', 'gemini', 'off']
+/** Every value `?tts=` accepts; the header offers only the first three (ElevenLabs v4 is the show's voice). */
+export const TTS_CHOICES: readonly TtsChoice[] = ['auto', 'elevenlabs', 'off', 'webspeech', 'gemini']
+export const TTS_PICKER: readonly TtsChoice[] = ['auto', 'elevenlabs', 'off']
 
 export interface ShowConfig {
   /** `?mock=1`: play the recorded fixtures instead of the live feeds. */
   readonly mock: boolean
   /** `?speed=2`: mock playback speed (0.25 to 8). */
   readonly speed: number
-  /** `?tts=webspeech|elevenlabs|gemini|off|auto` (default auto: the best provider the proxy has). */
+  /** `?tts=auto|elevenlabs|off` (default auto: ElevenLabs v4 when the server has its key, else captions only); `webspeech` and `gemini` are for development. */
   readonly tts: TtsChoice
   /** `?doors=closed`: the mock's /health says the doors are closed (to see the countdown talk). */
   readonly mockDoors: 'open' | 'closed'

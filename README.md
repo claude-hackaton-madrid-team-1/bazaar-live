@@ -154,7 +154,7 @@ minute.
 | Provider | Where | Model | Tags | Env (server only) |
 |---|---|---|---|---|
 | `webspeech` | browser `speechSynthesis`, keyless | a NATIVE voice of the line's language per role (es-ES first, then other Spanish; en-GB, en-US), different voices per character when the browser has them, a woman for Abuela, rate and pitch per character | never read: mapped to a little speed, pitch or volume (`[whispers]` is quieter, `[excited]` brighter), then stripped | none |
-| `elevenlabs` | `POST /api/tts` → `api.elevenlabs.io/v1/text-to-speech/{voice}` | `eleven_v4` (default) | `[laughs]`, `[whispers]`, `[sarcastic]`... passed as they are | `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_NARRATOR` |
+| `elevenlabs` (**the show's voice**) | `POST /api/tts` → `api.elevenlabs.io/v1/text-to-speech/{voice}` | `eleven_v4` (default) | `[laughs]`, `[whispers]`, `[sarcastic]`... passed as they are | `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_NARRATOR` |
 | `gemini` | `POST /api/tts` → `generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.8-flash-tts` (default) | sustained tags (`[sarcastic]`, `[whispers]`) go to `speech_metadata.style` with each character's persona; momentary ones become inline `<laugh>`, `<gasp>`, `<sigh>` | `GEMINI_API_KEY`, `GEMINI_TTS_MODEL`, `GEMINI_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_NARRATOR` |
 
 Model names, checked against the official docs on 2026-10-03:
@@ -189,7 +189,7 @@ logged or committed. The proxy is public, so it guards what it speaks and what i
 - **Limits.** Per address (Railway's `X-Real-IP`; `X-Forwarded-For` is never trusted) a burst of 40
   then 24 lines a minute; all callers together a burst of 160 then 72 a minute. The address is checked
   before the shared bucket, so one caller over its limit cannot drain it for everyone. A daily budget of
-  40,000 characters sent to a provider (UTC day) caps the cost; a share per address is opt-in
+  9,000 characters sent to a provider (UTC day; the ElevenLabs account has 10,000 credits and a character costs about one) caps the cost; a share per address is opt-in
   (`TTS_DAILY_CHARS_PER_ADDRESS`, off by default because the pitch screen is one address too), and a
   call the provider refused gives its characters back. IPv6 callers are counted by their /64. Env: `TTS_PER_ADDRESS_BURST`, `TTS_PER_ADDRESS_PER_MINUTE`,
   `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`, `TTS_DAILY_CHARS`, `TTS_DAILY_CHARS_PER_ADDRESS`,
@@ -213,7 +213,7 @@ railway variable set ELEVENLABS_API_KEY --stdin --service bazaar-live
 railway variable set GEMINI_API_KEY --stdin --service bazaar-live
 ```
 
-With neither key set, the show still speaks with the browser's voice.
+The show's voice is **ElevenLabs v4 only**: with no ElevenLabs key on the server the show plays with captions only (the header says so); the browser's own voice is no stand-in (`?tts=webspeech` still reaches it, for development, and `?tts=gemini` Gemini).
 
 After the first deploy, check the edge from outside (the proxy trusts what Railway's edge reports):
 

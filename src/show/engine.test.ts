@@ -77,12 +77,18 @@ describe('board and pacing helpers', () => {
     expect(readingMs('x'.repeat(500), 0)).toBe(4800)
   })
 
-  it('resolves the voice choice by what the proxy offers', () => {
-    expect(resolveChoice('auto', [], true)).toBe('webspeech')
+  it('the show\'s voice is ElevenLabs v4: auto is ElevenLabs when the server has its key, else silence (no browser voice stands in)', () => {
+    expect(resolveChoice('auto', ['elevenlabs'], true)).toBe('elevenlabs')
     expect(resolveChoice('auto', ['gemini', 'elevenlabs'], true)).toBe('elevenlabs')
-    expect(resolveChoice('gemini', ['elevenlabs'], true)).toBe('webspeech')
-    expect(resolveChoice('webspeech', ['elevenlabs'], false)).toBe('off')
+    expect(resolveChoice('auto', [], true)).toBe('off')
+    expect(resolveChoice('auto', ['gemini'], true)).toBe('off') // Gemini is not picked on its own either
+    expect(resolveChoice('elevenlabs', [], true)).toBe('off')
     expect(resolveChoice('off', ['elevenlabs'], true)).toBe('off')
+    // Only by name, for development:
+    expect(resolveChoice('webspeech', [], true)).toBe('webspeech')
+    expect(resolveChoice('webspeech', ['elevenlabs'], false)).toBe('off')
+    expect(resolveChoice('gemini', ['gemini'], true)).toBe('gemini')
+    expect(resolveChoice('gemini', ['elevenlabs'], true)).toBe('off')
   })
 })
 

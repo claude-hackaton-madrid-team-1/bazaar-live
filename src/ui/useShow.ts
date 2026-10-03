@@ -22,6 +22,8 @@ export interface SpeechControls {
   readonly available: readonly RemoteName[]
   readonly active: ProviderName | 'off'
   readonly lastError: string | null
+  /** The server has no ElevenLabs key: the show plays with captions only (no browser voice stands in). */
+  readonly elevenMissing: boolean
   /** The language the browser has no voice for, when speaking with the browser's voices (the text is shown, not spoken). */
   readonly noVoiceFor: Lang | null
 }
@@ -33,8 +35,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   const queue = useMemo(
     () =>
       new SpeechQueue({
-        provider: providerFor('webspeech'),
-        fallback: providerFor('webspeech'),
+        provider: providerFor('off'),
         currentLang: getLang,
         onError: (error, _u, provider) => setLastError(`${provider}: ${error instanceof Error ? error.message : String(error)}`),
       }),
@@ -45,8 +46,10 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
 
   const [muted, setMuted] = useState(true)
   const [choice, setChoice] = useState<TtsChoice>(config.tts)
-  const [available, setAvailable] = useState<readonly RemoteName[]>([])
-  const active = resolveChoice(choice, available, hasWebSpeech)
+  // null until the server has answered which voices it has (so the header does not cry wolf at start).
+  const [available, setAvailable] = useState<readonly RemoteName[] | null>(null)
+  const active = resolveChoice(choice, available ?? [], hasWebSpeech)
+  const elevenMissing = available !== null && choice !== 'off' && active === 'off' && (choice === 'auto' || choice === 'elevenlabs')
 
   useEffect(() => {
     let alive = true
@@ -70,7 +73,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   useSources(engine, config)
   useTranscript(engine, config)
 
-  return { state, speech: { muted, setMuted, choice, setChoice, available, active, lastError, noVoiceFor } }
+  return { state, speech: { muted, setMuted, choice, setChoice, available: available ?? [], active, lastError, noVoiceFor, elevenMissing } }
 }
 
 /** The language the browser has no voice for (so the show only shows its text), or null. Voices load late: it listens. */

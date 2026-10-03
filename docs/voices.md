@@ -78,6 +78,22 @@ peninsular Spanish (castellano) from Madrid, not Latin American" for `es`, "spea
 accent" for `en`, plus the character's persona and any sustained tag (`sarcastic`, `whispering`...). Momentary
 tags go inline as `<laugh>`. See `shared/tags.ts`.
 
+## The show uses ElevenLabs v4 and nothing else
+
+Omar's call (the browser voice sounded wrong beside the characters): `?tts=auto` (the default) is ElevenLabs v4 when
+the server has its key, and **captions only** when it does not. There is no browser-voice or Gemini fallback; both
+stay reachable only by name (`?tts=webspeech`, `?tts=gemini`) for development. ElevenLabs' own agent skill
+(`elevenlabs/skills`, `text-to-speech`) agrees with the settings above: `style` and `speed` are not available on v4,
+`language_code` is, and `eleven_v4_turbo` is meant for the Text to Dialogue WebSocket.
+
+### Credits
+
+The account has 10,000 credits and a character costs about one (check the first real run's usage: v4's rate is
+not in the pages read). So the proxy's daily budget now defaults to 9,000 characters (`TTS_DAILY_CHARS`), about 90
+lines of dialogue. Repeated lines are cached and shared by every viewer; the idle talk (one beat every 22 to 35 s)
+is what spends most, so for a long day raise the quiet interval (`?idle=`), keep the page muted until needed, or
+lower the budget further. Nothing here has been run against the API yet.
+
 ## Switching it on (Omar's step, at the pitch)
 
 1. `railway variable set ELEVENLABS_API_KEY --stdin --service bazaar-live` (never in a file or a chat).

@@ -46,6 +46,7 @@ export interface Strings {
   readonly noKey: string
   readonly langLabel: string
   readonly noVoice: string
+  readonly noEleven: string
   readonly muted: string
   readonly soundOn: string
   readonly tick: string
@@ -103,10 +104,11 @@ const ES: Strings = {
   who: { taker: 'comprador', maker: 'vendedor' },
   mock: 'SIMULACRO',
   voiceLabel: 'Proveedor de voz',
-  voices: { auto: 'Voz: auto', webspeech: 'Voz del navegador', elevenlabs: 'ElevenLabs', gemini: 'Gemini', off: 'Sin voz' },
+  voices: { auto: 'Voz: ElevenLabs v4', webspeech: 'Voz del navegador', elevenlabs: 'ElevenLabs v4', gemini: 'Gemini', off: 'Sin voz' },
   noKey: 'sin clave',
   langLabel: 'Idioma',
   noVoice: 'Este navegador no tiene voz en castellano: solo se muestra el texto',
+  noEleven: 'El servidor no tiene la clave de ElevenLabs: solo se muestra el texto, sin voz',
   muted: 'Silenciado',
   soundOn: 'Con sonido',
   tick: 'turno',
@@ -162,10 +164,11 @@ const EN: Strings = {
   who: { taker: 'buyer', maker: 'seller' },
   mock: 'MOCK',
   voiceLabel: 'Voice provider',
-  voices: { auto: 'Voice: auto', webspeech: 'Browser voice', elevenlabs: 'ElevenLabs', gemini: 'Gemini', off: 'No voice' },
+  voices: { auto: 'Voice: ElevenLabs v4', webspeech: 'Browser voice', elevenlabs: 'ElevenLabs v4', gemini: 'Gemini', off: 'No voice' },
   noKey: 'no key',
   langLabel: 'Language',
   noVoice: 'This browser has no English voice: the text is shown, not spoken',
+  noEleven: 'The server has no ElevenLabs key: the text is shown, with no voice',
   muted: 'Muted',
   soundOn: 'Sound on',
   tick: 'tick',

@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react'
-import { TTS_CHOICES, type TtsChoice } from '../config'
+import { TTS_PICKER, type TtsChoice } from '../config'
 import { AGENTS, type AgentHealth, type AgentId } from '../model/events'
 import type { FeedStatus } from '../net/feed'
 import type { ShowState } from '../show/engine'
@@ -70,6 +70,11 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
       </div>
       <div className="controls">
         <LangToggle />
+        {speech.elevenMissing && (
+          <span className="no-voice" role="status" title={t.noEleven}>
+            🔇 ElevenLabs
+          </span>
+        )}
         {speech.noVoiceFor && (
           <span className="no-voice" role="status" title={t.noVoice}>
             🔇 {speech.noVoiceFor.toUpperCase()}
@@ -85,7 +90,7 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
           onChange={(e) => speech.setChoice(e.target.value as TtsChoice)}
           title={speech.lastError ? `Last voice error: ${speech.lastError}` : `Speaking with: ${speech.active}`}
         >
-          {TTS_CHOICES.map((c) => (
+          {TTS_PICKER.map((c) => (
             <option key={c} value={c} disabled={unavailable(c)}>
               {t.voices[c]}
               {unavailable(c) ? ` (${t.noKey})` : ''}
