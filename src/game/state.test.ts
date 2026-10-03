@@ -216,3 +216,132 @@ test('our events live in their own list, a market flood does not evict them', ()
   for (let i = 0; i < LIMITS.mine + 10; i++) apply(s, ev('agent.thought', { text: String(i) }))
   assert.strictEqual(s.mine.length, LIMITS.mine)
 })
+
+const card = (id: number, ref: string, serial = 1) => ({ id, kind: 'card', ref, serial, rarity: 'common', set: ref.slice(0, 3), print_run: 300 })
+
+/** A board listing as the game sends it: an ask gives a copy for cash, a bid gives cash for a card type. */
+const listed = (id: number, maker: string, { venue = 'rastro', ask = null as Payload | null, bid = null as string | null, price = 10, tick = 10, expires = null as number | null } = {}) =>
+  ev('offer.listed', {
+    venue,
+    offer: {
+      id, maker, to: null, venue, thread: null, status: 'open',
+      give: ask ? { cash: 0, assets: [ask], types: [] } : { cash: price, assets: [], types: [] },
+      want: ask ? { cash: price, assets: [], types: [] } : { cash: 0, assets: [], types: [`card:${bid}`] },
+      expires_tick: expires ?? tick + 20, created_tick: tick, final: false,
+    },
+  }, tick, maker)
+
+const bookIds = (s: ReturnType<typeof fresh>) => Object.fromEntries([...s.book].map(([v, offers]) => [v, [...offers.keys()]]))
+
+test('agent.me keeps our sealed packs, and an empty hand empties the album', () => {
+  const s = fresh()
+  apply(s, ev('agent.me', ME))
+  assert.deepEqual(s.packs, [{ id: 4, ref: 'sobre_barrio', name: 'sobre_barrio' }])
+  apply(s, ev('agent.me', { cash: 400 }))
+  assert.strictEqual(s.owned['LAT-09']?.length, 2)
+  apply(s, ev('agent.me', { cash: 400, assets: [] }))
+  assert.deepEqual([s.owned, s.values, s.packs], [{}, {}, []])
+})
+
+test('the board: asks and bids by venue, cancelled and expired ones leave', () => {
+  const s = fresh()
+  apply(s, ev('clock', {}, 10))
+  apply(s, listed(23, 't07', { ask: card(100, 'LAT-03', 5), price: 11 }))
+  apply(s, listed(24, 't14', { bid: 'MAL-06', price: 18 }))
+  apply(s, listed(25, 't09', { venue: 't07-puesto', ask: card(101, 'SAL-02'), price: 9, expires: 12 }))
+  assert.deepEqual(bookIds(s), { rastro: [23, 24], 't07-puesto': [25] })
+  const [ask, bid] = [s.book.get('rastro')!.get(23)!, s.book.get('rastro')!.get(24)!]
+  assert.deepEqual([ask.side, ask.ref, ask.kind, ask.price, ask.assetIds, ask.serial, ask.maker, ask.createdTick, ask.expiresTick],
+    ['ask', 'LAT-03', 'card', 11, [100], 5, 't07', 10, 30])
+  assert.deepEqual([bid.side, bid.ref, bid.kind, bid.price, bid.assetIds], ['bid', 'MAL-06', 'card', 18, []])
+  apply(s, ev('offer.cancelled', { offer: 24, venue: 'rastro' }))
+  assert.deepEqual(bookIds(s), { rastro: [23], 't07-puesto': [25] })
+  apply(s, ev('clock', {}, 12))
+  assert.deepEqual(bookIds(s), { rastro: [23], 't07-puesto': [25] }, 'an offer expiring this tick is still open')
+  apply(s, ev('clock', {}, 13))
+  assert.deepEqual(bookIds(s), { rastro: [23] })
+  apply(s, listed(26, 't07', { ask: card(102, 'LAT-04'), tick: 2, expires: 9 }))
+  assert.deepEqual(bookIds(s), { rastro: [23] }, 'a replayed listing that already expired is not on the board')
+})
+
+test('a settlement takes the filled ask and the buyer bid off the board', () => {
+  const s = fresh()
+  apply(s, listed(23, 't07', { ask: card(100, 'LAT-03'), price: 11 }))
+  apply(s, listed(24, 't07', { venue: 't12-mercadillo', ask: card(100, 'LAT-03'), price: 14 }))
+  apply(s, listed(30, 't14', { bid: 'MAL-06', price: 18 }))
+  apply(s, listed(31, 't14', { bid: 'MAL-06', price: 15 }))
+  apply(s, listed(32, 't02', { bid: 'MAL-06', price: 20 }))
+  apply(s, ev('settlement', { settlement: 1, parties: ['t07', 't05'], venue: 'rastro', price: 11, items: [{ id: 100, ref: 'LAT-03', frm: 't07', to: 't05' }] }))
+  apply(s, ev('settlement', { settlement: 2, parties: ['t14', 't03'], venue: 'rastro', price: 15, items: [{ id: 200, ref: 'MAL-06', frm: 't03', to: 't14' }] }))
+  assert.deepEqual(bookIds(s), { rastro: [30, 32] })
+  apply(s, ev('settlement', { settlement: 3, parties: ['t14', 't03'], venue: 'rastro', price: 16, items: [{ id: 201, ref: 'MAL-06', frm: 't03', to: 't14' }] }))
+  assert.deepEqual(bookIds(s), { rastro: [32] })
+})
+
+test('the board is bounded, the oldest offers go first', () => {
+  const s = fresh()
+  for (let i = 1; i <= LIMITS.book + 25; i++) apply(s, listed(i, 't07', { ask: card(1000 + i, 'LAT-01') }))
+  const ids = [...s.book.get('rastro')!.keys()]
+  assert.strictEqual(ids.length, LIMITS.book)
+  assert.strictEqual(Math.min(...ids), 26)
+})
+
+test('venues: seen on the board, opened with an owner, the last announcement, closing empties its board', () => {
+  const s = fresh()
+  apply(s, listed(23, 't07', { ask: card(100, 'LAT-03') }))
+  assert.deepEqual([s.venues.get('rastro')!.owner, s.venues.get('rastro')!.status], [null, 'open'])
+  apply(s, ev('venue.opened', { venue: 'v-t05', name: 'El Puesto', owner: 't05', fee_bps: 200, fee_per_card: 1, rules: { mechanism: 'board' }, bond: 50 }, 20))
+  apply(s, ev('venue.announcement', { venue: 'v-t05', name: 'El Puesto', text: 'Fees down today' }, 21, 'v-t05'))
+  apply(s, ev('venue.announcement', { venue: 'v-t05', name: 'El Puesto', text: 'Rares wanted' }, 22, 'v-t05'))
+  apply(s, ev('venue.fee_announced', { venue: 'v-t05', fee_bps: 100, fee_per_card: 0, effective_tick: 30 }, 22))
+  const v = s.venues.get('v-t05')!
+  assert.deepEqual([v.name, v.owner, v.openedTick, v.feeBps, v.feePerCard, v.announcement?.text, v.announcement?.tick, v.announcements],
+    ['El Puesto', 't05', 20, 200, 1, 'Rares wanted', 22, 2])
+  apply(s, ev('venue.fee_changed', { venue: 'v-t05', fee_bps: 100, fee_per_card: 0 }, 30))
+  assert.deepEqual([v.feeBps, v.feePerCard], [100, 0])
+  apply(s, listed(24, 't09', { venue: 'v-t05', ask: card(101, 'SAL-02') }))
+  apply(s, ev('venue.closing', { venue: 'v-t05', bond_back_tick: 40 }, 31))
+  assert.deepEqual([v.status, bookIds(s)], ['closing', { rastro: [23] }])
+  apply(s, ev('venue.closed', { venue: 'v-t05', bond_returned: 50 }, 40))
+  assert.strictEqual(v.status, 'closed')
+})
+
+test('packs opened, gifts, failed settlements and opened threads are kept, bounded', () => {
+  const s = fresh()
+  apply(s, listed(23, 't01', { ask: card(100, 'LAT-03') }))
+  apply(s, ev('pack.opened', { team: 't07', name: 'Team 7', pack: 'sobre_barrio', best: 'LAT-09' }))
+  apply(s, ev('gift.given', { team: 't01', name: 'Team 1', cash: 0, packs: [], cards: ['MAL-03'], reason: 'gift from Abuela Carmen' }, 10, 'abuela'))
+  apply(s, ev('settlement.failed', { offer: 23, reason: 'seller no longer holds the asset' }))
+  apply(s, ev('thread.opened', { thread: 70, kind: 'persona', team: 't01', with: 'abuela', topic: { buy: { pack: 'sobre_barrio' } } }))
+  assert.deepEqual(s.packsOpened.map((p) => [p.team, p.pack, p.best]), [['t07', 'sobre_barrio', 'LAT-09']])
+  assert.deepEqual(s.gifts.map((g) => [g.team, g.from, g.cards, g.reason]), [['t01', 'abuela', ['MAL-03'], 'gift from Abuela Carmen']])
+  assert.deepEqual(s.failed.map((f) => [f.offer, f.venue, f.ref, f.ours]), [[23, 'rastro', 'LAT-03', true]])
+  assert.strictEqual(s.book.size, 0, 'a failed offer leaves the board')
+  assert.deepEqual(s.opened.map((o) => [o.thread, o.with, o.topic]), [[70, 'abuela', { buy: { pack: 'sobre_barrio' } }]])
+  for (let i = 0; i < LIMITS.packsOpened + 5; i++) apply(s, ev('pack.opened', { team: 't02', pack: 'sobre_barrio', best: null }))
+  assert.strictEqual(s.packsOpened.length, LIMITS.packsOpened)
+})
+
+test('isOurs on the board: our listings and their cancels, our packs, gifts, threads, failures and venue', () => {
+  const s = fresh()
+  apply(s, listed(23, 't01', { ask: card(100, 'LAT-03') }))
+  apply(s, listed(24, 't07', { ask: card(101, 'LAT-04') }))
+  apply(s, message('t01', offer({ id: 335, maker: 't01', to: 'abuela', giveCash: 18, wantTypes: ['pack:sobre_barrio'] })))
+  apply(s, ev('venue.opened', { venue: 'v-t01', owner: 't01', name: 'Our stall' }))
+  const yes = [
+    listed(25, 't01', { bid: 'MAL-06' }), ev('offer.cancelled', { offer: 23, venue: 'rastro' }),
+    ev('settlement.failed', { offer: 335, reason: 'x' }), ev('pack.opened', { team: 't01', pack: 'sobre_barrio' }),
+    ev('gift.given', { team: 't01', cards: [] }, 10, 'abuela'), ev('thread.opened', { thread: 80, team: 't01', with: 'abuela' }),
+    ev('thread.opened', { thread: 81, team: 't05', with: 't01' }), ev('venue.announcement', { venue: 'v-t01', text: 'hi' }, 10, 'v-t01'),
+  ]
+  const no = [
+    listed(26, 't07', { bid: 'MAL-06' }), ev('offer.cancelled', { offer: 24, venue: 'rastro' }), ev('offer.cancelled', { offer: 999 }),
+    ev('settlement.failed', { offer: 24, reason: 'x' }), ev('pack.opened', { team: 't07', pack: 'sobre_barrio' }),
+    ev('gift.given', { team: 't06', cards: [] }, 10, 'abuela'), ev('thread.opened', { thread: 82, team: 't05', with: 'abuela' }),
+    ev('venue.opened', { venue: 'v-t05', owner: 't05' }),
+  ]
+  assert.deepEqual(yes.map((e) => isOurs(s, e)), yes.map(() => true))
+  assert.deepEqual(no.map((e) => isOurs(s, e)), no.map(() => false))
+  const nobody = createState()
+  assert.strictEqual(isOurs(nobody, ev('pack.opened', { pack: 'sobre_barrio' })), false, 'no team yet: an empty actor is not ours')
+})

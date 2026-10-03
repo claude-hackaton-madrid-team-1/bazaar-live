@@ -78,9 +78,46 @@ export type Trade = {
   gain: number | null
 }
 
+/** An open offer on a venue's board (`offer.listed`). An ask gives goods for cash, a bid cash for goods, a swap goods for goods. */
+export type BookOffer = {
+  id: number
+  eventId: number
+  venue: string
+  maker: string
+  side: 'ask' | 'bid' | 'swap'
+  ref: string
+  kind: string
+  assetIds: number[]
+  serial: number | null
+  price: number | null
+  createdTick: number | undefined
+  expiresTick: number | null
+}
+
+export type Venue = {
+  id: string
+  name: string
+  owner: string | null
+  status: 'open' | 'closing' | 'closed'
+  feeBps: number | null
+  feePerCard: number | null
+  openedTick: number | null
+  seenTick: number
+  announcement: { eventId: number; tick: number | undefined; text: string } | null
+  announcements: number
+}
+
+export type PackOpened = { eventId: number; tick: number | undefined; team: string; name: string; pack: string; best: string | null }
+
+export type Gift = { eventId: number; tick: number | undefined; team: string; from: string; cash: number; packs: string[]; cards: string[]; reason: string }
+
+export type FailedSettlement = { eventId: number; tick: number | undefined; offer: number | null; reason: string; venue: string | null; ref: string | null; ours: boolean }
+
+export type ThreadOpened = { eventId: number; tick: number | undefined; thread: number; kind: string; team: string; with: string; topic: Payload | null }
+
 export type Page = { set: string; name?: string; have?: number; of?: number; complete?: boolean; master?: boolean; [k: string]: unknown }
 
-export type Score = { score?: number; rank?: number; duel_points?: number; ladder_points?: number; neg_points?: number; mm_points?: number; [k: string]: unknown }
+export type Score = { score?: number; rank?: number; duel_points?: number; ladder_points?: number; neg_points?: number; mm_points?: number; bench_points?: number | null; [k: string]: unknown }
 
 export type State = {
   team: string
@@ -95,6 +132,8 @@ export type State = {
   pages: Page[]
   owned: Record<string, { id: number; serial: number }[]>
   values: Record<string, number>
+  /** Our sealed packs, from /me. */
+  packs: { id: number; ref: string; name: string }[]
   log: LogLine[]
   threads: Record<number, Thread>
   duels: Record<number, Duel>
@@ -102,6 +141,13 @@ export type State = {
   prices: Record<string, number[]>
   history: { tick: number; score: number; cash: number }[]
   ours: { trades: number; gain: number }
+  /** The open offers of every venue's board, venue → offer id → offer. */
+  book: Map<string, Map<number, BookOffer>>
+  venues: Map<string, Venue>
+  packsOpened: PackOpened[]
+  gifts: Gift[]
+  failed: FailedSettlement[]
+  opened: ThreadOpened[]
   events: GameEvent[]
   mine: GameEvent[]
   byId: Map<number, GameEvent>
@@ -111,15 +157,21 @@ export type State = {
 export const KNOWN_TYPES = new Set([
   'agent.hello', 'clock', 'agent.phase', 'agent.thought', 'agent.action', 'agent.me',
   'thread.message', 'thread.closed', 'settlement', 'duel.message', 'duel.result',
+  'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
+  'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
 ])
 
-export const LIMITS = { log: 300, tape: 200, prices: 24, events: 500, mine: 1500, history: 400 }
+export const LIMITS = {
+  log: 300, tape: 200, prices: 24, events: 500, mine: 1500, history: 400,
+  book: 400, venues: 40, packsOpened: 100, gifts: 100, failed: 100, opened: 200,
+}
 
 export function createState(): State {
   return {
     team: '', name: '', tick: 0, day: '', tickSeconds: 60, phase: 'observe', goal: '',
-    cash: 0, score: {}, pages: [], owned: {}, values: {},
+    cash: 0, score: {}, pages: [], owned: {}, values: {}, packs: [],
     log: [], threads: {}, duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
+    book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
     events: [], mine: [], byId: new Map(),
   }
 }
@@ -152,7 +204,30 @@ export function isOurs(s: State, e: GameEvent): boolean {
   if (e.type === 'thread.message') return p.team === s.team
   if (e.type === 'thread.closed') return p.thread in s.threads
   if (e.type === 'settlement') return (p.parties ?? []).includes(s.team)
+  // the board and the rest: ours when we are the actor or the maker (never when we have no team yet)
+  if (!s.team) return false
+  if (e.actor === s.team) return true
+  if (e.type === 'offer.listed') return p.offer?.maker === s.team
+  if (e.type === 'offer.cancelled' || e.type === 'settlement.failed') return isOurOffer(s, p.offer)
+  if (e.type === 'thread.opened') return p.team === s.team || p.with === s.team
+  if (e.type === 'pack.opened' || e.type === 'gift.given') return p.team === s.team
+  if (e.type.startsWith('venue.')) return (p.owner ?? s.venues.get(p.venue)?.owner) === s.team
   return false
+}
+
+/** The offer with this id on any board, the payload's venue looked at first. */
+export function findOffer(s: State, id: unknown, venue?: unknown): BookOffer | undefined {
+  if (typeof id !== 'number') return undefined
+  const hinted = typeof venue === 'string' ? s.book.get(venue)?.get(id) : undefined
+  if (hinted) return hinted
+  for (const offers of s.book.values()) if (offers.has(id)) return offers.get(id)
+  return undefined
+}
+
+/** Our offer: one we listed on a board, or one in a thread of ours. */
+function isOurOffer(s: State, id: unknown): boolean {
+  if (findOffer(s, id)?.maker === s.team) return true
+  return Object.values(s.threads).some((th) => th.offers.some((o) => o.offerId === id))
 }
 
 function threadMessage(s: State, e: GameEvent) {
@@ -211,7 +286,134 @@ function settlement(s: State, e: GameEvent) {
     })
     if (s.tape.length > LIMITS.tape) s.tape.length = LIMITS.tape
     push((s.prices[ref] ??= []), price, LIMITS.prices)
+    dropFilled(s, p.venue, item, price)
   }
+  if (p.venue) touchVenue(s, p.venue, e.tick)
+}
+
+// ---------------------------------------------------------------- the board: offers, venues
+
+/** A venue on first sight (a listing, a trade, an announcement): the house's ones never send venue.opened. */
+function touchVenue(s: State, id: string, tick: number | undefined): Venue {
+  let v = s.venues.get(id)
+  if (!v) {
+    v = {
+      id, name: id, owner: null, status: 'open', feeBps: null, feePerCard: null, openedTick: null,
+      seenTick: tick ?? s.tick, announcement: null, announcements: 0,
+    }
+    s.venues.set(id, v)
+    const all = [...s.venues.values()]
+    if (all.length > LIMITS.venues) {
+      // the closed ones go first, then the ones not seen for longest
+      const rank = (x: Venue) => (x.status === 'closed' ? 0 : 1)
+      const out = all.filter((x) => x !== v).sort((a, b) => rank(a) - rank(b) || a.seenTick - b.seenTick)[0]
+      if (out) s.venues.delete(out.id)
+    }
+  }
+  v.seenTick = Math.max(v.seenTick, tick ?? s.tick)
+  return v
+}
+
+const bookSize = (s: State) => [...s.book.values()].reduce((n, offers) => n + offers.size, 0)
+
+function dropOffer(s: State, o: BookOffer) {
+  const offers = s.book.get(o.venue)
+  if (!offers) return
+  offers.delete(o.id)
+  if (!offers.size) s.book.delete(o.venue)
+}
+
+/** Offers past their expiry tick are gone: the game expires them when `expires_tick < tick`. */
+function expireBook(s: State, tick: number) {
+  for (const offers of s.book.values()) {
+    for (const o of offers.values()) if (o.expiresTick != null && o.expiresTick < tick) dropOffer(s, o)
+  }
+}
+
+function offerListed(s: State, e: GameEvent) {
+  const p = e.payload
+  const offer: Payload = p.offer ?? {}
+  if (typeof offer.id !== 'number') return
+  const venue: string = p.venue ?? offer.venue ?? 'direct'
+  const now = Math.max(s.tick, e.tick ?? 0)
+  const expiresTick: number | null = offer.expires_tick ?? null
+  expireBook(s, now)
+  // a replayed backlog can list offers that expired long ago
+  if (expiresTick != null && expiresTick < now) return
+  const assets: Payload[] = offer.give?.assets ?? []
+  const side = offer.want?.cash ? 'ask' : offer.give?.cash ? 'bid' : 'swap'
+  const goods: Payload | undefined = side === 'bid' ? offer.want : offer.give
+  const first: Payload | undefined = goods?.assets?.[0]
+  let offers = s.book.get(venue)
+  if (!offers) s.book.set(venue, (offers = new Map()))
+  offers.set(offer.id, {
+    id: offer.id, eventId: e.id, venue, maker: offer.maker ?? e.actor ?? '?', side,
+    ref: side === 'bid' ? topicOf({ want: offer.want }) : topicOf({ give: offer.give }),
+    kind: first?.kind ?? goods?.types?.[0]?.split(':')[0] ?? 'card',
+    assetIds: assets.map((a) => a.id).filter((id) => typeof id === 'number'),
+    serial: first?.serial ?? null, price: priceOf(offer), createdTick: offer.created_tick ?? e.tick, expiresTick,
+  })
+  if (venue !== 'direct') touchVenue(s, venue, e.tick)
+  let size = bookSize(s)
+  if (size <= LIMITS.book) return
+  const oldest = [...s.book.values()].flatMap((o) => [...o.values()]).sort((a, b) => a.id - b.id)
+  for (const o of oldest) {
+    if (size-- <= LIMITS.book) break
+    dropOffer(s, o)
+  }
+}
+
+/**
+ * A settlement names no offer, so the board guesses which one it filled: any offer giving a copy that
+ * moved is stale, and on that venue the buyer's bid for the card goes too (at that price, else the highest).
+ */
+function dropFilled(s: State, venue: unknown, item: Payload, price: number) {
+  for (const offers of s.book.values()) {
+    for (const o of offers.values()) if (o.assetIds.includes(item.id)) dropOffer(s, o)
+  }
+  if (typeof venue !== 'string') return
+  const bids = [...(s.book.get(venue)?.values() ?? [])].filter((o) => o.side === 'bid' && o.maker === item.to && o.ref === item.ref)
+  const filled = bids.find((o) => o.price === price) ?? bids.sort((a, b) => (b.price ?? 0) - (a.price ?? 0))[0]
+  if (filled) dropOffer(s, filled)
+}
+
+function venueEvent(s: State, e: GameEvent) {
+  const p = e.payload
+  if (typeof p.venue !== 'string') return
+  const v = touchVenue(s, p.venue, e.tick)
+  if (p.name) v.name = p.name
+  if (p.fee_bps != null && e.type !== 'venue.fee_announced') v.feeBps = p.fee_bps
+  if (p.fee_per_card != null && e.type !== 'venue.fee_announced') v.feePerCard = p.fee_per_card
+  switch (e.type) {
+    case 'venue.opened':
+      v.owner = p.owner ?? v.owner
+      v.status = 'open'
+      v.openedTick = e.tick ?? s.tick
+      break
+    case 'venue.announcement':
+      v.announcement = { eventId: e.id, tick: e.tick, text: p.text ?? '' }
+      v.announcements += 1
+      break
+    case 'venue.closing':
+      // closing cancels every open offer of the venue, with no offer.cancelled for each
+      v.status = 'closing'
+      s.book.delete(p.venue)
+      break
+    case 'venue.closed':
+      v.status = 'closed'
+      s.book.delete(p.venue)
+      break
+  }
+}
+
+function settlementFailed(s: State, e: GameEvent, ours: boolean) {
+  const p = e.payload
+  const o = findOffer(s, p.offer)
+  push(s.failed, {
+    eventId: e.id, tick: e.tick, offer: typeof p.offer === 'number' ? p.offer : null, reason: p.reason ?? '?',
+    venue: o?.venue ?? null, ref: o?.ref ?? null, ours,
+  }, LIMITS.failed)
+  if (o) dropOffer(s, o)
 }
 
 const duelOf = (s: State, p: Payload): Duel => (s.duels[p.duel] ??= {
@@ -241,13 +443,18 @@ function me(s: State, e: GameEvent) {
   s.cash = p.cash ?? s.cash
   if (p.score) s.score = p.score
   if (p.album?.pages) s.pages = p.album.pages
-  const cards: Payload[] = (p.assets ?? []).filter((a: Payload) => a.kind === 'card')
-  if (cards.length) {
+  // the assets are all we hold: holding no card at all empties the album too
+  if (Array.isArray(p.assets)) {
     s.owned = {}
     s.values = {}
-    for (const a of cards) {
-      (s.owned[a.ref] ??= []).push({ id: a.id, serial: a.serial })
-      s.values[a.ref] = a.your_value ?? 0
+    s.packs = []
+    for (const a of p.assets as Payload[]) {
+      if (a?.kind === 'card') {
+        (s.owned[a.ref] ??= []).push({ id: a.id, serial: a.serial })
+        s.values[a.ref] = a.your_value ?? 0
+      } else if (a?.kind === 'pack') {
+        s.packs.push({ id: a.id, ref: a.ref ?? '?', name: a.name ?? a.ref ?? '?' })
+      }
     }
   }
   s.meEventId = e.id
@@ -280,6 +487,7 @@ export function apply(s: State, e: GameEvent): State {
       s.tick = tick
       s.day = p.day ?? s.day
       s.tickSeconds = p.tick_seconds ?? s.tickSeconds
+      expireBook(s, s.tick)
       break
     case 'agent.phase':
       s.phase = p.phase ?? s.phase
@@ -293,6 +501,40 @@ export function apply(s: State, e: GameEvent): State {
       break
     case 'agent.me':
       me(s, e)
+      break
+    case 'offer.listed':
+      offerListed(s, e)
+      break
+    case 'offer.cancelled': {
+      const o = findOffer(s, p.offer, p.venue)
+      if (o) dropOffer(s, o)
+      break
+    }
+    case 'settlement.failed':
+      settlementFailed(s, e, ours)
+      break
+    case 'venue.opened':
+    case 'venue.announcement':
+    case 'venue.fee_announced':
+    case 'venue.fee_changed':
+    case 'venue.closing':
+    case 'venue.closed':
+      venueEvent(s, e)
+      break
+    case 'pack.opened':
+      push(s.packsOpened, { eventId: e.id, tick: e.tick, team: p.team ?? '?', name: p.name ?? p.team ?? '?', pack: p.pack ?? '?', best: p.best ?? null }, LIMITS.packsOpened)
+      break
+    case 'gift.given':
+      push(s.gifts, {
+        eventId: e.id, tick: e.tick, team: p.team ?? '?', from: e.actor || '?', cash: p.cash ?? 0,
+        packs: p.packs ?? [], cards: p.cards ?? [], reason: p.reason ?? '',
+      }, LIMITS.gifts)
+      break
+    case 'thread.opened':
+      push(s.opened, {
+        eventId: e.id, tick: e.tick, thread: p.thread, kind: p.kind ?? '?', team: p.team ?? '?', with: p.with ?? '?',
+        topic: p.topic && typeof p.topic === 'object' ? p.topic : null,
+      }, LIMITS.opened)
       break
     case 'thread.message':
       threadMessage(s, e)
