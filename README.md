@@ -8,9 +8,9 @@ Nice-to-have N10 of the main repo's plan
 ([`bazaar/.ai/specs/98-nice-to-haves.md`](https://github.com/claude-hackaton-madrid-team-1/bazaar/blob/main/.ai/specs/98-nice-to-haves.md)).
 Stack: Vite + React + TypeScript + [Motion](https://motion.dev) (`motion` package, `motion/react`).
 
-**Public URL:** https://bazaar-live-production.up.railway.app (Railway service `bazaar-live`, project
-`heartfelt-warmth`; declared in the bazaar repo's `.railway/railway.py`). Preview without the live
-game: https://bazaar-live-production.up.railway.app/?mock=1
+**Public URL:** pending the first deploy of the Railway service `bazaar-live` (project
+`heartfelt-warmth`, declared in the bazaar repo's `.railway/railway.py`, bazaar PR #85). Its domain is
+generated once by hand, so it is added here when it exists; add `?mock=1` to preview without the game.
 
 ## Run
 
