@@ -3,7 +3,7 @@ import { EMPTY_RIVALS, type RivalCard, type RivalsSnapshot, type RivalTeam } fro
 import { mockRivals, rivalsStateOf } from '../rivals.ts'
 import { GAME_STRINGS } from '../strings.ts'
 import { apply, createState, type GameEvent, type Payload } from '../state.ts'
-import { CHASE_TICKS, chasedSet, knownBySet, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows } from './rivals.ts'
+import { CHASE_TICKS, chasedSet, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows } from './rivals.ts'
 
 let nextId = 1
 const ev = (type: string, payload: Payload = {}, tick = 500): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor: '', payload })
@@ -106,7 +106,6 @@ describe('teamRows', () => {
       ['t01', 3, true, 0, null, false],
       ['t09', 4, false, 0, null, false],
     ])
-    expect(rows[1]?.best).toEqual({ set: 'BBB', known: 2 })
   })
 
   it('picks the team asked for (case aside), else the best-ranked rival holding most of our needs; never us', () => {
@@ -136,11 +135,6 @@ describe('rivalAlbum', () => {
     expect(lav?.slots[9]).toMatchObject({ ref: 'LAV-10', need: true, known: { copies: 2, how: 'bought', since: 300, seen: 450 } })
     expect(lav?.slots[10]?.known?.how).toBe('pack')
     expect(lav?.slots[0]).toMatchObject({ ref: 'LAV-01', known: null, need: false, name: 'La Corrala' })
-  })
-
-  it('counts a holder\'s known page cards by set, the specials apart', () => {
-    const k = knownBySet([card('t07', 'MAL-01'), card('t07', 'MAL-11'), card('t07', 'MAL-01'), card('t05', 'LAV-02')], 't07')
-    expect([...k.entries()].map(([set, refs]) => [set, [...refs]])).toEqual([['MAL', ['MAL-01']]])
   })
 })
 

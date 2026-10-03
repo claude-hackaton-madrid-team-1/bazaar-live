@@ -22,6 +22,8 @@ export interface RivalStrings {
   /** "bought 3 min ago", for a holder chip's title and the album's cells. */
   readonly since: (how: HowKnown, ago: string) => string
   readonly seen: (ago: string) => string
+  /** On a holder chip: the latest sighting, when later than how it got the card. */
+  readonly seenLast: string
   readonly copies: (n: number) => string
   readonly nobody: string
   readonly dealers: (names: string) => string
@@ -72,9 +74,10 @@ const EN: RivalStrings = {
   needs: 'Who has what we need',
   needsSub: 'the cards our target pages lack: swap or buy targets',
   page: (name, have, of) => `${name} ${have}/${of}`,
-  how: { bought: 'bought', pack: 'from a pack', gift: 'a gift', crafted: 'crafted', listed: 'listed' },
+  how: { bought: 'bought', pack: 'from a pack', gift: 'a gift', crafted: 'crafted', listed: 'seen listed' },
   since: (how, ago) => (how === 'listed' ? `seen listing it ${ago}` : how === 'gift' ? `given ${ago}` : how === 'pack' ? `opened ${ago}` : `${how === 'crafted' ? 'crafted' : 'bought'} ${ago}`),
   seen: (ago) => `last seen ${ago}`,
+  seenLast: 'seen',
   copies: (n) => `×${n}`,
   nobody: 'No team seen holding it in public moves',
   dealers: (names) => `Also held by ${names}`,
@@ -120,9 +123,10 @@ const ES: RivalStrings = {
   needs: 'Quién tiene lo que nos falta',
   needsSub: 'las cartas que faltan en nuestras páginas objetivo: a quién cambiar o comprar',
   page: (name, have, of) => `${name} ${have}/${of}`,
-  how: { bought: 'comprada', pack: 'de un sobre', gift: 'regalo', crafted: 'fabricada', listed: 'a la venta' },
+  how: { bought: 'comprada', pack: 'de un sobre', gift: 'regalo', crafted: 'fabricada', listed: 'vista a la venta' },
   since: (how, ago) => (how === 'listed' ? `la puso a la venta ${ago}` : how === 'gift' ? `se la regalaron ${ago}` : how === 'pack' ? `le salió en un sobre ${ago}` : `${how === 'crafted' ? 'la fabricó' : 'la compró'} ${ago}`),
   seen: (ago) => `vista por última vez ${ago}`,
+  seenLast: 'vista',
   copies: (n) => `×${n}`,
   nobody: 'Ningún equipo la tiene en movimientos públicos',
   dealers: (names) => `También la tiene ${names}`,

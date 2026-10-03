@@ -115,8 +115,6 @@ export interface TeamRow {
   readonly chases: string | null
   /** It chases a set we aim for. */
   readonly rival: boolean
-  /** Its fullest page by what we know: the set and its known page cards. */
-  readonly best: { readonly set: string; readonly known: number } | null
 }
 
 /** The set a team's public moves chase most, when its count is above 0. */
@@ -124,20 +122,6 @@ export const chasedSet = (t: Pick<RivalTeam, 'interest'>): string | null => {
   let best: [string, number] | null = null
   for (const [set, n] of Object.entries(t.interest)) if (n > 0 && (!best || n > best[1] || (n === best[1] && set < best[0]))) best = [set, n]
   return best?.[0] ?? null
-}
-
-/** The page cards (the first ten of a set) a holder is known to hold, by set. */
-export function knownBySet(holdings: readonly RivalCard[], holder: string): Map<string, Set<string>> {
-  const out = new Map<string, Set<string>>()
-  for (const h of holdings) {
-    if (h.holder !== holder) continue
-    const [set, num] = h.card.split('-')
-    if (!set || Number(num) > PAGE_SLOTS) continue
-    const known = out.get(set) ?? new Set<string>()
-    known.add(h.card)
-    out.set(set, known)
-  }
-  return out
 }
 
 /** Every team by rank, ours included (marked), with what it holds of our needs and what it chases. */
@@ -149,12 +133,10 @@ export function teamRows(snap: RivalsSnapshot, s: State, needs: readonly Need[] 
     .map((t) => {
       const us = t.team === s.team
       const chases = chasedSet(t)
-      let best: TeamRow['best'] = null
-      for (const [set, known] of knownBySet(snap.holdings, t.team)) if (!best || known.size > best.known || (known.size === best.known && set < best.set)) best = { set, known: known.size }
       return {
         team: t.team, rank: t.rank, score: t.score, pages: t.pages, us,
         holdsNeeds: us ? 0 : snap.holdings.filter((h) => h.holder === t.team && wanted.has(h.card)).length,
-        chases, rival: !us && chases !== null && aims.has(chases), best,
+        chases, rival: !us && chases !== null && aims.has(chases),
       }
     })
 }

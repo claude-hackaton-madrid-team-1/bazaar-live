@@ -53,6 +53,12 @@ function NeedCard({ n, onPick }: { n: NeedRow; onPick: (team: string) => void })
                 {h.copies > 1 && <span className="rv-copies">{t.copies(h.copies)}</span>}
                 <span className="rv-how">
                   {t.how[h.how]} · <Ago tick={h.since} />
+                  {h.seen > h.since && (
+                    <>
+                      {' · '}
+                      {t.seenLast} <Ago tick={h.seen} />
+                    </>
+                  )}
                 </span>
               </button>
             </li>
