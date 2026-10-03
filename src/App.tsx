@@ -5,6 +5,7 @@ import { Stage } from './stage/Stage'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
 import { InjectionsPanel } from './ui/InjectionsPanel'
+import { useApproverAvailable } from './ui/approver'
 import { useLang, useStrings } from './ui/lang'
 import { useRoute } from './ui/route'
 import { soundMemory } from './ui/soundChoice'
@@ -21,12 +22,15 @@ const GameApp = lazy(() => import('./game/ui/GameApp'))
 export default function App() {
   const route = useRoute()
   const lang = useLang()
+  const approver = useApproverAvailable()
 
   useEffect(() => {
     document.documentElement.lang = lang
   }, [lang])
 
-  if (route === 'show') return <ShowApp />
+  // /approvals on a server without approvals is any unknown path: the show; nothing while the server has not said
+  if (route === 'approvals' && approver === null) return null
+  if (route === 'show' || (route === 'approvals' && !approver)) return <ShowApp />
   return (
     <Suspense fallback={null}>
       <GameApp route={route} />

@@ -680,7 +680,7 @@ const HUM_ES: GameStrings['hum'] = {
 
 const EN: GameStrings = {
   hum: HUM_EN,
-  nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', rivals: 'Rivals', market: 'Market', history: 'Movements', learn: 'Learned', injections: 'Injections', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', rivals: 'Rivals', market: 'Market', history: 'Movements', learn: 'Learned', injections: 'Injections', debug: 'Debug', approvals: 'Approvals' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
@@ -694,6 +694,7 @@ const EN: GameStrings = {
     learn: 'what our agents learned: blockers, lessons, dealers, rivals',
     injections: 'every prompt-injection attempt sent to our agents, with its proof',
     debug: 'the raw event stream',
+    approvals: 'approve or deny the big trades our agents may not make alone',
   },
   navLabel: 'Screens',
   brandTag: 'our agent, tick by tick',
@@ -1266,7 +1267,7 @@ const EN: GameStrings = {
 
 const ES: GameStrings = {
   hum: HUM_ES,
-  nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', rivals: 'Rivales', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', injections: 'Inyecciones', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', rivals: 'Rivales', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', injections: 'Inyecciones', debug: 'Depurar', approvals: 'Aprobaciones' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
@@ -1280,6 +1281,7 @@ const ES: GameStrings = {
     learn: 'lo que aprendieron nuestros agentes: bloqueos, lecciones, tratantes, rivales',
     injections: 'cada intento de inyección de prompts a nuestros agentes, con su prueba',
     debug: 'el flujo de eventos en bruto',
+    approvals: 'aprobar o vetar las compraventas grandes que nuestros agentes no pueden hacer solos',
   },
   navLabel: 'Pantallas',
   brandTag: 'nuestro agente, turno a turno',
