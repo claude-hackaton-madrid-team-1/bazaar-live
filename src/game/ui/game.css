@@ -885,6 +885,294 @@
   font-size: 0.8125rem;
 }
 
+/* the Agent screen at a glance: a status row per agent and the money first, blocks and deals next, the folded
+   timeline last. A silent agent is red (border, wash, words), a blocked one amber: never colour alone. */
+
+.agt-top,
+.agt-mid {
+  display: grid;
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.agt-top {
+  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+}
+
+.agt-mid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.agt-top > *,
+.agt-mid > * {
+  min-width: 0;
+}
+
+.agt-agents {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agt-agent {
+  --c: var(--gm-good);
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-left: 3px solid var(--c);
+  border-radius: 8px;
+  background: var(--gm-well);
+}
+
+.agt-agent[data-state='silent'] {
+  --c: var(--gm-bad);
+  background: color-mix(in srgb, var(--gm-bad) 9%, transparent);
+}
+
+.agt-agent[data-state='stuck'] {
+  --c: var(--gm-warn);
+}
+
+.agt-agent[data-state='none'] {
+  --c: var(--text-3);
+}
+
+.agt-who {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.agt-who > b {
+  font-size: 0.9375rem;
+}
+
+.agt-alive {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.agt-agent[data-state='silent'] .agt-alive {
+  font-weight: 600;
+  color: var(--gm-bad);
+}
+
+.agt-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px var(--s-3);
+  min-width: 0;
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.agt-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  min-width: 0;
+  margin: 0;
+}
+
+/* wide: the name and how long since it decided on the left, what it did and what blocks it on the right */
+.agt-agent {
+  grid-template-rows: auto 1fr;
+}
+
+.agt-agent > .agt-facts {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.agt-alive {
+  align-self: start;
+}
+
+.agt-facts .agt-restarts {
+  grid-column: 1 / -1;
+}
+
+.agt-alert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--s-4);
+  margin: 0 0 var(--s-3);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.agt-blocks .gm-fill {
+  background: linear-gradient(90deg, var(--seller-1), var(--seller-2));
+}
+
+.agt-rule {
+  overflow-wrap: anywhere;
+}
+
+.agt-restarts {
+  font-size: 0.75rem;
+  color: var(--gm-warn);
+}
+
+.agt-headroom {
+  margin: var(--s-3) 0 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.agt-headroom[data-zero] {
+  color: var(--gm-bad);
+}
+
+.agt-small {
+  margin: var(--s-1) 0 0;
+  font-size: 0.75rem;
+}
+
+.agt-tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  font-size: 0.8125rem;
+}
+
+.agt-deals,
+.agt-timeline {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agt-deal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  min-width: 0;
+  padding: 6px 0;
+  border-top: 1px solid var(--hairline);
+  font-size: 0.8125rem;
+}
+
+.agt-deal:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.agt-entry {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: 6px var(--s-2);
+  border-top: 1px solid var(--hairline);
+  font-size: 0.8125rem;
+}
+
+.agt-entry:first-child {
+  border-top: 0;
+}
+
+.agt-when {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.agt-what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  min-width: 0;
+}
+
+.agt-entry[data-blocked],
+.agt-entry[data-kind='outcome'][data-tone='bad'] {
+  box-shadow: inset 3px 0 0 var(--gm-bad);
+}
+
+.agt-entry[data-kind='outcome'][data-tone='good'] {
+  box-shadow: inset 3px 0 0 var(--gm-good);
+}
+
+.agt-entry[data-kind='idle'],
+.agt-entry[data-kind='restart'] {
+  padding-block: 2px;
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+.agt-entry[data-kind='idle'] .agt-what {
+  font-style: italic;
+}
+
+.agt-entry[data-kind='restart'] .agt-what {
+  color: var(--gm-warn);
+}
+
+.agt-agent-name {
+  font-size: 0.75rem;
+  color: var(--gm-us);
+}
+
+.agt-detail {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 2px var(--s-2);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+  .agt-top,
+  .agt-mid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agt-agent {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .agt-agent > .agt-facts {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .agt-agent {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agt-facts {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  .agt-facts dd + dt {
+    margin-top: 4px;
+  }
+
+  .agt-entry {
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+    padding-inline: var(--s-1);
+  }
+}
+
 @media (max-width: 520px) {
   /* a phone: the agent and the event link on top, the decision across the whole card below */
   .gm-dec {

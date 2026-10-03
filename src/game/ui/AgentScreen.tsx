@@ -1,266 +1,120 @@
-import { Fragment, useMemo, useState } from 'react'
-import type { DecisionRow } from '../decisions.ts'
-import { fmtP, PHASES, setOf, signed } from '../game.ts'
+import { useMemo, useState } from 'react'
+import type { OutcomeRow } from '../decisions.ts'
+import { fmtP, setOf, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
-import { now as nowOf, timeline, type Filter, type Line, type Now, type TickCard as Card } from '../views/agent.ts'
-import { blocksByRule, deals as dealsOf, isWrite, ledger as ledgerOf, share, STATUS_TONE, type Blocks, type DecideSlot, type Deal, type Ledger, type Run } from '../views/decisions.ts'
-import { Badge, Empty, EventLink, Panel, RefChip, Seg } from './bits.tsx'
+import { timeline, type Entry, type Filter } from '../views/agent.ts'
+import {
+  agentStatuses, blocksByRule, dealTally, deals as dealsOf, isWrite, ledger as ledgerOf, share, SILENT_AFTER, STATUS_TONE,
+  type AgentState, type AgentStatus, type Blocks, type Deal, type DealTally, type Ledger, type Run,
+} from '../views/decisions.ts'
+import { Badge, Empty, EventLink, Panel, RefChip, Seg, type Tone } from './bits.tsx'
 import { toneOf } from './tone.ts'
 
-function NowStrip({ now }: { now: Now }) {
-  const t = useGameStrings()
-  return (
-    <Panel title={t.agent.now} sub={`${t.tick} ${now.tick}`}>
-      <div className="gm-now">
-        <div className="gm-now-main">
-          <ol className="gm-steps" aria-label={t.agent.loop}>
-            {PHASES.map((p, i) => (
-              <Fragment key={p}>
-                {i > 0 && (
-                  <li className="gm-step-arrow" aria-hidden="true">
-                    →
-                  </li>
-                )}
-                <li className="gm-step" data-state={i === now.phaseIndex ? 'live' : i < now.phaseIndex ? 'done' : 'next'} aria-current={i === now.phaseIndex ? 'step' : undefined}>
-                  {t.phases[p]}
-                </li>
-              </Fragment>
-            ))}
-          </ol>
-          <p className="gm-goal">
-            <span className="eyebrow">{t.agent.goal}</span>
-            {now.goal || (now.decision ? t.decide.goal(now.decision.agent, now.decision.kind, now.decision.item, now.decision.counterparty) : <span className="gm-muted">{t.agent.noGoal}</span>)}
-          </p>
-          <div className="gm-why">
-            <div>
-              <b className="eyebrow">{t.agent.why}</b>
-              {now.thought ? (
-                <>
-                  <span>{now.thought.text}</span>
-                  <EventLink id={now.thought.eventId} />
-                </>
-              ) : now.decision ? (
-                <>
-                  <span>
-                    <Why row={now.decision} />
-                  </span>
-                  <EventLink id={now.decision.eventId}>#{now.decision.decision}</EventLink>
-                </>
-              ) : (
-                <span className="gm-muted">{t.agent.noReasoning}</span>
-              )}
-            </div>
-            <div>
-              <b className="eyebrow">{t.agent.did}</b>
-              {now.action ? (
-                <>
-                  <span>{`${now.action.icon} ${now.action.text}`}</span>
-                  <EventLink id={now.action.eventId} />
-                </>
-              ) : now.executed?.method ? (
-                <>
-                  <span>
-                    {t.decide.did(now.executed.agent, now.executed.method, now.executed.item, now.executed.price != null ? fmtP(now.executed.price) : null)}
-                    {' · '}
-                    {t.tick} {now.executed.tick}
-                  </span>
-                  <EventLink id={now.executed.eventId}>#{now.executed.decision}</EventLink>
-                </>
-              ) : (
-                <span className="gm-muted">{t.agent.noAction}</span>
-              )}
-            </div>
-          </div>
-        </div>
-        <dl className="gm-facts">
-          <div>
-            <dt className="eyebrow">{t.agent.openThreads}</dt>
-            <dd>{now.openThreads}</dd>
-          </div>
-          <div>
-            <dt className="eyebrow">{t.agent.ourTrades}</dt>
-            <dd>{now.trades}</dd>
-          </div>
-          <div>
-            <dt className="eyebrow">{t.agent.gained}</dt>
-            <dd className={now.trades ? toneOf(now.gain) : undefined}>{now.trades ? signed(now.gain) : '—'}</dd>
-          </div>
-          <div>
-            <dt className="eyebrow">{t.cash}</dt>
-            <dd>{fmtP(now.cash)}</dd>
-          </div>
-        </dl>
-      </div>
-    </Panel>
-  )
-}
-
-function LineRow({ line }: { line: Line }) {
-  const t = useGameStrings()
-  return (
-    <li className="gm-line">
-      <span className="gm-line-icon" aria-hidden="true">
-        {line.icon}
-      </span>
-      <span className="gm-line-body">
-        <span className={line.type === 'agent.thought' ? 'gm-thought' : undefined} data-tone={line.tone}>
-          {line.text}
-        </span>
-        {line.final && <Badge tone="warn">{t.badge.final}</Badge>}
-        {line.suspicious && (
-          <Badge tone="bad" title={t.badge.injectionTitle}>
-            {t.badge.injection}
-          </Badge>
-        )}
-        {line.gain != null && <span className={`gm-gain ${toneOf(line.gain)}`}>{signed(line.gain)}</span>}
-        {line.quote && <span className="gm-quote" data-flagged={line.suspicious || undefined}>“{line.quote}”</span>}
-      </span>
-      <EventLink id={line.eventId} />
-    </li>
-  )
-}
+const STATE_TONE: Readonly<Record<AgentState, Tone>> = { none: 'neutral', silent: 'bad', stuck: 'warn', ok: 'good' }
 
 /** An item: a card with its barrio's colour, or a pack, a name or a duel as plain mono text. */
 function Item({ item }: { item: string }) {
   return setOf(item) ? <RefChip topic={item} /> : <span className="gm-mono gm-dec-item">{item}</span>
 }
 
-/** Why a decision went the way it did: the guardrail's answer (and the rule that blocked it) and Jev's verdict. */
-function Why({ row }: { row: DecisionRow }) {
-  const d = useGameStrings().decide
+const priceText = (run: Run): string | null =>
+  run.minPrice == null || run.maxPrice == null ? null : run.minPrice === run.maxPrice ? fmtP(run.minPrice) : `${run.minPrice}–${fmtP(run.maxPrice)}`
+
+/** What a run of decisions was and how it ended: kind · item · counterparty · price, then the rule that blocked it or its status. */
+function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
+  const t = useGameStrings()
+  const price = priceText(run)
   return (
     <>
-      {row.verdict === 'allowed' && <span className="gm-good">✓ {d.allowed}</span>}
-      {row.verdict === 'denied' && (
-        <span className="gm-dec-rule">
-          <span className="gm-bad">✖ {d.blockedBy}</span> <b className="gm-mono">{row.rule}</b>
-          {row.text && <span className="gm-muted"> · {row.text}</span>}
+      {agent && <b className="agt-agent-name gm-mono">{run.agent}</b>}
+      <span className="gm-mono">{run.kind}</span>
+      {run.item && <Item item={run.item} />}
+      {run.counterparty && <span className="gm-muted">· {run.counterparty}</span>}
+      {price && <b className="gm-dec-price">{price}</b>}
+      {run.verdict === 'denied' ? (
+        <span className="agt-rule">
+          <span className="gm-bad">✖</span> <b className="gm-mono">{run.rule ?? 'other'}</b>
         </span>
-      )}
-      {row.verdict == null && isWrite(row.kind) && <span className="gm-muted">{d.noCheck}</span>}
-      {row.jev && (
-        <span className="gm-dec-jev">
-          {' '}
-          {d.jev} <b>{row.jev}</b>
-          {row.jevValue != null && <span className="gm-muted"> {row.jevValue.toFixed(2)}</span>}
-        </span>
-      )}
+      ) : isWrite(run.kind) ? (
+        <Badge tone={STATUS_TONE[run.status]}>{t.decide.status[run.status]}</Badge>
+      ) : null}
+      {run.rows.length > 1 && <Badge tone={run.verdict === 'denied' ? 'bad' : 'neutral'}>×{run.rows.length}</Badge>}
     </>
   )
 }
 
-/** One decision: agent · kind · item · counterparty · price · guardrail · Jev · status (and how it ended). */
-function DecisionLine({ row, run }: { row: DecisionRow; run: Run | null }) {
+function AgentRow({ st }: { st: AgentStatus }) {
   const t = useGameStrings()
-  const d = t.decide
-  const price = run && run.low != null && run.high != null && run.low !== run.high ? `${run.low}–${fmtP(run.high)}` : row.price != null ? fmtP(row.price) : null
+  const a = t.agt
+  const alive = st.state === 'none' ? a.noLog : st.silentFor == null ? a.never : a.ago(st.silentFor)
   return (
-    <li className="gm-dec" data-status={row.status}>
-      <span className="gm-dec-agent gm-mono">{row.agent}</span>
-      <span className="gm-dec-body">
-        <span className="gm-dec-what">
-          <span className="gm-mono">{d.kind(row.kind)}</span>
-          {row.item && <Item item={row.item} />}
-          {row.counterparty && <span className="gm-muted">· {row.counterparty}</span>}
-          {price != null && <b className="gm-dec-price">{price}</b>}
-          {isWrite(row.kind) && <Badge tone={STATUS_TONE[row.status]}>{d.status[row.status]}</Badge>}
-          {run && <span className="gm-muted gm-num">{d.run(run.count, run.from, run.to)}</span>}
-          {row.error && <Badge tone="bad">{d.error(row.error)}</Badge>}
-        </span>
-        <span className="gm-dec-why">
-          <Why row={row} />
-          {row.outcome && (
-            <span className="gm-dec-out">
-              <Badge tone={row.outcome === 'good' ? 'good' : row.outcome === 'bad' ? 'bad' : 'neutral'}>{row.outcome}</Badge>
-              {row.surplus != null && <span className={`gm-gain ${toneOf(row.surplus)}`}>{signed(row.surplus)}</span>}
-              {row.jevRight != null && <span className={row.jevRight ? 'gm-good' : 'gm-bad'}>{row.jevRight ? d.jevRight : d.jevWrong}</span>}
-            </span>
-          )}
-        </span>
-      </span>
-      <EventLink id={row.eventId}>#{row.decision}</EventLink>
+    <li className="agt-agent" data-state={st.state}>
+      <div className="agt-who">
+        <span className="gm-dot" aria-hidden="true" />
+        <b className="gm-mono">{st.agent}</b>
+        <Badge tone={STATE_TONE[st.state]}>{a.state[st.state]}</Badge>
+      </div>
+      <div className="agt-alive">{alive}</div>
+      {st.state !== 'none' && (
+        <dl className="agt-facts">
+          <dt className="eyebrow">{a.last}</dt>
+          <dd>
+            {st.last ? <RunWhat run={st.last} /> : <span className="gm-muted">—</span>}
+            {st.last && st.last.rows.length > 1 && <span className="gm-muted">{a.ticks(st.last.fromTick, st.last.toTick)}</span>}
+          </dd>
+          <dt className="eyebrow">{a.blockedMost}</dt>
+          <dd>
+            {st.topBlock ? (
+              <>
+                <b className="gm-mono agt-rule">{st.topBlock.rule}</b>
+                <b className="gm-bad">×{st.topBlock.count}</b>
+                <span className="gm-muted">· {a.ofHour(st.blocks, st.decisions)}</span>
+              </>
+            ) : (
+              <span className="gm-muted">{a.noBlocks}</span>
+            )}
+          </dd>
+          {st.restarts > 0 && st.restartedAt != null && <dd className="agt-restarts">↻ {a.restarted(st.restarts, st.restartedAt)}</dd>}
+        </dl>
+      )}
     </li>
   )
 }
 
-function DecideSlots({ slots }: { slots: DecideSlot[] }) {
-  const t = useGameStrings()
+/** The answer in one line: which agent is silent or stuck, and why; worst first. */
+function Alert({ statuses }: { statuses: AgentStatus[] }) {
+  const a = useGameStrings().agt
+  if (statuses.every((st) => st.state === 'none')) return null
+  const silent = statuses.filter((st) => st.state === 'silent')
+  const stuck = statuses.filter((st) => st.state === 'stuck')
   return (
-    <ul className="gm-decs">
-      {slots.map((slot) =>
-        slot.kind === 'row' ? (
-          <DecisionLine key={slot.row.decision} row={slot.row} run={slot.run} />
-        ) : (
-          <li key="idle" className="gm-dec gm-dec-idle">
-            <span className="gm-muted">{t.decide.idle(slot.agents)}</span>
-          </li>
-        ),
-      )}
-    </ul>
-  )
-}
-
-function TickCard({ card, current }: { card: Card; current: boolean }) {
-  const t = useGameStrings()
-  return (
-    <article className="gm-tick" data-current={current || undefined}>
-      <header className="gm-tick-head">
-        <span className="gm-tick-no">
-          {t.tick} {card.tick}
-          {current && <span className="gm-muted"> · {t.agent.now_}</span>}
+    <p className="agt-alert" role="status" data-ok={!silent.length && !stuck.length ? true : undefined}>
+      {silent.map((st) => (
+        <span key={st.agent} className="gm-bad">
+          ● {a.alertSilent(st.agent, st.silentFor)}
         </span>
-        {card.deals > 0 && (
-          <span className="gm-tick-meta">
-            <span className="gm-muted">{t.agent.deals(card.deals)}</span>
-            <span className={toneOf(card.gain)}>{signed(card.gain)}</span>
-          </span>
-        )}
-      </header>
-      {card.lanes.map(({ lane, lines }) => (
-        <section key={lane} className="gm-lane" data-lane={lane}>
-          <div className="gm-lane-name eyebrow">{t.lanes[lane]}</div>
-          <div className="gm-lane-body">
-            {lines.length > 0 && (
-              <ul className="gm-lines">
-                {lines.map((line, i) => (
-                  <LineRow key={`${line.eventId}-${i}`} line={line} />
-                ))}
-              </ul>
-            )}
-            {lane === 'decide' && card.decide.length > 0 && <DecideSlots slots={card.decide} />}
-          </div>
-        </section>
       ))}
-    </article>
+      {stuck.map((st) => (
+        <span key={st.agent} className="gm-warn">
+          ● {a.alertStuck(st.agent, st.last?.rows.length ?? 0, st.last?.rule ?? 'other')}
+        </span>
+      ))}
+      {!silent.length && !stuck.length && <span className="gm-good">● {a.allOk}</span>}
+    </p>
   )
 }
 
-function BlocksTile({ blocks }: { blocks: Blocks }) {
+function AgentsPanel({ statuses }: { statuses: AgentStatus[] }) {
   const t = useGameStrings()
-  const top = blocks.rules[0]?.count ?? 0
   return (
-    <Panel title={t.decide.blocks} sub={t.decide.blocksSub(blocks.fromTick)}>
-      {blocks.rules.length ? (
-        <ul className="gm-rules">
-          {blocks.rules.map((r) => (
-            <li key={r.rule} className="gm-rule" title={r.agents.join(', ')}>
-              <span className="gm-rule-head">
-                <b className="gm-mono">{r.rule}</b>
-                <span className="gm-num">{t.decide.times(r.count)}</span>
-              </span>
-              <span className="gm-track" aria-hidden="true">
-                <span className="gm-fill gm-fill-bad" style={{ width: `${Math.round(share(r.count, top) * 100)}%` }} />
-              </span>
-              <span className="gm-rule-meta gm-muted">
-                {r.agents.join(' · ')} · {t.tick} {r.lastTick}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Empty>{t.decide.noBlocks}</Empty>
-      )}
+    <Panel title={t.agt.agents} sub={t.agt.agentsSub(SILENT_AFTER)} className="agt-agents-panel">
+      <Alert statuses={statuses} />
+      <ul className="agt-agents">
+        {statuses.map((st) => (
+          <AgentRow key={st.agent} st={st} />
+        ))}
+      </ul>
     </Panel>
   )
 }
@@ -283,18 +137,20 @@ function Meter({ label, value, cap, text, invert = false }: { label: string; val
   )
 }
 
-function LedgerTile({ ledger }: { ledger: Ledger | null }) {
+function MoneyPanel({ ledger }: { ledger: Ledger | null }) {
   const t = useGameStrings()
   return (
-    <Panel title={t.decide.ledger} sub={t.decide.ledgerSub}>
+    <Panel title={t.agt.money} sub={t.decide.ledgerSub}>
       {ledger ? (
         <>
           <dl className="gm-meters">
             <Meter label={t.decide.spent} value={ledger.spent} cap={ledger.limits.spendPerHour} text={`${fmtP(ledger.spent)} / ${fmtP(ledger.limits.spendPerHour)}`} />
             <Meter label={t.decide.cashFloor} value={ledger.cash} cap={ledger.limits.cashFloor} text={`${fmtP(ledger.cash)} / ${fmtP(ledger.limits.cashFloor)}`} invert />
-            <Meter label={t.decide.accepts} value={ledger.accepts} cap={ledger.limits.acceptsPerTick} text={`${ledger.accepts} / ${ledger.limits.acceptsPerTick}`} />
           </dl>
-          <p className="gm-meter-note gm-muted">{t.decide.headroom(fmtP(ledger.headroom))}</p>
+          <p className="agt-headroom" data-zero={ledger.headroom <= 0 || undefined}>
+            {t.decide.headroom(fmtP(ledger.headroom))}
+          </p>
+          <p className="agt-small gm-muted">{t.agt.acceptsTick(ledger.accepts, ledger.limits.acceptsPerTick)}</p>
         </>
       ) : (
         <Empty>{t.decide.noLedger}</Empty>
@@ -303,50 +159,99 @@ function LedgerTile({ ledger }: { ledger: Ledger | null }) {
   )
 }
 
-/** An outcome's subject as its real id: `thread:574` → `thread #574`. */
-const subjectLabel = (subject: string): string => subject.replace(':', ' #')
+const RULES_SHOWN = 6
 
-function DealsTile({ deals }: { deals: Deal[] }) {
+function BlocksPanel({ blocks }: { blocks: Blocks }) {
+  const t = useGameStrings()
+  const top = blocks.rules[0]?.count ?? 0
+  const hidden = blocks.rules.length - RULES_SHOWN
+  return (
+    <Panel title={t.decide.blocks} sub={t.decide.blocksSub(blocks.fromTick)}>
+      {blocks.rules.length ? (
+        <ul className="gm-rules agt-blocks">
+          {blocks.rules.slice(0, RULES_SHOWN).map((r) => (
+            <li key={r.rule} className="gm-rule">
+              <span className="gm-rule-head">
+                <b className="gm-mono">{r.rule}</b>
+                <span className="gm-num">×{r.count}</span>
+              </span>
+              <span className="gm-track" aria-hidden="true">
+                <span className="gm-fill gm-fill-bad" style={{ width: `${Math.round(share(r.count, top) * 100)}%` }} />
+              </span>
+              <span className="gm-rule-meta gm-muted">
+                {r.agents.join(' · ')} · {t.tick} {r.lastTick}
+              </span>
+            </li>
+          ))}
+          {hidden > 0 && <li className="agt-small gm-muted">{t.agt.more(hidden)}</li>}
+        </ul>
+      ) : (
+        <Empty>{t.decide.noBlocks}</Empty>
+      )}
+    </Panel>
+  )
+}
+
+/** A scored deal on one line: what, with whom, price against our value, the edge, and Jev. */
+function DealWhat({ deal, details }: { deal: Deal; details: boolean }) {
+  const t = useGameStrings()
+  const d = t.decide
+  const { row, edge, verdict } = deal
+  return (
+    <>
+      {row.item ? <Item item={row.item} /> : <span className="gm-mono">{row.subject}</span>}
+      <span className="gm-muted">
+        {d.target[row.target]}
+        {row.counterparty && ` · ${row.counterparty}`}
+      </span>
+      {row.price != null && (
+        <span>
+          {fmtP(row.price)}
+          {deal.value != null ? <span className="gm-muted"> vs {fmtP(deal.value)}</span> : <span className="gm-muted"> · {d.noValue}</span>}
+        </span>
+      )}
+      {edge != null && verdict != null ? (
+        <span className={toneOf(edge)}>
+          <span className="gm-gain">{edge === 0 ? '±0 P' : signed(edge)}</span> {d[verdict]}
+        </span>
+      ) : row.label ? (
+        <Badge tone={row.label === 'good' ? 'good' : row.label === 'bad' ? 'bad' : 'neutral'}>{t.agt.label[row.label]}</Badge>
+      ) : (
+        <span className="gm-muted">{d.unscored}</span>
+      )}
+      {row.jevRight != null && <span className={row.jevRight ? 'gm-good' : 'gm-bad'}>{row.jevRight ? d.jevRight : d.jevWrong}</span>}
+      {details && <EventLink id={row.eventId} />}
+    </>
+  )
+}
+
+function DealsPanel({ deals, tally, details }: { deals: Deal[]; tally: DealTally; details: boolean }) {
   const t = useGameStrings()
   const d = t.decide
   return (
     <Panel title={d.deals} sub={d.dealsSub}>
       {deals.length ? (
-        <ul className="gm-deals">
-          {deals.map(({ row, value, edge, verdict }) => (
-            <li key={`${row.target}-${row.subject}`} className="gm-deal">
-              <span className="gm-deal-head">
-                {row.item ? <Item item={row.item} /> : <span className="gm-mono">{row.subject}</span>}
-                <span className="gm-muted">
-                  {d.target[row.target]}
-                  {row.counterparty && ` · ${row.counterparty}`}
-                </span>
-                <EventLink id={row.eventId}>{subjectLabel(row.subject)}</EventLink>
-              </span>
-              <span className="gm-deal-body">
-                {row.price != null && (
-                  <span>
-                    {fmtP(row.price)}
-                    {value != null && <span className="gm-muted"> vs {fmtP(value)}</span>}
-                  </span>
-                )}
-                {edge != null && verdict != null ? (
-                  <span className={toneOf(edge)}>
-                    <span className="gm-gain">{edge === 0 ? '±0 P' : signed(edge)}</span> {d[verdict]}
-                  </span>
-                ) : (
-                  <span className="gm-muted">{row.price != null ? d.noValue : d.unscored}</span>
-                )}
-                {row.jev && (
-                  <span>
-                    {d.jev} <b>{row.jev}</b>
-                    {row.jevRight != null && <span className={row.jevRight ? 'gm-good' : 'gm-bad'}> · {row.jevRight ? d.jevRight : d.jevWrong}</span>}
-                  </span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="agt-tally">
+            <Badge tone="good">
+              {tally.good} {t.agt.tally.good}
+            </Badge>
+            <Badge tone="neutral">
+              {tally.ok} {t.agt.tally.ok}
+            </Badge>
+            <Badge tone="bad">
+              {tally.bad} {t.agt.tally.bad}
+            </Badge>
+            {tally.jevJudged > 0 && <span className="gm-muted">{t.agt.jevScore(tally.jevRight, tally.jevJudged)}</span>}
+          </p>
+          <ul className="agt-deals">
+            {deals.map((deal) => (
+              <li key={`${deal.row.target}-${deal.row.subject}`} className="agt-deal">
+                <DealWhat deal={deal} details={details} />
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <Empty>{d.noDeals}</Empty>
       )}
@@ -354,19 +259,108 @@ function DealsTile({ deals }: { deals: Deal[] }) {
   )
 }
 
+function outcomeTone(row: OutcomeRow): Tone {
+  return row.label === 'good' ? 'good' : row.label === 'bad' ? 'bad' : 'neutral'
+}
+
+/** One timeline line: when (a tick or a range), what, and its event id only with the details on. */
+function EntryRow({ entry, details }: { entry: Entry; details: boolean }) {
+  const t = useGameStrings()
+  const a = t.agt
+  switch (entry.kind) {
+    case 'idle':
+      return (
+        <li className="agt-entry" data-kind="idle">
+          <span className="agt-when">{a.ticks(entry.from, entry.to)}</span>
+          <span className="agt-what">{a.idle}</span>
+        </li>
+      )
+    case 'restart':
+      return (
+        <li className="agt-entry" data-kind="restart">
+          <span className="agt-when">{entry.tick}</span>
+          <span className="agt-what">
+            ↻ <b className="gm-mono">{entry.agent}</b> {a.restart}
+          </span>
+          {details && <EventLink id={entry.eventId} />}
+        </li>
+      )
+    case 'outcome':
+      return (
+        <li className="agt-entry" data-kind="outcome" data-tone={outcomeTone(entry.row)}>
+          <span className="agt-when">{entry.tick}</span>
+          <span className="agt-what">
+            <span aria-hidden="true">◆</span>
+            <DealWhat deal={entry.deal} details={false} />
+          </span>
+          {details && <EventLink id={entry.row.eventId} />}
+        </li>
+      )
+    case 'line':
+      return (
+        <li className="agt-entry" data-kind="line">
+          <span className="agt-when">{entry.tick}</span>
+          <span className="agt-what">
+            <span aria-hidden="true">{entry.line.icon}</span>
+            <span data-tone={entry.line.tone}>{entry.line.text}</span>
+            {entry.line.gain != null && <span className={`gm-gain ${toneOf(entry.line.gain)}`}>{signed(entry.line.gain)}</span>}
+          </span>
+          {details && <EventLink id={entry.line.eventId} />}
+        </li>
+      )
+    case 'run': {
+      const { run } = entry
+      const last = run.last
+      const d = t.decide
+      return (
+        <li className="agt-entry" data-kind="run" data-blocked={run.verdict === 'denied' || undefined} data-status={run.status}>
+          <span className="agt-when">{a.ticks(run.fromTick, run.toTick)}</span>
+          <span className="agt-what">
+            <RunWhat run={run} agent />
+            {last.error && <Badge tone="bad">{d.error(last.error)}</Badge>}
+            {last.outcome && (
+              <>
+                <Badge tone={last.outcome === 'good' ? 'good' : last.outcome === 'bad' ? 'bad' : 'neutral'}>{a.label[last.outcome]}</Badge>
+                {last.surplus != null && <span className={`gm-gain ${toneOf(last.surplus)}`}>{signed(last.surplus)}</span>}
+                {last.jevRight != null && <span className={last.jevRight ? 'gm-good' : 'gm-bad'}>{last.jevRight ? d.jevRight : d.jevWrong}</span>}
+              </>
+            )}
+            {details && (
+              <span className="agt-detail gm-muted">
+                {last.text && <span>{last.text}</span>}
+                {last.jev && (
+                  <span>
+                    {d.jev} {last.jev}
+                    {last.jevValue != null && ` ${last.jevValue.toFixed(2)}`}
+                  </span>
+                )}
+                {last.method && <span className="gm-mono">{last.method}</span>}
+                <span className="gm-mono">#{run.rows.map((r) => r.decision).join(' #')}</span>
+              </span>
+            )}
+          </span>
+          {details && <EventLink id={last.eventId} />}
+        </li>
+      )
+    }
+  }
+}
+
 export function AgentScreen() {
   const store = useGame()
   const t = useGameStrings()
   const { state, version } = store
   const [filter, setFilter] = useState<Filter>('all')
+  const [details, setDetails] = useState(false)
   const [frozenAt, setFrozenAt] = useState<number | null>(null)
   // the state is mutated in place: the version is what changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const cards = useMemo(() => timeline(state, { filter, upToTick: frozenAt }), [state, version, filter, frozenAt])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const current = useMemo(() => nowOf(state), [state, version])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const side = useMemo(() => ({ blocks: blocksByRule(state), ledger: ledgerOf(state), deals: dealsOf(state) }), [state, version])
+  const entries = useMemo(() => timeline(state, { filter, upToTick: frozenAt }), [state, version, filter, frozenAt])
+  const top = useMemo(
+    () => ({ statuses: agentStatuses(state), blocks: blocksByRule(state), ledger: ledgerOf(state), deals: dealsOf(state, 5), tally: dealTally(state) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, version],
+  )
   const newer = frozenAt == null ? 0 : Math.max(0, state.tick - frozenAt)
   const controls = (
     <>
@@ -374,12 +368,15 @@ export function AgentScreen() {
         label={t.agent.show}
         value={filter}
         options={[
-          ['all', t.agent.filters.all],
-          ['actions', t.agent.filters.actions],
-          ['deals', t.agent.filters.deals],
+          ['all', t.agt.filters.all],
+          ['blocked', t.agt.filters.blocked],
+          ['deals', t.agt.filters.deals],
         ]}
         onChange={setFilter}
       />
+      <button type="button" className="gm-btn" aria-pressed={details} onClick={() => setDetails(!details)} title={t.agt.detailsTitle}>
+        {t.agt.details}
+      </button>
       <button type="button" className="gm-btn" aria-pressed={frozenAt == null} onClick={() => setFrozenAt(frozenAt == null ? state.tick : null)} title={t.agent.followTitle}>
         {t.agent.follow}
       </button>
@@ -392,25 +389,40 @@ export function AgentScreen() {
   )
   return (
     <>
-      <NowStrip now={current} />
-      <div className="gm-agent-layout">
-        <Panel title={t.agent.timeline} sub={t.agent.timelineSub} actions={controls}>
-          {cards.length ? (
-            <div className="gm-ticks">
-              {cards.map((card) => (
-                <TickCard key={card.tick} card={card} current={card.tick === state.tick} />
-              ))}
-            </div>
-          ) : (
-            <Empty>{filter === 'all' ? t.agent.waiting : t.agent.nothingKind}</Empty>
-          )}
-        </Panel>
-        <aside className="gm-agent-side">
-          <LedgerTile ledger={side.ledger} />
-          <BlocksTile blocks={side.blocks} />
-          <DealsTile deals={side.deals} />
-        </aside>
+      <div className="agt-top">
+        <AgentsPanel statuses={top.statuses} />
+        <MoneyPanel ledger={top.ledger} />
       </div>
+      <div className="agt-mid">
+        <BlocksPanel blocks={top.blocks} />
+        <DealsPanel deals={top.deals} tally={top.tally} details={details} />
+      </div>
+      <Panel title={t.agent.timeline} sub={t.agt.timelineSub} actions={controls}>
+        {entries.length ? (
+          <ol className="agt-timeline">
+            {entries.map((entry) => (
+              <EntryRow key={`${entry.kind}-${entry.tick}-${entryKey(entry)}`} entry={entry} details={details} />
+            ))}
+          </ol>
+        ) : (
+          <Empty>{filter === 'all' ? t.agt.waiting : t.agent.nothingKind}</Empty>
+        )}
+      </Panel>
     </>
   )
+}
+
+function entryKey(e: Entry): string {
+  switch (e.kind) {
+    case 'run':
+      return `${e.run.agent}-${e.run.last.decision}`
+    case 'restart':
+      return `${e.agent}-${e.eventId}`
+    case 'outcome':
+      return `${e.row.target}-${e.row.subject}`
+    case 'line':
+      return `${e.line.eventId}-${e.line.text}`
+    case 'idle':
+      return `${e.from}`
+  }
 }

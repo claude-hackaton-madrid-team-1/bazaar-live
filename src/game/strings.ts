@@ -96,6 +96,38 @@ export interface GameStrings {
     readonly jevWrong: string
     readonly target: Readonly<Record<'trade' | 'dealer' | 'duel', string>>
   }
+  /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agent names, kinds and rule ids stay as written. */
+  readonly agt: {
+    readonly agents: string
+    readonly agentsSub: (silentAfter: number) => string
+    readonly state: Readonly<Record<'none' | 'silent' | 'stuck' | 'ok', string>>
+    readonly ago: (n: number) => string
+    readonly never: string
+    readonly noLog: string
+    readonly last: string
+    readonly blockedMost: string
+    readonly noBlocks: string
+    readonly ofHour: (blocks: number, decisions: number) => string
+    readonly inARow: (n: number) => string
+    readonly restarted: (n: number, tick: number) => string
+    readonly money: string
+    readonly acceptsTick: (n: number, cap: number) => string
+    readonly idle: string
+    readonly restart: string
+    readonly ticks: (from: number, to: number) => string
+    readonly filters: Readonly<Record<'all' | 'blocked' | 'deals', string>>
+    readonly details: string
+    readonly detailsTitle: string
+    readonly timelineSub: string
+    readonly waiting: string
+    readonly tally: Readonly<Record<'good' | 'ok' | 'bad', string>>
+    readonly jevScore: (right: number, judged: number) => string
+    readonly more: (n: number) => string
+    readonly label: Readonly<Record<'good' | 'ok' | 'bad', string>>
+    readonly alertSilent: (agent: string, ticks: number | null) => string
+    readonly alertStuck: (agent: string, n: number, rule: string) => string
+    readonly allOk: string
+  }
   readonly badge: {
     readonly final: string
     readonly injection: string
@@ -469,6 +501,37 @@ const EN: GameStrings = {
     jevRight: 'Jev right',
     jevWrong: 'Jev wrong',
     target: { trade: 'trade', dealer: 'dealer', duel: 'duel' },
+  },
+  agt: {
+    agents: 'Agents',
+    agentsSub: (n) => `silent after ${plural(n, 'tick', 'ticks')} without a decision`,
+    state: { none: 'NO LOG', silent: 'SILENT', stuck: 'BLOCKED', ok: 'OK' },
+    ago: (n) => (n === 0 ? 'decided this tick' : `last decision ${plural(n, 'tick', 'ticks')} ago`),
+    never: 'never decided',
+    noLog: 'no decision log from this source',
+    last: 'last',
+    blockedMost: 'blocked most',
+    noBlocks: 'nothing blocked this game hour',
+    ofHour: (blocks, decisions) => `${blocks} of ${plural(decisions, 'decision', 'decisions')} this game hour`,
+    inARow: (n) => `×${n} in a row`,
+    restarted: (n, tick) => (n > 1 ? `restarted ×${n} this game hour` : `restarted at tick ${tick}`),
+    money: 'Money',
+    acceptsTick: (n, cap) => `accepts this tick ${n} / ${cap}`,
+    idle: 'no decisions',
+    restart: 'restarted',
+    ticks: (from, to) => (from === to ? `${from}` : `${from}–${to}`),
+    filters: { all: 'All', blocked: 'Blocked', deals: 'Deals' },
+    details: 'Details',
+    detailsTitle: 'Show event ids, the denial text, Jev scores and how each decision ran',
+    timelineSub: 'only ticks where something happened, newest first',
+    waiting: 'Nothing yet: no decision, no deal.',
+    tally: { good: 'good', ok: 'ok', bad: 'bad' },
+    jevScore: (right, judged) => `Jev right ${right} / ${judged}`,
+    more: (n) => `+${n} more`,
+    label: { good: 'good', ok: 'ok', bad: 'bad' },
+    alertSilent: (agent, n) => (n == null ? `${agent} has never decided` : `${agent} silent for ${plural(n, 'tick', 'ticks')}`),
+    alertStuck: (agent, n, rule) => `${agent} blocked ×${n} in a row by ${rule}`,
+    allOk: 'all three agents are deciding',
   },
   badge: {
     final: 'FINAL',
@@ -866,6 +929,37 @@ const ES: GameStrings = {
     jevRight: 'Jev acertó',
     jevWrong: 'Jev falló',
     target: { trade: 'compraventa', dealer: 'tratante', duel: 'duelo' },
+  },
+  agt: {
+    agents: 'Agentes',
+    agentsSub: (n) => `en silencio tras ${plural(n, 'turno', 'turnos')} sin decidir`,
+    state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', stuck: 'BLOQUEADO', ok: 'OK' },
+    ago: (n) => (n === 0 ? 'ha decidido este turno' : `última decisión hace ${plural(n, 'turno', 'turnos')}`),
+    never: 'nunca ha decidido',
+    noLog: 'esta fuente no trae registro de decisiones',
+    last: 'última',
+    blockedMost: 'lo que más bloquea',
+    noBlocks: 'nada bloqueado esta hora de juego',
+    ofHour: (blocks, decisions) => `${blocks} de ${plural(decisions, 'decisión', 'decisiones')} esta hora de juego`,
+    inARow: (n) => `×${n} seguidas`,
+    restarted: (n, tick) => (n > 1 ? `reiniciado ×${n} esta hora de juego` : `reiniciado en el turno ${tick}`),
+    money: 'Dinero',
+    acceptsTick: (n, cap) => `aceptaciones este turno ${n} / ${cap}`,
+    idle: 'sin decisiones',
+    restart: 'reiniciado',
+    ticks: (from, to) => (from === to ? `${from}` : `${from}–${to}`),
+    filters: { all: 'Todo', blocked: 'Bloqueos', deals: 'Tratos' },
+    details: 'Detalles',
+    detailsTitle: 'Muestra los ids de evento, el texto del bloqueo, las notas de Jev y cómo se ejecutó cada decisión',
+    timelineSub: 'solo los turnos en los que pasó algo, los últimos primero',
+    waiting: 'Aún nada: ni decisiones ni tratos.',
+    tally: { good: 'buenos', ok: 'justos', bad: 'malos' },
+    jevScore: (right, judged) => `Jev acertó ${right} / ${judged}`,
+    more: (n) => `+${n} más`,
+    label: { good: 'bueno', ok: 'justo', bad: 'malo' },
+    alertSilent: (agent, n) => (n == null ? `${agent} nunca ha decidido` : `${agent} lleva ${plural(n, 'turno', 'turnos')} sin decidir`),
+    alertStuck: (agent, n, rule) => `${agent} bloqueado ×${n} seguidas por ${rule}`,
+    allOk: 'los tres agentes están decidiendo',
   },
   badge: {
     final: 'FINAL',
