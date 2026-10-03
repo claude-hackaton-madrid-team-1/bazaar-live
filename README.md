@@ -105,6 +105,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
 | `/injections` | Who tried to prompt-inject our agents, and what did they do? | The judges' view: every recorded injection attempt, its exact text (plain text, hidden characters shown as markers), the proof to verify it and what our agent did. See [Injection attempts](#injection-attempts-the-show-debug-and-injections). |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
+| `/approvals` | Do we let our agents make this big trade? | Only when the server runs approvals (see [Approvals](#approvals-approvals)); otherwise there is no tab and the path is the show. Behind a password: every buy or sell our agents refused because its price is at or above `human_approval_above` (bazaar's GUARDRAILS.md), with why it asked, our value and the official value, the album impact (a red LAST COPY badge on a page's last copy), who asked and the ticks until it goes stale; Approve (with a confirm click) or Deny. Below, the live approvals with Revoke. |
 
 `?mock=1` plays a TypeScript port of bazaar's mock game (`src/game/mock.ts`, seeded): our agent
 haggling with Abuela and other teams, duels, and the rest of the market around it. No key needed.
@@ -446,6 +447,51 @@ a url or money words only, often a venue's own format notice.
 - `?mock=1` shows made-up attempts, hostile on purpose. Proof on a throwaway local Postgres: `sh scripts/test-sql.sh`
   runs `db/injections.test.ts`.
 
+### Approvals (`/approvals`)
+
+HA2: our agents refuse any card buy or sell priced at or above `human_approval_above` (bazaar's GUARDRAILS.md) unless
+a human approved that card, side and price first. This screen is that human's veto. It calls bazaar-mcp's three
+human-only tools (`approvals`, `approve`, `revoke`) **from the server** (`server/approvals/`); the browser never sees a
+token. It never touches Postgres: this repo's database role stays read-only.
+
+| Env | Effect |
+|---|---|
+| `APPROVER_PASSWORD` | The screen's own login, at least 20 characters with at least 12 different ones (a shorter or low-variety one counts as unset, logged as `password_too_short` / `password_too_weak`). Not `GAME_VIEW_TOKEN`. Use a generated value, not a phrase (e.g. `openssl rand -base64 24`, piped straight into `railway variable set ... --stdin`): the lockout bounds guessing, it does not make a weak password safe. |
+| `BAZAAR_MCP_URL` | bazaar-mcp's base URL, without `/mcp` (e.g. `https://bazaar-mcp-production.up.railway.app`). https, or http only to localhost or `*.railway.internal`. |
+| `BAZAAR_MCP_TOKEN` | The bearer bazaar-mcp asks for. |
+| `BAZAAR_APPROVER_TOKEN` | The human tools' own token (`x-approver-token`). |
+
+All four, or the feature is off: every `/api/approver/*` path then answers exactly like an unknown `/api` path
+(`404 {"error":"not_found"}`), and the nav shows no tab. The server logs once at start whether it is on, and which
+names are missing, never a value.
+
+- `GET /api/approver/session` → `{authenticated, csrf?}`.
+- `POST /api/approver/login` `{password}` → `{csrf}` and the cookie `bz_approver` (`HttpOnly; Secure; SameSite=Strict;
+  Path=/api/approver; Max-Age=7200`), plus a device cookie `bz_device` (same flags, 30 days; an HMAC keyed from
+  `APPROVER_PASSWORD` and the server-only `BAZAAR_APPROVER_TOKEN`, so a new password voids every device and a stolen
+  cookie is no offline password test). Wrong: `401 {"error":"unauthorized"}`. A login without a
+  valid device cookie is charged to a per-address request bucket, then 5 failures from one address in 15 minutes lock
+  it for 15 minutes, and 20 from all addresses together lock every such login. A login that carries a valid device
+  cookie (OWASP "device cookies") is counted only against that device's own 5 failures: strangers behind the venue's
+  shared NAT cannot lock the approver's browser out of the veto. The lock is checked again once the body has arrived,
+  so parallel logins cannot race past it, and a locked caller is logged at most once a minute.
+- `POST /api/approver/logout`.
+- `GET /api/approver/approvals` → the `approvals` tool's answer, checked field by field (`shared/approvals.ts`).
+- `POST /api/approver/approve` `{card, side, price, ttl_ticks, reason?}` and `POST /api/approver/revoke` `{card, side,
+  reason?}` → the tool's answer (`approved` / `refused` with its reasons, `revoked` / `denied`). Deny is a `revoke` with
+  the reason "denied from Bazaar Live".
+
+Security: writes need the cookie, the `x-csrf-token` header (the token from the login, kept in the page's memory only)
+and a same-origin request (`/session` is limited per address unless it carries a live session, the page's `/approvals`
+polls per session; a known device's `/session` reads go to its own bucket, never its address; one `approvals` answer serves every session for 10 s, one call in flight at a time, and any write
+drops it, so the page stays inside bazaar-mcp's 30 calls a minute per bearer); every field is checked against the contract's ranges before bazaar-mcp is called (card
+`^[A-Z]{3}-\d{2}$`, side buy/sell, integer price 1-1000, integer `ttl_ticks` 1-480, reason up to 300 characters with
+control characters stripped), and writes are limited to 10 a minute per session and 10 a minute for the whole server.
+Passwords and CSRF tokens are compared in constant time (both sides hashed, then `timingSafeEqual`). bazaar-mcp is
+called with an 8 s timeout and never retried; any failure answers `502 {"error":"approvals unavailable"}` and its own
+words never reach the page. Logs carry only `{event, ok, status, tool}`. Sessions live in memory (at most 50, 2 hours):
+a redeploy logs the approver out.
+
 ## Real conversations (LIVE-T1)
 
 The show can narrate our real dealer threads and closed duels, read from Postgres through a read-only role.
@@ -581,6 +627,11 @@ once, by hand, through stdin so they never appear on a command line:
 ```sh
 railway variable set ELEVENLABS_API_KEY --stdin --service bazaar-live
 railway variable set GEMINI_API_KEY --stdin --service bazaar-live
+# the Approvals screen (all four, or it stays off); the password: generated, e.g. openssl rand -base64 24 piped in
+railway variable set APPROVER_PASSWORD --stdin --service bazaar-live
+railway variable set BAZAAR_MCP_URL --stdin --service bazaar-live
+railway variable set BAZAAR_MCP_TOKEN --stdin --service bazaar-live
+railway variable set BAZAAR_APPROVER_TOKEN --stdin --service bazaar-live
 ```
 
 The show's voice is **ElevenLabs v4 only**: with no ElevenLabs key on the server the show plays with captions only (the header says so); the browser's own voice is no stand-in (`?tts=webspeech` still reaches it, for development, and `?tts=gemini` Gemini).
@@ -613,5 +664,5 @@ src/stage     the dusk scene (scene/), the merchants, board, dealers, effects, b
 src/ui        header, transcript, start gate, React hooks
 shared/       the language packs (lines.es.ts, lines.en.ts), vocab and slot patterns, tags, endpoints: browser and server
 docs/         voices.md: the ElevenLabs settings per role
-server/       the Node server: static files, /health, /api/tts
+server/       the Node server: static files, /health, /api/tts, and the game screens' routes (server/approvals: the Approvals screen)
 ```
