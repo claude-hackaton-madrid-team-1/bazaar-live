@@ -109,9 +109,11 @@ and never hands the key to the page:
 | `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
 
 Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick and after a settlement
-of ours. It never opens the game's SSE stream: its cap of 6 streams per key is shared with the agents.
-Events reach the page in the web view's envelope (made-up `clock`, `agent.hello`, `agent.me` with
-negative ids, then the feed unchanged):
+of ours (a 429 there waits for the next tick, the loop does not slow down). It never opens the game's SSE
+stream: its cap of 6 streams per key is shared with the agents. Events reach the page in the web view's
+envelope (made-up `clock`, `agent.hello`, `agent.me` with negative ids, then the feed unchanged). `agent.me`
+carries only what the screens read (`server/game/me.ts`: id, name, cash, the score and its parts, the album
+pages, each asset's id, kind, ref, serial and our value); never the affinity, a key or the rest:
 
 - `GET /api/game` → `{enabled, target, tokenRequired}` (never the key or the URL).
 - `GET /api/game/stream` → server-sent events: one `events` message with the replay (the latest hello,

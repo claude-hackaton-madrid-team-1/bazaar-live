@@ -5,11 +5,13 @@
  * Polling, not the game's SSE stream: a team key has 6 streams and 5 requests a second, shared with the
  * agents that trade with it. Every poll is `/api/clock` and `/api/feed`; `/api/me` only on the first poll,
  * on a new tick, after a settlement of ours, and again after it failed (never again once the key is refused
- * there: the clock and the feed are public, so the market screens keep working). Each poll publishes, in order:
- * `clock` (when the tick changed), `agent.hello` (when the team is new), `agent.me`, then the new feed
- * events unchanged, oldest first. No exception ever leaves `pollOnce()`.
+ * there: the clock and the feed are public, so the market screens keep working; a 429 there waits for the
+ * next tick, and its Retry-After, without slowing the loop). Each poll publishes, in order: `clock` (when
+ * the tick changed), `agent.hello` (when the team is new), `agent.me` (allow-listed, `./me.ts`), then the
+ * new feed events unchanged, oldest first. No exception ever leaves `pollOnce()`.
  */
 import { redact } from '../transcript/poller.ts'
+import { projectMe } from './me.ts'
 
 export type Payload = Record<string, unknown>
 
@@ -92,6 +94,8 @@ export interface RelayDeps {
   /** Feed ids remembered for dedupe, below the newest one. */
   readonly idWindow?: number
   readonly random?: () => number
+  /** Milliseconds, for a Retry-After that holds a single route back. */
+  readonly now?: () => number
   readonly setTimer?: (fn: () => void, ms: number) => unknown
   readonly clearTimer?: (handle: unknown) => void
 }
@@ -131,12 +135,14 @@ export class GameRelay {
   private refused = false
   /** The key was refused on /me: the relay keeps the public clock and feed, with nothing of ours. */
   private meRefused = false
+  /** After a 429 on /me: not before this time (ms), and not before the next tick. */
+  private meNotBefore = 0
 
   constructor(deps: RelayDeps) {
     this.deps = deps
     this.o = {
       fetchImpl: fetch, pollMs: 5000, timeoutMs: 4000, feedLimit: 150, maxDelayMs: 60_000, idWindow: 2000,
-      random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+      random: Math.random, now: Date.now, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
   }
@@ -238,7 +244,7 @@ export class GameRelay {
       if (newTick || ours) this.meDue = true
       const meEvents: GameEvent[] = []
       let meError: unknown = null
-      if (this.meDue && !this.meRefused) {
+      if (this.meDue && !this.meRefused && this.o.now() >= this.meNotBefore) {
         try {
           const me = await this.get('/api/me')
           if (isRecord(me)) {
@@ -247,7 +253,7 @@ export class GameRelay {
               meEvents.push(this.madeUp('agent.hello', clock, { team, name: me.name ?? null }))
               this.team = team
             }
-            meEvents.push(this.madeUp('agent.me', clock, me))
+            meEvents.push(this.madeUp('agent.me', clock, projectMe(me)))
             this.meDue = false
           }
         } catch (error: unknown) {
@@ -256,6 +262,10 @@ export class GameRelay {
             this.meRefused = true
             this.meDue = false
             this.deps.log({ route: 'game', event: 'me_refused', status: error.status })
+          } else if (error instanceof GameHttpError && error.status === 429) {
+            // Too early in the tick, or over the key's rate: /me waits for the next tick, the clock and the feed go on.
+            this.meDue = false
+            this.meNotBefore = this.o.now() + (error.retryAfterMs ?? 0)
           } else meError = error
         }
       }
