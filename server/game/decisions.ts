@@ -89,7 +89,7 @@ const labelOf = (v: unknown): OutcomeLabel | null => (v === 'good' || v === 'ok'
 const boolOf = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null)
 
 /**
- * A denial as plain text: guardrails.check() writes `spend 140 + 20 > max_spend_per_game_hour 150`, so unlike a
+ * A denial as plain text: guardrails.check() writes `spend 140 + 20 > max_spend_per_game_hour 250`, so unlike a
  * quote it keeps `<` and `>` (the page prints it as text, never as markup, and no voice reads it).
  */
 export function ruleText(v: unknown): string | null {

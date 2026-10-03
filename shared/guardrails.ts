@@ -11,9 +11,9 @@
  */
 export const GUARDRAILS_DOC = {
   /**
-   * From when these values hold, as a tick of the game day they were set on. bazaar#216 merged at about tick 762; the
-   * agents' last denial with the old `cash_floor 50` / `max_spend_per_game_hour 150` is tick 765, the first with
-   * `cash_floor 20` tick 773 (decisions.policy_checks).
+   * From when these values hold: `tick` is what src/game/limits.ts compares a denial's tick with; `day` only says which
+   * game day that tick belongs to (no code reads it). bazaar#216 merged at about tick 762; the agents' last denial with
+   * the old `cash_floor 50` / `max_spend_per_game_hour 150` is tick 765, the first with `cash_floor 20` tick 773.
    */
   since: { day: '2026-10-03', tick: 766 },
   /** Never let a purchase take cash below this (bazaar#216: 50 → 20). */
