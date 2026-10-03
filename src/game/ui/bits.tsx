@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { fmtP, setOf } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
+import { eventLabel } from '../views/agent.ts'
 import { sparkEnd, sparkPath } from '../views/market.ts'
 
 export function Panel({ title, sub, actions, children, className }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
@@ -54,7 +55,8 @@ export function EventLink({ id, children }: { id: number | null | undefined; chi
   if (id == null) return <span className="gm-mono gm-muted">—</span>
   return (
     <button type="button" className="gm-eid" aria-pressed={store.selected === id} onClick={() => store.select(id)} title={t.inspector.inspect}>
-      {children ?? `#${id}`}
+      {/* The server's own events count down from -1: no number to show, the button still opens the inspector. */}
+      {children ?? eventLabel(id) ?? '↗'}
     </button>
   )
 }
