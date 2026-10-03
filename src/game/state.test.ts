@@ -151,6 +151,18 @@ test('duels track both sides and the result', () => {
     ['seller', 60, 41, 4, 7, 2, 'deal', 47, 1.2])
 })
 
+test('duels keep their rival: from the payload, else from a named sender, never from us or the bare "rival"', () => {
+  const s = fresh()
+  apply(s, ev('duel.message', { duel: 3, role: 'seller', rival: 'Rival Azul', sender: 't01', price: 60 }))
+  apply(s, ev('duel.message', { duel: 4, role: 'buyer', sender: 't01', price: 30 }))
+  apply(s, ev('duel.message', { duel: 4, role: 'buyer', sender: 'rival', price: 35 }))
+  apply(s, ev('duel.message', { duel: 5, role: 'buyer', sender: 'Rival Oro', price: 35 }))
+  apply(s, ev('duel.result', { duel: 6, rival: 'Rival Noche', deal: false, price: null, points: 0 }))
+  assert.deepEqual([3, 4, 5, 6].map((id) => s.duels[id]!.rival), ['Rival Azul', null, 'Rival Oro', 'Rival Noche'])
+  apply(s, ev('duel.result', { duel: 4, rival: 'Rival Sol', deal: true, price: 33, points: 1 }))
+  assert.strictEqual(s.duels[4]!.rival, 'Rival Sol')
+})
+
 test('a result for a duel we never heard a word of still makes a row', () => {
   const s = fresh()
   apply(s, ev('duel.result', { duel: 7, deal: false, price: null, points: 0 }))

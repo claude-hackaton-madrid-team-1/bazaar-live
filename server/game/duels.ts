@@ -2,8 +2,10 @@
  * `GET /api/duels?done=true` turned into the events the page already reads. `duel.message` and `duel.result`
  * are team-only in the game, so `/api/feed` never carries them; the duel list does, in its own words
  * (`from: "you"|"Rival Azul"`, `status: "live"|"deal"|"no_deal"`). Each message becomes
- * `duel.message {duel, role, sender, price, days}` (sender: our team for "you", else the rival's alias) and each
- * finished duel one `duel.result {duel, deal, price, points}`, the same payloads as the mock's. Nothing else
+ * `duel.message {duel, role, rival, sender, price, days}` (sender: our team for "you", else the rival's alias) and
+ * each finished duel one `duel.result {duel, rival, deal, price, points}`, the same payloads as the mock's. `rival`
+ * is the duel's `rival`, the only name the game gives the other side (an alias like "Rival Azul", not a team id,
+ * so there is no team to look up); null when missing. Nothing else
  * of a duel leaves: not our limit, our days weight, our gain or share (they reveal our limits), nor the words.
  */
 export type Payload = Record<string, unknown>
@@ -37,8 +39,12 @@ function closedTick(d: Payload, last: number | null): number | null {
   return deadline === null ? last + 1 : Math.min(deadline, last + 1)
 }
 
+/** The rival's alias, trimmed and bounded; null when the duel has none. */
+const rivalOf = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 40) : null)
+
 function eventsOf(d: Payload, duel: number, team: string): DuelEvent[] {
   const role = typeof d.role === 'string' ? d.role : null
+  const rival = rivalOf(d.rival)
   const out: DuelEvent[] = []
   const messages = Array.isArray(d.messages) ? d.messages.slice(0, SLOTS - 1) : []
   let last: number | null = null
@@ -47,12 +53,12 @@ function eventsOf(d: Payload, duel: number, team: string): DuelEvent[] {
     const tick = isInt(m.tick) ? m.tick : null
     if (tick !== null) last = last === null ? tick : Math.max(last, tick)
     const sender = m.from === 'you' ? team : typeof m.from === 'string' ? m.from : 'rival'
-    out.push({ id: duelEventId(duel, n), tick, type: 'duel.message', payload: { duel, role, sender, price: numOrNull(m.price), days: numOrNull(m.days) } })
+    out.push({ id: duelEventId(duel, n), tick, type: 'duel.message', payload: { duel, role, rival, sender, price: numOrNull(m.price), days: numOrNull(m.days) } })
   })
   if (d.status === 'deal' || d.status === 'no_deal') {
     const result = isRecord(d.result) ? d.result : {}
     const deal = d.status === 'deal'
-    const payload = { duel, deal, price: deal ? numOrNull(result.price ?? d.price) : null, points: numOrNull(result.points) }
+    const payload = { duel, rival, deal, price: deal ? numOrNull(result.price ?? d.price) : null, points: numOrNull(result.points) }
     out.push({ id: duelEventId(duel, SLOTS - 1), tick: closedTick(d, last), type: 'duel.result', payload })
   }
   return out

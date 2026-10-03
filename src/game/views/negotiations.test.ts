@@ -1,6 +1,6 @@
 import { assert, test } from 'vitest'
 import { apply, createState, type GameEvent, type Payload, type State } from '../state.ts'
-import { conversation, duelRows, rail, selectedThreadId, threadList } from './negotiations.ts'
+import { conversation, duelRows, rail, rivalSummary, selectedThreadId, threadList } from './negotiations.ts'
 
 let nextId = 1
 // Duel messages and results only reach us from the relay's /api/duels read, which sends them as `team`.
@@ -157,4 +157,35 @@ test('duel rows: open first then newest, both sides, result tone and points', ()
     ['seller', 60, 4, 41, 7, 2, 47, 1.2, 19])
   assert.ok(d!.lastEventId != null)
   assert.strictEqual(rows[0]!.gap, null)
+})
+
+test('duel rows carry the rival', () => {
+  const s = fresh()
+  apply(s, ev('duel.message', { duel: 3, role: 'seller', rival: 'Rival Azul', sender: 'Rival Azul', price: 41 }))
+  apply(s, ev('duel.result', { duel: 4, rival: 'Rival Oro', deal: false, price: null, points: 0 }))
+  assert.deepEqual(duelRows(s).map((r) => [r.id, r.rival]), [[3, 'Rival Azul'], [4, 'Rival Oro']])
+})
+
+test('rival summary: per rival its duels, live and finished, deals, no deals and points; live rivals first', () => {
+  const s = fresh()
+  const msg = (duel: number, rival: string | undefined) => apply(s, ev('duel.message', { duel, role: 'buyer', rival, sender: 't01', price: 30 }))
+  const end = (duel: number, rival: string | undefined, deal: boolean, points: number | null) => apply(s, ev('duel.result', { duel, rival, deal, price: deal ? 30 : null, points }))
+  end(1, 'Rival Oro', true, 2.5)
+  end(2, 'Rival Oro', true, 1.25)
+  end(3, 'Rival Oro', false, 0)
+  end(4, 'Rival Noche', false, null)
+  msg(5, 'Rival Azul')
+  end(6, 'Rival Azul', true, null)
+  end(7, 'Rival Luna', true, null)
+  end(8, 'Rival Sol', false, null)
+  msg(9, undefined)
+  assert.deepEqual(rivalSummary(s), [
+    { rival: 'Rival Azul', duels: 2, open: 1, finished: 1, deals: 1, noDeals: 0, points: null },
+    { rival: null, duels: 1, open: 1, finished: 0, deals: 0, noDeals: 0, points: null },
+    { rival: 'Rival Oro', duels: 3, open: 0, finished: 3, deals: 2, noDeals: 1, points: 3.75 },
+    { rival: 'Rival Luna', duels: 1, open: 0, finished: 1, deals: 1, noDeals: 0, points: null },
+    { rival: 'Rival Noche', duels: 1, open: 0, finished: 1, deals: 0, noDeals: 1, points: null },
+    { rival: 'Rival Sol', duels: 1, open: 0, finished: 1, deals: 0, noDeals: 1, points: null },
+  ])
+  assert.deepEqual(rivalSummary(fresh()), [])
 })

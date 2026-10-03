@@ -97,17 +97,22 @@ function settlementLines(s: State, e: GameEvent): Line[] {
 
 function duelLine(s: State, e: GameEvent): Line {
   const p = e.payload
+  // Whom we duel: the event's own rival, else what the duel learnt (an older event, or a result read before it).
+  const rival: string | null = typeof p.rival === 'string' && p.rival ? p.rival : s.duels[p.duel]?.rival ?? null
+  const duel = `duel #${p.duel}${rival ? ` vs ${rival}` : ''}`
   if (e.type === 'duel.result') {
     const text = p.deal
-      ? `duel #${p.duel} deal at ${fmtP(p.price)}${p.points != null ? ` · ${signedNum(p.points)} pts` : ''}`
-      : `duel #${p.duel} no deal`
-    return base(e, 'result', text, { icon: p.deal ? LOG_ICON.accept : LOG_ICON.walk, tone: p.deal ? 'good' : 'bad', price: p.price ?? null, deal: true })
+      ? `${duel} deal at ${fmtP(p.price)}${p.points != null ? ` · ${signedNum(p.points)} pts` : ''}`
+      : `${duel} no deal`
+    return base(e, 'result', text, {
+      icon: p.deal ? LOG_ICON.accept : LOG_ICON.walk, tone: p.deal ? 'good' : 'bad', who: rival, price: p.price ?? null, deal: true,
+    })
   }
   const ours = p.sender === s.team
   const terms = `${fmtP(p.price)}${p.days != null ? `, ${p.days} days` : ''}`
-  const text = ours ? `duel #${p.duel} · we offer ${terms}` : `duel #${p.duel} · ${p.sender ?? 'rival'} offers ${terms}`
+  const text = ours ? `${duel} · we offer ${terms}` : rival ? `${duel} · they offer ${terms}` : `${duel} · ${p.sender ?? 'rival'} offers ${terms}`
   return base(e, 'result', text, {
-    icon: ours ? LOG_ICON.say : '↘', tone: ours ? 'us' : 'them', who: ours ? null : p.sender ?? 'rival',
+    icon: ours ? LOG_ICON.say : '↘', tone: ours ? 'us' : 'them', who: ours ? null : rival ?? p.sender ?? 'rival',
     price: p.price ?? null, action: ours, deal: true,
   })
 }

@@ -3,7 +3,7 @@ import { setParam, useParam } from '../../ui/route'
 import { fmtP } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
-import { conversation, duelRows, rail, selectedThreadId, threadList, type Bubble, type Conversation, type DuelRow, type RailPoint, type ThreadRow } from '../views/negotiations.ts'
+import { conversation, duelRows, rail, rivalSummary, selectedThreadId, threadList, type Bubble, type Conversation, type DuelRow, type RailPoint, type RivalRow, type ThreadRow } from '../views/negotiations.ts'
 import { Badge, Empty, EventLink, Expiry, Injection, Panel, RefChip } from './bits.tsx'
 
 const RAIL_H = 120
@@ -207,10 +207,41 @@ function ThreadDetail({ convo }: { convo: Conversation | null }) {
 
 const days = (d: number | null) => (d == null ? '' : ` · ${d}d`)
 
+function Rivals({ rows }: { rows: RivalRow[] }) {
+  const t = useGameStrings()
+  if (!rows.length) return null
+  return (
+    <section className="gm-rivals-wrap" aria-label={t.neg.against}>
+      <h3 className="eyebrow">{t.neg.against}</h3>
+      <ul className="gm-rivals">
+        {rows.map((r) => (
+          <li key={r.rival ?? ''} className="gm-rival" data-live={r.open > 0 || undefined}>
+            <span className="gm-row">
+              <span className="gm-rival-name" data-unknown={r.rival === null || undefined} title={r.rival ?? undefined}>
+                {r.rival ?? t.neg.unknownRival}
+              </span>
+              <span className="gm-spacer" />
+              {r.open > 0 && <Badge tone="warn">{t.neg.duelsSub(r.open)}</Badge>}
+            </span>
+            <span className="gm-rival-meta">{t.neg.rivalDuels(r.duels, r.finished)}</span>
+            <span className="gm-rival-meta">
+              <span>{t.neg.rivalDeals(r.deals, r.noDeals)}</span>
+              <span className="gm-spacer" />
+              <span title={r.points == null ? t.neg.rivalPointsNone : undefined} className={r.points == null ? 'gm-muted' : r.points > 0 ? 'gm-good' : undefined}>
+                {t.neg.rivalPoints(r.points)}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function DuelsTable({ rows }: { rows: DuelRow[] }) {
   const t = useGameStrings()
   if (!rows.length) return <Empty>{t.neg.noDuels}</Empty>
-  const right = new Set([2, 3, 4, 5, 7, 8])
+  const right = new Set([3, 4, 5, 6, 8, 9])
   return (
     <div className="gm-scroll">
       <table className="gm-table">
@@ -225,8 +256,11 @@ function DuelsTable({ rows }: { rows: DuelRow[] }) {
         </thead>
         <tbody>
           {rows.map((d) => (
-            <tr key={d.id}>
+            <tr key={d.id} data-live={d.status === 'open' || undefined}>
               <td>#{d.id}</td>
+              <td className="gm-rival-cell" data-tone="them" title={d.rival ?? undefined}>
+                {d.rival ?? '—'}
+              </td>
               <td>{d.role}</td>
               <td className="gm-r" data-tone="us">
                 {fmtP(d.ourPrice)}
@@ -274,6 +308,7 @@ export function NegotiationsScreen() {
         </Panel>
       </div>
       <Panel title={t.neg.duels} sub={t.neg.duelsSub(duels.filter((d) => d.status === 'open').length)}>
+        <Rivals rows={rivalSummary(state)} />
         <DuelsTable rows={duels} />
       </Panel>
     </>

@@ -172,6 +172,18 @@ test('duels: messages and results land in Result', () => {
   assert.match(lines[2]!.text, /deal at 47 P/)
 })
 
+test('duel lines name the rival: duel #N vs Rival …, also on a result that does not carry it', () => {
+  const s = fresh()
+  feed(s, [
+    ev('clock', {}, 2),
+    ev('duel.message', { duel: 3, role: 'seller', rival: 'Rival Azul', sender: 't01', price: 60, days: 4 }, 2),
+    ev('duel.message', { duel: 3, role: 'seller', rival: 'Rival Azul', sender: 'Rival Azul', price: 41 }, 2),
+    ev('duel.result', { duel: 3, deal: false, price: null, points: 0 }, 2),
+  ])
+  const lines = timeline(s)[0]!.lanes.find((l) => l.lane === 'result')!.lines
+  assert.deepEqual(lines.map((l) => l.text), ['duel #3 vs Rival Azul · we offer 60 P, 4 days', 'duel #3 vs Rival Azul · they offer 41 P', 'duel #3 vs Rival Azul no deal'])
+})
+
 const listing = (id: number, maker: string, side: 'ask' | 'bid', ref: string, price: number, tick: number) => {
   const goods = side === 'ask' ? { cash: 0, assets: [{ id: 100 + id, kind: 'card', ref, serial: 1 }], types: [] } : { cash: 0, assets: [], types: [`card:${ref}`] }
   const cash = { cash: price, assets: [], types: [] }

@@ -51,6 +51,8 @@ export type Thread = {
 export type Duel = {
   id: number
   role: string
+  /** The other side, as the game names it: an alias like "Rival Azul" (duels never name a team); null until known. */
+  rival: string | null
   ourPrice: number | null
   theirPrice: number | null
   ourDays: number | null
@@ -422,13 +424,20 @@ function settlementFailed(s: State, e: GameEvent, ours: boolean) {
 }
 
 const duelOf = (s: State, p: Payload): Duel => (s.duels[p.duel] ??= {
-  id: p.duel, role: p.role ?? '?', ourPrice: null, theirPrice: null, ourDays: null, theirDays: null,
+  id: p.duel, role: p.role ?? '?', rival: null, ourPrice: null, theirPrice: null, ourDays: null, theirDays: null,
   rounds: 0, status: 'open', dealPrice: null, points: null, lastEventId: null,
 })
+
+/** The payload's `rival`; for an event without one, a message's sender when it is neither us nor the bare "rival". */
+function noteRival(s: State, d: Duel, p: Payload) {
+  if (typeof p.rival === 'string' && p.rival) d.rival = p.rival
+  else if (d.rival === null && typeof p.sender === 'string' && p.sender && p.sender !== s.team && p.sender !== 'rival') d.rival = p.sender
+}
 
 function duelMessage(s: State, e: GameEvent) {
   const p = e.payload
   const d = duelOf(s, p)
+  noteRival(s, d, p)
   if (p.sender === s.team) [d.ourPrice, d.ourDays] = [p.price ?? null, p.days ?? null]
   else [d.theirPrice, d.theirDays] = [p.price ?? null, p.days ?? null]
   d.rounds += 1
@@ -437,6 +446,7 @@ function duelMessage(s: State, e: GameEvent) {
 
 function duelResult(s: State, e: GameEvent) {
   const d = duelOf(s, e.payload)
+  noteRival(s, d, e.payload)
   d.status = e.payload.deal ? 'deal' : 'no deal'
   d.dealPrice = e.payload.price ?? null
   d.points = e.payload.points ?? null

@@ -85,7 +85,7 @@ export function meRow(row: unknown): MeRow | null {
 /** `show.game_duels` rows as `./duels.ts` reads `/api/duels`: the view never carries the result (our gain), so no points. */
 export function duelRowEvents(rows: readonly unknown[], team: string, limit: number): GameEvent[] {
   const duels = rows.filter(isRecord).map((r) => ({
-    duel: intOf(r.duel), role: r.role, status: r.status, deadline_tick: intOf(r.deadline_tick), price: numOf(r.price), days: numOf(r.days),
+    duel: intOf(r.duel), role: r.role, rival: r.rival, status: r.status, deadline_tick: intOf(r.deadline_tick), price: numOf(r.price), days: numOf(r.days),
     messages: Array.isArray(r.messages) ? r.messages : [], result: null,
   }))
   return duelEvents({ duels }, team, limit).map((e) => ({ id: e.id, ...(e.tick === null ? {} : { tick: e.tick }), type: e.type, scope: 'team', actor: '', payload: e.payload }))
