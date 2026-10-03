@@ -90,6 +90,11 @@ export function GameHeader() {
           <span className="gm-dot" />
           {t.status[store.status]}
         </span>
+        {store.source && store.status !== 'mock' && (
+          <span className="hdr-chip gm-source" data-source={store.source} title={store.source === 'db' ? t.source.dbTitle : t.source.apiTitle}>
+            {t.source[store.source]}
+          </span>
+        )}
         {team && (
           <span className="hdr-chip gm-team" title={s.team}>
             {team}

@@ -8,4 +8,4 @@ docker run -d --rm --name "$NAME" -e POSTGRES_PASSWORD=localtest -p "127.0.0.1:$
 trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
 until docker exec "$NAME" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 sleep 1
-SHOW_TEST_ADMIN_URL="postgresql://postgres:localtest@127.0.0.1:$PORT/postgres" npx vitest run --no-file-parallelism db/show.test.ts db/learn.test.ts db/agent_decisions.test.ts
+SHOW_TEST_ADMIN_URL="postgresql://postgres:localtest@127.0.0.1:$PORT/postgres" npx vitest run --no-file-parallelism db/show.test.ts db/learn.test.ts db/agent_decisions.test.ts db/game.test.ts
