@@ -65,7 +65,7 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
   back online); dedupe by `agent|id|type|tick|t` (both agents count ids from -1 and restart at -1
   after a deploy, so the id alone is not unique); the join replay (the last 200 events) goes to the
   transcript as history, live events go to the stage.
-- **LIVE / DRY RUN** comes from each agent's `GET /health` (`mode`), polled every 20 s. The maker's
+- **LIVE / DRY RUN** comes from each agent's `GET /health` (`mode`), polled every 20 s. The header also always shows **which game** they play in, from the same `/health` (`target.mode`): JUEGO REAL / REAL GAME, SIMULADOR / SIMULATOR, a MIX when the two disagree, `GAME ?` before anything is known, and the recorded mock is labelled as such. No extra fetch. The maker's
   `GET /state` seeds the board with our open offers.
 - **Only public fields.** `src/model/sanitize.ts` mirrors the allow-list of bazaar PR #69
   (`public_decision`, `public_execution`): kind, card, venue, counterparty, the price on a row actually

@@ -255,3 +255,37 @@ body {
     padding: 6px 10px;
   }
 }
+
+/* which game: the real one, the simulator, a mix, the recorded mock, or not known yet */
+
+.badge.world {
+  color: #fff;
+  letter-spacing: 0.1em;
+  border-width: 2px;
+}
+
+.badge.world.real {
+  background: #1f7a4a;
+  border-color: #6fe3a0;
+}
+
+.badge.world.simulator {
+  background: #5b3a9a;
+  border-color: #c3a6ff;
+}
+
+.badge.world.mixed {
+  background: #a05a10;
+  border-color: #ffc46b;
+}
+
+.badge.world.mock {
+  background: #3a3350;
+  border-color: #9a90c0;
+}
+
+.badge.world.unknown {
+  background: var(--bronze-3);
+  border-color: #8a7a60;
+  color: #cdbb94;
+}

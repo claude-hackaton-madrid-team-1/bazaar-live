@@ -5,7 +5,7 @@ import type { FeedStatus } from '../net/feed'
 import type { ShowState } from '../show/engine'
 import { LANGS, type Lang } from '../../shared/lang.ts'
 import { setLang, useLang, useStrings } from './lang'
-import { modeOf, type Mode } from './mode'
+import { modeOf, worldOf, type Mode } from './mode'
 import type { SpeechControls } from './useShow'
 
 
@@ -25,6 +25,17 @@ function ModeBadge({ agent, health, feed, mock }: { agent: AgentId; health: Agen
       {t.modes[mode satisfies Mode]}
       <span className="who">{t.who[agent]}</span>
       {connecting && <span aria-label="reconnecting">⟳</span>}
+    </span>
+  )
+}
+
+/** Always visible: which game the agents play in (the real one or the simulator), from their /health. */
+function WorldBadge({ state, mock }: { state: ShowState; mock: boolean }) {
+  const t = useStrings()
+  const world = worldOf(state.health, mock)
+  return (
+    <span className={`badge world ${world}`} role="status" title={t.worlds[world]}>
+      {t.worlds[world]}
     </span>
   )
 }
@@ -63,6 +74,7 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
         <small>{t.brandTag}</small>
       </div>
       <div className="badges" aria-label="Agent modes">
+        <WorldBadge state={state} mock={mock} />
         {AGENTS.map((a) => (
           <ModeBadge key={a} agent={a} health={state.health[a]} feed={state.feeds[a]} mock={mock} />
         ))}
