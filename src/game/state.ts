@@ -1,5 +1,6 @@
 import { HEALTH_AGENTS, type HealthReport } from '../../shared/health.ts'
 import { applyDecision, applyLedger, applyOutcome, createDecisionLog, type DecisionLog } from './decisions.ts'
+import { isOurTeamThread, isTeamThread, teamThreadClosed, teamThreadMessage, teamThreadOpened, type TeamThread } from './teamThreads.ts'
 
 // The game's JSON, read defensively: every field is optional and falls back with `??`.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -173,6 +174,8 @@ export type State = {
   packs: { id: number; ref: string; name: string }[]
   log: LogLine[]
   threads: Record<number, Thread>
+  /** Our threads with other teams (the team desk's swaps), by id: apart from the dealer threads above. */
+  teamThreads: Map<number, TeamThread>
   duels: Record<number, Duel>
   tape: Trade[]
   prices: Record<string, number[]>
@@ -217,7 +220,7 @@ export function createState(): State {
   return {
     team: '', name: '', tick: 0, day: '', tickSeconds: 60, phase: 'observe', goal: '',
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
-    log: [], threads: {}, duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
+    log: [], threads: {}, teamThreads: new Map(), duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
     events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null,
   }
@@ -248,8 +251,8 @@ export function isOurs(s: State, e: GameEvent): boolean {
   if (e.type.startsWith('agent.') || e.type === 'clock') return true
   // The feed's `duel.closed` is every team's: a duel event is ours when it came from our duel list, or names one of ours.
   if (e.type.startsWith('duel.')) return fromRelay(e) || p.duel in s.duels
-  if (e.type === 'thread.message') return p.team === s.team
-  if (e.type === 'thread.closed') return p.thread in s.threads
+  if (e.type === 'thread.message') return s.teamThreads.has(p.thread) || (isTeamThread(p) && !(p.thread in s.threads) ? isOurTeamThread(s.team, p) : p.team === s.team)
+  if (e.type === 'thread.closed') return p.thread in s.threads || s.teamThreads.has(p.thread)
   if (e.type === 'settlement') return (p.parties ?? []).includes(s.team)
   // the board and the rest: ours when we are the actor or the maker (never when we have no team yet)
   if (!s.team) return false
@@ -658,11 +661,15 @@ export function apply(s: State, e: GameEvent): State {
         eventId: e.id, tick: e.tick, thread: p.thread, kind: p.kind ?? '?', team: p.team ?? '?', with: p.with ?? '?',
         topic: p.topic && typeof p.topic === 'object' ? p.topic : null,
       }, LIMITS.opened)
+      teamThreadOpened(s.teamThreads, s.team, e)
       break
     case 'thread.message':
-      threadMessage(s, e)
+      // a team thread is a swap between teams, never a dealer negotiation; a thread keeps the kind it was first seen with
+      if (s.teamThreads.has(p.thread) || (isTeamThread(p) && !(p.thread in s.threads))) teamThreadMessage(s.teamThreads, s.team, e)
+      else threadMessage(s, e)
       break
     case 'thread.closed': {
+      teamThreadClosed(s.teamThreads, e)
       const th = s.threads[p.thread]
       if (th) {
         th.status = 'closed'

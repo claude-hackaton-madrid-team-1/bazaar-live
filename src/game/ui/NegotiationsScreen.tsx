@@ -15,6 +15,7 @@ import { dealerGroups, dealerOf, selectedIn, type DealerGroup } from '../views/n
 import { nowTick } from '../views/decisions.ts'
 import { liveDuelCount } from '../views/duels.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
+import { Markets, OurNegotiations, TeamsWithUs, useLimitsVisible } from './NegotiationsLive.tsx'
 
 function Pill({ state }: { state: NegStatus }) {
   const t = useGameStrings()
@@ -315,7 +316,8 @@ export function NegotiationsScreen() {
   const t = useGameStrings()
   const requested = useParam('id')
   const requestedDealer = useParam('dealer')
-  const all = negRows(state)
+  // our caps only with GAME_VIEW_TOKEN (or the mock): without it no card, verdict or sentence shows one
+  const all = negRows(state, { caps: useLimitsVisible() })
   const groups = dealerGroups(state, all)
   const dealer = dealerOf(groups, requestedDealer)
   const rows = dealer ? [...dealer.live, ...dealer.ended] : all
@@ -334,6 +336,7 @@ export function NegotiationsScreen() {
     <>
       {groups.length > 0 && <DealerChips groups={groups} value={dealer?.with ?? null} />}
       {dealer && <DealerSummary g={dealer} state={state} />}
+      <OurNegotiations rows={all} dealer={dealer?.with ?? null} />
       {(!dealer || live.length > 0) && (
         <Panel title={t.neg.live} sub={t.neg.liveSub(live.length)} actions={dealer ? undefined : <DuelsLink live={liveDuelCount(state)} />}>
           {!rows.length ? (
@@ -364,6 +367,8 @@ export function NegotiationsScreen() {
           </Panel>
         )}
       </div>
+      {!dealer && <TeamsWithUs />}
+      {!dealer && <Markets />}
     </>
   )
 }
