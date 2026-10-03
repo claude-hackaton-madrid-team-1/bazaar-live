@@ -421,7 +421,7 @@ token. It never touches Postgres: this repo's database role stays read-only.
 
 | Env | Effect |
 |---|---|
-| `APPROVER_PASSWORD` | The screen's own login, at least 16 characters (a shorter one counts as unset). Not `GAME_VIEW_TOKEN`. |
+| `APPROVER_PASSWORD` | The screen's own login, at least 16 characters (a shorter one counts as unset). Not `GAME_VIEW_TOKEN`. Use a generated value, not a phrase (e.g. `openssl rand -base64 24`, piped straight into `railway variable set ... --stdin`): the lockout bounds guessing, it does not make a weak password safe. |
 | `BAZAAR_MCP_URL` | bazaar-mcp's base URL, without `/mcp` (e.g. `https://bazaar-mcp-production.up.railway.app`). https, or http only to localhost or `*.railway.internal`. |
 | `BAZAAR_MCP_TOKEN` | The bearer bazaar-mcp asks for. |
 | `BAZAAR_APPROVER_TOKEN` | The human tools' own token (`x-approver-token`). |
@@ -433,7 +433,9 @@ names are missing, never a value.
 - `GET /api/approver/session` → `{authenticated, csrf?}`.
 - `POST /api/approver/login` `{password}` → `{csrf}` and the cookie `bz_approver` (`HttpOnly; Secure; SameSite=Strict;
   Path=/api/approver; Max-Age=7200`). Wrong: `401 {"error":"unauthorized"}`. 5 failures from one address in 15 minutes
-  lock it for 15 minutes, and 20 from all addresses together lock everyone (an open session keeps working).
+  lock it for 15 minutes, and 20 from all addresses together lock everyone else: an address that logged in during the
+  last 24 hours is exempt from that global lock (never from its own), so a stranger's guesses cannot lock the approver
+  out of the veto. The lock is checked again once the body has arrived, so parallel logins cannot race past it.
 - `POST /api/approver/logout`.
 - `GET /api/approver/approvals` → the `approvals` tool's answer, checked field by field (`shared/approvals.ts`).
 - `POST /api/approver/approve` `{card, side, price, ttl_ticks, reason?}` and `POST /api/approver/revoke` `{card, side,
@@ -441,7 +443,7 @@ names are missing, never a value.
   the reason "denied from Bazaar Live".
 
 Security: writes need the cookie, the `x-csrf-token` header (the token from the login, kept in the page's memory only)
-and a same-origin request; every field is checked against the contract's ranges before bazaar-mcp is called (card
+and a same-origin request (`/session` is limited per address, the page's `/approvals` polls per session); every field is checked against the contract's ranges before bazaar-mcp is called (card
 `^[A-Z]{3}-\d{2}$`, side buy/sell, integer price 1-1000, integer `ttl_ticks` 1-480, reason up to 300 characters with
 control characters stripped), and writes are limited to 10 a minute per session and 10 a minute for the whole server.
 Passwords and CSRF tokens are compared in constant time (both sides hashed, then `timingSafeEqual`). bazaar-mcp is
