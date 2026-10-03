@@ -159,6 +159,7 @@ export class MockGame {
     for (let i = 0; i < 11; i++) this.take(this.mint(this.ref(1, 5)))
     for (let i = 0; i < 3; i++) this.take(this.mint(this.ref(6, 8)))
     this.take(this.mint(this.ref(9, 10)))
+    this.midGame()
     for (let i = 0; i < 4; i++) this.packs.push({ id: this.assetIds(), kind: 'pack', ref: 'sobre_barrio', serial: i + 1, set: '', rarity: '', print_run: 0 })
   }
 
@@ -224,6 +225,60 @@ export class MockGame {
     return Math.round(v * 10) / 10
   }
 
+  /** Our sets, the one worth most to us first. */
+  private bySetValue(): string[] {
+    return [...SET_CODES].sort((a, b) => (this.affinity[b] ?? 0) - (this.affinity[a] ?? 0))
+  }
+
+  /**
+   * The album mid-game, like the real one on Saturday: our best set two rares from its page, the next one
+   * a rare away, the third three cards away, and a few spare copies to sell (the random deal's copies of the
+   * cards these pages miss are taken back).
+   */
+  private midGame(): void {
+    const [best = 'LAV', second = 'SAL', third = 'MAL', worst = 'LAT'] = this.bySetValue()
+    const hold = (set: string, slots: number[], copies = 1) => {
+      for (const n of slots) while (this.count(`${set}-${pad2(n)}`) < copies) this.take(this.mint(`${set}-${pad2(n)}`))
+    }
+    const drop = (set: string, slots: number[]) => {
+      for (const n of slots) {
+        const ref = `${set}-${pad2(n)}`
+        this.cards.delete(ref)
+        this.hand.delete(ref)
+      }
+    }
+    drop(best, [9, 10])
+    drop(second, [9])
+    drop(third, [8, 9, 10])
+    hold(best, [1, 2, 3, 4, 5, 6, 7, 8])
+    hold(second, [1, 2, 3, 4, 5, 6, 7, 8, 10])
+    hold(third, [1, 2, 3, 4, 5, 6, 7])
+    hold(worst, [2, 3, 9])
+    hold(best, [4], 2)
+    hold(second, [1], 2)
+    hold(third, [6], 2)
+  }
+
+  /** The boards and the tape when we look in: asks for cards we miss, bids for our spares, a recent rare trade. */
+  private opening(): GameEvent[] {
+    const [best = 'LAV', second = 'SAL', third = 'MAL', worst = 'LAT'] = this.bySetValue()
+    const [a, b, c, d] = this.shuffle([...TEAMS]) as [string, string, string, string]
+    const rare = this.mint(`${best}-10`)
+    return [
+      this.list(a, 'rastro', `${second}-09`, 'ask', 84),
+      this.list(b, 't07-puesto', `${best}-09`, 'ask', 95),
+      this.list(c, 'rastro', `${third}-08`, 'ask', 22),
+      this.list(d, 'rastro', `${worst}-01`, 'ask', 9),
+      this.list(a, 'rastro', `${best}-04`, 'bid', 14),
+      this.list(c, 't12-mercadillo', `${third}-06`, 'bid', 24),
+      this.list(d, 't07-puesto', `${worst}-09`, 'bid', 78),
+      this.ev('settlement', {
+        settlement: this.settlementIds(), kind: 'trade', parties: [b, d], venue: 'rastro', persona: null, fee: 0, price: 88,
+        items: [{ ...rare, name: card(rare.ref), frm: b, to: d }],
+      }),
+    ]
+  }
+
   // ---------------------------------------------------------------- events
 
   private ev(type: string, payload: Payload, actor = ''): GameEvent {
@@ -247,7 +302,7 @@ export class MockGame {
     ]
     const sc = this.score
     sc.score = Math.round((sc.duel_points + sc.ladder_points + sc.neg_points + sc.mm_points) * 10) / 10
-    return this.ev('agent.me', { cash: this.cash, score: { ...sc }, album: { pages }, assets })
+    return this.ev('agent.me', { cash: this.cash, score: { ...sc }, album: { pages }, assets, affinity: { ...this.affinity } })
   }
 
   private missing(): string | null {
@@ -564,14 +619,16 @@ export class MockGame {
   }
 
   private duelStep(): GameEvent[] {
-    if (!this.duel) {
-      const id = this.duelIds()
-      this.duel = { id, role: this.choice(['seller', 'buyer'] as const), rival: RIVALS[id % RIVALS.length] ?? 'rival', ours: null, theirs: null, round: 0, limit: this.int(35, 55) }
-      // A live duel shows before anyone speaks: what is at stake and until when.
-      const started = { duel: id, session: 2, role: this.duel.role, rival: this.duel.rival, item: DUEL_ITEMS[id % DUEL_ITEMS.length], deadline_tick: this.tick + DUEL_TICKS }
-      return [this.ev('duel.started', started)]
-    }
-    const d = this.duel
+    if (this.duel) return this.duelMove()
+    const id = this.duelIds()
+    this.duel = { id, role: this.choice(['seller', 'buyer'] as const), rival: RIVALS[id % RIVALS.length] ?? 'rival', ours: null, theirs: null, round: 0, limit: this.int(35, 55) }
+    // What is at stake and until when, ahead of the first offer (same draws as before, so a seed is the same game).
+    const started = { duel: id, session: 2, role: this.duel.role, rival: this.duel.rival, item: DUEL_ITEMS[id % DUEL_ITEMS.length], deadline_tick: this.tick + DUEL_TICKS }
+    return [this.ev('duel.started', started), ...this.duelMove()]
+  }
+
+  private duelMove(): GameEvent[] {
+    const d = this.duel as MockDuel
     const seller = d.role === 'seller'
     d.round += 1
     const close = d.ours !== null && d.theirs !== null && Math.abs(d.ours - d.theirs) <= 3
@@ -709,6 +766,7 @@ export class MockGame {
       out.push(...this.theirMove())
     }
     if (this.n === 0) out.push(...this.venues())
+    if (this.n === 0) out.push(...this.opening())
     out.push(...this.boardMoves(), ...this.world())
     this.n += 1
     return out

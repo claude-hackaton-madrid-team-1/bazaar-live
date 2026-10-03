@@ -1,85 +1,152 @@
-import { useState } from 'react'
-import { fmtP, RARITY_COLOR } from '../game.ts'
+import { useState, type CSSProperties, type ReactNode } from 'react'
+import { fmtP, RARITY_COLOR, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
-import { albumRows, albumSummary, scoreBars, series, sparkline, type AlbumRow, type AlbumSort, type AlbumSummary, type ScoreView } from '../views/album.ts'
-import { Badge, Empty, EventLink, Panel, Seg } from './bits.tsx'
+import {
+  albumRows, albumSummary, bestMoves, scoreBars, series, sparkline,
+  type AlbumRow, type AlbumSort, type AlbumSummary, type Moves, type Quote, type ScoreView, type Slot,
+} from '../views/album.ts'
+import { Badge, Empty, Panel, Seg } from './bits.tsx'
 
-function Summary({ sum }: { sum: AlbumSummary }) {
+const p0 = (v: number) => `${Math.round(v)} P`
+
+/** What we hold is worth, what the spares would fetch, and the cash beside them. */
+function Totals({ sum }: { sum: AlbumSummary }) {
   const t = useGameStrings()
   return (
-    <div className="gm-tiles">
+    <div className="alb-tiles">
       <div className="gm-tile material">
-        <div className="eyebrow">{t.album.pagesComplete}</div>
+        <div className="eyebrow">{t.album.worth}</div>
         <div className="gm-tile-value">
-          {sum.complete}
-          <small>/ {sum.pages}</small>
+          {sum.estimate && '~'}
+          {Math.round(sum.worth)}
+          <small>P</small>
         </div>
-        <div className="gm-tile-foot">{t.album.masters(sum.master)}</div>
-      </div>
-      <div className="gm-tile material">
-        <div className="eyebrow">{t.album.missingSlots}</div>
-        <div className="gm-tile-value">{sum.missing}</div>
-        <div className="gm-tile-foot">{t.album.slotsToFill}</div>
+        <div className="gm-tile-foot">{t.album.worthFoot}</div>
       </div>
       <div className="gm-tile material">
         <div className="eyebrow">{t.album.duplicates}</div>
-        <div className="gm-tile-value">{sum.duplicates.count}</div>
-        <div className="gm-tile-foot gm-refs">
-          {sum.duplicates.refs.length ? (
-            sum.duplicates.refs.map((d) => (
-              <span key={d.ref}>
-                {d.ref} ×{d.spare}
-              </span>
-            ))
-          ) : (
-            <span className="gm-muted">{t.album.noneSpare}</span>
-          )}
-        </div>
-      </div>
-      <div className="gm-tile material">
-        <div className="eyebrow">{t.album.cheapest}</div>
-        <div className="gm-tile-value">{sum.cheapest ? sum.cheapest.ref : '—'}</div>
-        <div className="gm-tile-foot">
-          {sum.cheapest ? `${t.album.rarity[sum.cheapest.rarity] ?? sum.cheapest.rarity} · ${t.album.book} ${fmtP(sum.cheapest.book)} · ${sum.cheapest.page}` : t.album.nothingMissing}
-        </div>
-      </div>
-      <div className="gm-tile material">
-        <div className="eyebrow">{t.album.packs}</div>
         <div className="gm-tile-value">
-          {sum.packs.count}
-          {sum.packs.refs.length > 1 && <small>{t.album.packsFoot(sum.packs.refs.length)}</small>}
+          {Math.round(sum.duplicates.worth)}
+          <small>P · {t.album.copies(sum.duplicates.count)}</small>
         </div>
-        <div className="gm-tile-foot gm-refs">
-          {sum.packs.refs.length ? (
-            sum.packs.refs.map((p) => (
-              <span key={p.ref} title={p.name}>
-                {p.ref} ×{p.count}
-              </span>
-            ))
-          ) : (
-            <span className="gm-muted">{t.album.noPacks}</span>
-          )}
+        <div className="gm-tile-foot">{sum.duplicates.count ? t.album.sparesFoot(p0(sum.duplicates.market)) : t.album.noneSpare}</div>
+      </div>
+      <div className="gm-tile material">
+        <div className="eyebrow">{t.cash}</div>
+        <div className="gm-tile-value">
+          {Math.round(sum.cash)}
+          <small>P</small>
         </div>
+        <div className="gm-tile-foot">{sum.duplicates.count ? t.album.cashFoot(p0(sum.cash + sum.duplicates.market)) : t.album.cashPlain}</div>
       </div>
     </div>
   )
 }
 
-function Cells({ row }: { row: AlbumRow }) {
+/** Where a price comes from, in words: a board's ask or bid, the last trade, or book (marked ~). */
+function useWhere() {
+  const t = useGameStrings()
+  return (q: Quote, side: 'ask' | 'bid') => `${q.source === 'book' ? '~' : ''}${fmtP(q.price)} ${t.album.where[q.source](side, q.venue ?? '')}`
+}
+
+function Rar({ rarity }: { rarity: Slot['rarity'] }) {
+  const t = useGameStrings()
+  return <i className="alb-rar" style={{ background: RARITY_COLOR[rarity] }} title={t.album.rarity[rarity] ?? rarity} />
+}
+
+function Net({ v, estimate }: { v: number; estimate: boolean }) {
   return (
-    <div className="gm-cells">
-      {row.slots.flatMap((c, i) => {
-        const cell = (
-          <span key={c.ref} className="gm-cell" data-have={c.count > 0 || undefined} title={c.title} style={c.count ? { background: c.color } : { borderColor: `color-mix(in srgb, ${c.color} 55%, var(--hairline))` }}>
-            {c.num}
-            {c.spare && <span className="gm-dup">×{c.count}</span>}
-          </span>
-        )
-        // the page's ten slots, a gap, then the two special ones
-        return i === 10 ? [<span key="gap" className="gm-cell-gap" />, cell] : [cell]
-      })}
-    </div>
+    <span className="alb-net" data-sign={v >= 0 ? '+' : '-'}>
+      {estimate && '~'}
+      {signed(v)}
+    </span>
+  )
+}
+
+function MoveCol({ kind, title, hint, empty, children }: { kind: string; title: string; hint: string; empty: string; children: ReactNode[] }) {
+  return (
+    <section className="alb-col" data-kind={kind} aria-label={title}>
+      <h3 className="alb-col-head">
+        {title}
+        <span>{hint}</span>
+      </h3>
+      {children.length ? <ol className="alb-list">{children}</ol> : <p className="alb-empty">{empty}</p>}
+    </section>
+  )
+}
+
+function MovesPanel({ moves }: { moves: Moves }) {
+  const t = useGameStrings()
+  const where = useWhere()
+  return (
+    <Panel title={t.album.moves} sub={t.album.movesSub}>
+      <div className="alb-moves">
+        <MoveCol kind="buy" title={t.album.buyNext} hint={t.album.buyHint} empty={t.album.noBuy}>
+          {moves.buy.map((m) => (
+            <li key={m.ref} className="alb-move">
+              <span className="alb-what">
+                <Rar rarity={m.rarity} />
+                <b className="gm-mono">{m.ref}</b>
+                <span className="gm-muted">{m.page}</span>
+                {m.completes && <Badge tone="good">{t.album.completes[m.completes]}</Badge>}
+              </span>
+              <Net v={m.net} estimate={m.estimate} />
+              <span className="alb-how">{t.album.buyHow(fmtP(m.gain), where(m.quote, 'ask'))}</span>
+            </li>
+          ))}
+        </MoveCol>
+        <MoveCol kind="sell" title={t.album.sell} hint={t.album.sellHint} empty={t.album.noSell}>
+          {moves.sell.map((m) => (
+            <li key={m.ref} className="alb-move">
+              <span className="alb-what">
+                <Rar rarity={m.rarity} />
+                <b className="gm-mono">{m.ref}</b>
+                <span className="gm-muted">{m.why === 'spare' ? t.album.spareOf(m.count) : t.album.lowSet}</span>
+              </span>
+              <Net v={m.net} estimate={m.estimate} />
+              <span className="alb-how">{t.album.sellHow(fmtP(m.lose), where(m.quote, 'bid'))}</span>
+            </li>
+          ))}
+        </MoveCol>
+        <MoveCol kind="pages" title={t.album.closestPages} hint={t.album.pagesHint} empty={t.album.noPages}>
+          {moves.pages.map((m) => (
+            <li key={m.set} className="alb-move">
+              <span className="alb-what">
+                <i className="gm-swatch" style={{ background: m.color }} />
+                <b>{m.name}</b>
+                <span className="gm-muted">
+                  {m.have}/{m.of}
+                </span>
+              </span>
+              <Net v={m.net} estimate={m.estimate} />
+              <span className="alb-bar" aria-hidden="true">
+                <i style={{ width: `${(m.have / Math.max(1, m.of)) * 100}%` }} />
+              </span>
+              <span className="alb-how">
+                {t.album.needs(m.missing.map((x) => `${x.ref} ${where(x.quote, 'ask')}`).join(' + '))}
+                <br />
+                {t.album.pays(fmtP(m.gain), fmtP(m.bonus), fmtP(m.cost))}
+              </span>
+            </li>
+          ))}
+        </MoveCol>
+      </div>
+      <details className="alb-details">
+        <summary>{t.album.howValue}</summary>
+        <p>{t.album.movesNote}</p>
+      </details>
+    </Panel>
+  )
+}
+
+function Cell({ c }: { c: Slot }) {
+  const style = { '--r': c.color } as CSSProperties
+  return (
+    <span className="alb-cell" data-have={c.count > 0 || undefined} data-tier={c.count ? c.tier : undefined} data-move={c.move ?? undefined} title={c.title} style={style}>
+      {c.count ? Math.round(c.worth) : c.move === 'buy' ? `+${Math.round(c.net ?? 0)}` : ''}
+      {c.spare && <span className="alb-dup">×{c.count}</span>}
+    </span>
   )
 }
 
@@ -87,37 +154,70 @@ function AlbumGrid({ rows }: { rows: AlbumRow[] }) {
   const t = useGameStrings()
   return (
     <>
-      <div className="gm-album">
+      <div className="alb-pages">
         {rows.map((row) => (
-          <div key={row.set} className="gm-page">
-            <span className="gm-page-name">
-              <i className="gm-swatch" style={{ background: row.color }} />
-              <span className="gm-mono gm-muted">{row.set}</span>
-              {row.name}
-            </span>
-            <span className="gm-page-count">
-              {row.master ? <Badge tone="warn">{t.badge.master}</Badge> : row.complete && <Badge tone="good">{t.badge.complete}</Badge>}
-              <span>
-                <b>{row.have}</b>/{row.of}
+          <div key={row.set} className="alb-page">
+            <div className="alb-page-head">
+              <span className="alb-page-name">
+                <i className="gm-swatch" style={{ background: row.color }} />
+                {row.name}
+                <span className="alb-aff" title={t.album.affTitle} data-high={row.affinity.value > 1 || undefined}>
+                  {row.affinity.known ? '' : '~'}×{row.affinity.value}
+                </span>
+                {row.master ? <Badge tone="warn">{t.badge.master}</Badge> : row.complete && <Badge tone="good">{t.badge.complete}</Badge>}
               </span>
-            </span>
-            <Cells row={row} />
+              <span className="alb-page-meta">
+                <span className="alb-bar" aria-hidden="true">
+                  <i style={{ width: `${(Math.min(row.have, row.of) / Math.max(1, row.of)) * 100}%` }} />
+                </span>
+                <span className="gm-mono">
+                  <b>{row.have}</b>/{row.of}
+                </span>
+                <span>{row.complete ? t.album.pageEarned(p0(row.worth), p0(row.bonus)) : t.album.pageWorth(p0(row.worth), p0(row.bonus))}</span>
+              </span>
+            </div>
+            <div className="alb-cells">
+              {row.slots.flatMap((c, i) => {
+                const cell = <Cell key={c.ref} c={c} />
+                // the page's ten slots, a gap, then the two special ones
+                return i === 10 ? [<span key="gap" />, cell] : [cell]
+              })}
+            </div>
           </div>
         ))}
       </div>
-      <div className="gm-legend">
-        {Object.entries(RARITY_COLOR).map(([r, c]) => (
-          <span key={r}>
-            <i style={{ background: c }} />
-            {t.album.rarity[r] ?? r}
+      <div className="alb-legend">
+        <span>{t.album.valueLegend}</span>
+        {([1, 2, 3, 4] as const).map((tier, i) => (
+          <span key={tier}>
+            <i className="alb-swatch" data-tier={tier} />
+            {t.album.tiers[i]}
           </span>
         ))}
         <span>
-          <i className="gm-legend-outline" />
-          {t.album.missing}
+          <i className="alb-swatch" data-move="buy" />
+          {t.album.buyLegend}
         </span>
-        <span>{t.album.spare}</span>
+        <span>
+          <span className="alb-dup alb-dup-inline">×2</span>
+          {t.album.sellLegend}
+        </span>
       </div>
+      <details className="alb-details">
+        <summary>{t.album.rarityLegend}</summary>
+        <div className="alb-legend">
+          {Object.entries(RARITY_COLOR).map(([r, c]) => (
+            <span key={r}>
+              <i className="alb-swatch" style={{ boxShadow: `inset 0 -3px 0 ${c}` }} />
+              {t.album.rarity[r] ?? r}
+            </span>
+          ))}
+          <span>
+            <i className="alb-swatch" data-missing />
+            {t.album.missing}
+          </span>
+        </div>
+      </details>
     </>
   )
 }
@@ -177,29 +277,29 @@ export function AlbumScreen() {
   const rows = albumRows(state, { sort })
   return (
     <>
-      <Summary sum={albumSummary(state)} />
-      <div className="gm-album-layout">
-        <Panel
-          title={t.album.album}
-          sub={<EventLink id={state.meEventId}>agent.me</EventLink>}
-          actions={
-            <Seg
-              label={t.album.album}
-              value={sort}
-              options={[
-                ['closest', t.album.closest],
-                ['set', t.album.setOrder],
-              ]}
-              onChange={setSort}
-            />
-          }
-        >
-          {rows.length ? <AlbumGrid rows={rows} /> : <Empty>{t.album.waiting}</Empty>}
-        </Panel>
-        <Panel title={t.album.score} sub={t.album.snapshots(state.history.length)}>
-          <ScorePanel score={scoreBars(state)} scores={series(state.history, 'score')} cash={series(state.history, 'cash')} />
-        </Panel>
-      </div>
+      <Totals sum={albumSummary(state)} />
+      {rows.length > 0 && <MovesPanel moves={bestMoves(state)} />}
+      <Panel
+        title={t.album.album}
+        sub={t.album.gridSub}
+        actions={
+          <Seg
+            label={t.album.album}
+            value={sort}
+            options={[
+              ['closest', t.album.closest],
+              ['set', t.album.setOrder],
+            ]}
+            onChange={setSort}
+          />
+        }
+      >
+        {rows.length ? <AlbumGrid rows={rows} /> : <Empty>{t.album.waiting}</Empty>}
+      </Panel>
+      <details className="alb-details alb-score material">
+        <summary>{t.album.scoreDetails}</summary>
+        <ScorePanel score={scoreBars(state)} scores={series(state.history, 'score')} cash={series(state.history, 'cash')} />
+      </details>
     </>
   )
 }

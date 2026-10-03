@@ -140,6 +140,8 @@ export type State = {
   pages: Page[]
   owned: Record<string, { id: number; serial: number }[]>
   values: Record<string, number>
+  /** Our set multipliers (set → ×), from /me: what a card of each set is worth to us is book × this. */
+  affinity: Record<string, number>
   /** Our sealed packs, from /me. */
   packs: { id: number; ref: string; name: string }[]
   log: LogLine[]
@@ -180,7 +182,7 @@ export const LIMITS = {
 export function createState(): State {
   return {
     team: '', name: '', tick: 0, day: '', tickSeconds: 60, phase: 'observe', goal: '',
-    cash: 0, score: {}, pages: [], owned: {}, values: {}, packs: [],
+    cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
     log: [], threads: {}, duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
     events: [], mine: [], byId: new Map(), agents: createDecisionLog(),
@@ -474,6 +476,10 @@ function me(s: State, e: GameEvent) {
   s.cash = p.cash ?? s.cash
   if (p.score) s.score = p.score
   if (p.album?.pages) s.pages = p.album.pages
+  if (p.affinity && typeof p.affinity === 'object') {
+    s.affinity = {}
+    for (const [set, x] of Object.entries(p.affinity as Payload)) if (typeof x === 'number' && Number.isFinite(x)) s.affinity[set] = x
+  }
   // the assets are all we hold: holding no card at all empties the album too
   if (Array.isArray(p.assets)) {
     s.owned = {}

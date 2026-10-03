@@ -170,14 +170,14 @@ describe('GameRelay', () => {
     expect(JSON.stringify(logs)).not.toContain('secret-key')
   })
 
-  it('relays the allow-listed /me, never its keys or affinity, live and on replay', async () => {
+  it('relays the allow-listed /me (affinity included), never its keys or collection value, live and on replay', async () => {
     const { w, hub, batches, relay } = setup()
     w.me = { ...w.me, affinity: { LAV: 1.6 }, starter_broker_key: 'bk-secret', collection_value: 240, assets: [{ id: 1, kind: 'card', ref: 'LAV-01', serial: 2, your_value: 9, print_run: 300 }] }
     await relay.pollOnce()
-    const expected = { id: 't01', name: 'Team 1', cash: 400, assets: [{ id: 1, kind: 'card', ref: 'LAV-01', serial: 2, your_value: 9 }] }
+    const expected = { id: 't01', name: 'Team 1', cash: 400, affinity: { LAV: 1.6 }, assets: [{ id: 1, kind: 'card', ref: 'LAV-01', serial: 2, your_value: 9 }] }
     expect(batches[0]![2]?.payload).toEqual(expected)
     expect(hub.replay().find((e) => e.type === 'agent.me')?.payload).toEqual(expected)
-    expect(JSON.stringify(hub.replay())).not.toMatch(/bk-secret|affinity|collection_value/)
+    expect(JSON.stringify(hub.replay())).not.toMatch(/bk-secret|collection_value/)
   })
 
   it('a 429 on /me waits for the next tick (and its Retry-After) without backing off the loop', async () => {

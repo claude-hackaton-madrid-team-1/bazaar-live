@@ -49,13 +49,14 @@ describe('row translation', () => {
     expect(dayOf(FEED[1])).toBeNull()
   })
 
-  it('projects /me again: nothing past the allow-list (no affinity, no key)', () => {
+  it('projects /me again: nothing past the allow-list (the affinity, but no key)', () => {
     const row = meRow(ME)
     expect(row?.tick).toBe(401)
     expect(row?.tickSeconds).toBe(30)
     expect(row?.stamp).toBe(ME.stamp)
     const text = JSON.stringify(row?.me)
-    expect(text).not.toMatch(/affinity|collection_value|sk-never|luck_private|print_run/)
+    expect(text).not.toMatch(/collection_value|sk-never|luck_private|print_run/)
+    expect(row?.me.affinity).toEqual({ LAV: 1.4 })
     expect(row?.me.score).toMatchObject({ score: 23.14, rank: 6 })
     expect(meRow({ tick: 1 })).toBeNull()
   })
@@ -104,7 +105,7 @@ describe('GameDbSource', () => {
     expect(first.map((e) => e.type)).toEqual(['clock', 'agent.hello', 'agent.me', 'duel.started', 'duel.message', 'duel.message', 'duel.message', 'duel.result', 'offer.listed', 'thread.message'])
     expect(first[0]).toMatchObject({ tick: 401, scope: 'team', payload: { day: 'Saturday · Gran Vía', tick_seconds: 30 } })
     expect(first[1]?.payload).toEqual({ team: 't01', name: 'Team 1' })
-    expect(JSON.stringify(first)).not.toMatch(/affinity|sk-never/)
+    expect(JSON.stringify(first)).not.toMatch(/collection_value|sk-never/)
 
     // Nothing new: nothing published. Then a new feed row, a new /me and a new message in the same duel.
     await source.pollOnce()

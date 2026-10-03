@@ -17,7 +17,7 @@
 --   * show.game_messages  the messages of our threads (no embedding, no tactic)
 --   * show.game_tape      the settlement tape (public)
 -- The views run with their OWNER's rights, so the role holds no grant on the tables. Never selected:
--- me.affinity, collection_value, any key, badges, open threads; a duel's your_limit, your_offer, result
+-- collection_value, any key, an affinity that is not a number, badges, open threads; a duel's your_limit, your_offer, result
 -- (our gain), limit_meaning, your_days_weight and its words.
 
 begin;
@@ -39,6 +39,11 @@ select s.tick,
          'id', s.me -> 'id',
          'name', s.me -> 'name',
          'cash', s.me -> 'cash',
+         -- set -> multiplier, numbers only: the album values cards of sets we hold nothing of (behind GAME_VIEW_TOKEN)
+         'affinity', coalesce((
+                    select jsonb_object_agg(k, v)
+                      from jsonb_each(case when jsonb_typeof(s.me -> 'affinity') = 'object' then s.me -> 'affinity' else '{}'::jsonb end) as e(k, v)
+                     where jsonb_typeof(v) = 'number'), '{}'::jsonb),
          'score', case when jsonb_typeof(s.me -> 'score') = 'object' then jsonb_build_object(
                     'score', s.me -> 'score' -> 'score', 'rank', s.me -> 'score' -> 'rank', 'deals', s.me -> 'score' -> 'deals',
                     'duel_points', s.me -> 'score' -> 'duel_points', 'ladder_points', s.me -> 'score' -> 'ladder_points',
