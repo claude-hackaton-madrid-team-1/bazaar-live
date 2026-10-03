@@ -3,7 +3,7 @@
  * (GET /api/rivals). The answer first (the cards we need and who has them), then the standings, then the album of the
  * team picked there. A card we never saw a team hold is drawn as unknown, never as missing.
  */
-import { useMemo, type CSSProperties } from 'react'
+import { useMemo, type CSSProperties, type ReactNode } from 'react'
 import { setParam, useParam } from '../../ui/route'
 import { pagePush } from '../fresh.ts'
 import { agoText, whoName } from '../humanize.ts'
@@ -13,7 +13,7 @@ import { SETS } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { nowTick } from '../views/decisions.ts'
-import { needRows, needsOf, pickTeam, rivalAlbum, teamRows, type NeedRow, type RivalPage, type RivalSlot, type TeamRow } from '../views/rivals.ts'
+import { compareAlbums, needRows, needsOf, pickTeam, teamRows, type ComparedPage, type NeedRow, type OurSlot, type RivalSlot, type TeamRow } from '../views/rivals.ts'
 import { Badge, CardRef, Empty, Fresh, Panel } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 import { Ago } from './words.tsx'
@@ -160,41 +160,78 @@ function Cell({ c }: { c: RivalSlot }) {
   )
 }
 
-function RivalAlbum({ team, row, pages }: { team: string; row: TeamRow | null; pages: RivalPage[] }) {
+/** One card of ours: held (with its copies) or missing. */
+function OurCell({ c, name }: { c: OurSlot; name: string | null }) {
+  const t = useRivalStrings()
+  const style = { '--r': c.color } as CSSProperties
+  const title = `${name ?? c.ref} · ${t.rarity(c.rarity)}\n${c.count ? t.weHave(c.count) : t.weLack}`
+  return (
+    <span className="alb-cell rv-cell" data-ours={c.count > 0 || undefined} title={title} style={style}>
+      {c.count > 0 ? '✓' : ''}
+      {c.count > 1 && <span className="alb-dup">×{c.count}</span>}
+    </span>
+  )
+}
+
+/** Twelve cells: the page's ten, a gap, the two special ones. */
+function Cells({ children }: { children: ReactNode[] }) {
+  return <div className="alb-cells">{children.flatMap((cell, i) => (i === 10 ? [<span key="gap" />, cell] : [cell]))}</div>
+}
+
+/** Our album beside the picked rival's, neighbourhood by neighbourhood, in our Album screen's order. */
+function CompareAlbum({ team, row, us, pages }: { team: string; row: TeamRow | null; us: TeamRow | null; pages: ComparedPage[] }) {
   const t = useRivalStrings()
   const g = useGameStrings()
   const name = whoName(g, team)
-  const seen = pages.reduce((n, p) => n + p.slots.filter((s) => s.known).length, 0)
+  const seen = pages.reduce((n, p) => n + p.theirs.slots.filter((s) => s.known).length, 0)
   return (
-    <Panel title={t.album(name)} sub={t.albumSub(seen)} className="rv-album">
-      {row && <p className="rv-album-head">{t.albumHead(row.rank, row.score, row.pages)}</p>}
-      <div className="alb-pages">
+    <Panel title={t.compare(name)} sub={t.albumSub(seen)} className="rv-album">
+      <div className="rv-cmp-cols">
+        <span className="rv-cmp-col" data-side="us">
+          <b>{t.usCol}</b>
+          {us && <span>{t.albumHead(us.rank, us.score, us.pages)}</span>}
+        </span>
+        <span className="rv-cmp-col" data-side="them">
+          <b>{name}</b>
+          {row && <span>{t.albumHead(row.rank, row.score, row.pages)}</span>}
+        </span>
+      </div>
+      <div className="rv-cmp-pages">
         {pages.map((p) => (
-          <div key={p.set} className="alb-page">
-            <div className="alb-page-head">
+          <div key={p.set} className="rv-cmp-page">
+            <div className="rv-cmp-name">
               <span className="alb-page-name">
                 <i className="gm-swatch" style={{ background: p.color }} />
                 {p.name}
-                {p.needs > 0 && <Badge tone="good">{t.holdsNeed(p.needs)}</Badge>}
               </span>
-              <span className="alb-page-meta rv-page-meta">
-                <span className="alb-bar" aria-hidden="true">
-                  <i style={{ width: `${(p.known / Math.max(1, p.of)) * 100}%` }} />
-                </span>
-                <span>{t.known(p.known, p.of)}</span>
-              </span>
+              {p.theirs.needs > 0 && <Badge tone="good">{t.holdsNeed(p.theirs.needs)}</Badge>}
             </div>
-            <div className="alb-cells">
-              {p.slots.flatMap((c, i) => {
-                const cell = <Cell key={c.ref} c={c} />
-                // the page's ten slots, a gap, then the two special ones
-                return i === 10 ? [<span key="gap" />, cell] : [cell]
-              })}
+            <div className="rv-cmp-side" data-side="us">
+              <span className="rv-cmp-meta">
+                <span className="rv-cmp-who">{t.usCol}</span>
+                {p.ours ? t.ourCount(p.ours.have, p.ours.of, p.ours.complete) : t.noPage}
+              </span>
+              {p.ours ? (
+                <Cells>{p.ours.slots.map((c, i) => <OurCell key={c.ref} c={c} name={p.theirs.slots[i]?.name ?? null} />)}</Cells>
+              ) : (
+                <Cells>{p.theirs.slots.map((c) => <OurCell key={c.ref} c={{ ref: c.ref, rarity: c.rarity, color: c.color, count: 0 }} name={c.name} />)}</Cells>
+              )}
+            </div>
+            <div className="rv-cmp-side" data-side="them">
+              <span className="rv-cmp-meta">
+                <span className="rv-cmp-who">{name}</span>
+                {t.known(p.theirs.known, p.theirs.of)}
+              </span>
+              <Cells>{p.theirs.slots.map((c) => <Cell key={c.ref} c={c} />)}</Cells>
             </div>
           </div>
         ))}
       </div>
       <div className="alb-legend">
+        <span>
+          <i className="alb-swatch rv-swatch" data-ours />
+          {t.legendOurs}
+        </span>
         <span>
           <i className="alb-swatch rv-swatch" data-known />
           {t.legendKnown}
@@ -227,7 +264,7 @@ export function RivalsScreen() {
     return { needs: needRows(snapshot, state), teams, needList: needs }
   }, [snapshot, state])
   const team = pickTeam(v.teams, asked)
-  const pages = useMemo(() => (team ? rivalAlbum(snapshot, team, v.needList) : []), [snapshot, team, v.needList])
+  const pages = useMemo(() => (team ? compareAlbums(snapshot, state, team, v.needList) : []), [snapshot, state, team, v.needList])
   const pick = (id: string) => {
     setParam('team', id)
     document.getElementById('rv-album')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -261,7 +298,7 @@ export function RivalsScreen() {
           <Standings rows={v.teams} selected={team} onPick={pick} />
         </Panel>
         <div id="rv-album" className="rv-album-wrap">
-          {team ? <RivalAlbum team={team} row={v.teams.find((r) => r.team === team) ?? null} pages={pages} /> : null}
+          {team ? <CompareAlbum team={team} row={v.teams.find((r) => r.team === team) ?? null} us={v.teams.find((r) => r.us) ?? null} pages={pages} /> : null}
         </div>
       </div>
     </>
