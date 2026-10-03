@@ -1,122 +1,54 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { MotionConfig } from 'motion/react'
+import { useEffect, useMemo, useState } from 'react'
+import { readConfig } from './config'
+import { Stage } from './stage/Stage'
+import { ErrorBoundary } from './ui/ErrorBoundary'
+import { Header, Notice } from './ui/Header'
+import { StartGate } from './ui/StartGate'
+import { Transcript } from './ui/Transcript'
+import { unlockWebSpeech } from './tts/webspeech'
+import { useShow } from './ui/useShow'
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const config = useMemo(() => readConfig(window.location.search), [])
+  const { state, speech } = useShow(config)
+  const [started, setStarted] = useState(false)
+  const { muted, setMuted } = speech
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (e.metaKey || e.ctrlKey || e.altKey || target?.closest('input, select, textarea')) return
+      if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault()
+        setMuted(!muted)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [muted, setMuted])
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    <MotionConfig reducedMotion="user">
+      <div className="app">
+        <Header state={state} speech={speech} mock={config.mock} />
+        <Notice state={state} mock={config.mock} />
+        <main className="main">
+          <ErrorBoundary fallback={<div className="fallback">The stall tripped over a crate. Back in a moment; the transcript keeps going.</div>}>
+            <Stage state={state} />
+          </ErrorBoundary>
+          <Transcript entries={state.transcript} />
+        </main>
+      </div>
+      {!started && (
+        <StartGate
+          onStart={(withSound) => {
+            if (withSound) unlockWebSpeech()
+            setStarted(true)
+            setMuted(!withSound)
+          }}
+        />
+      )}
+    </MotionConfig>
   )
 }
-
-export default App
