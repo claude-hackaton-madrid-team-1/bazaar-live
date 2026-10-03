@@ -4,7 +4,7 @@ import { fmtP, PHASES, setOf, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { now as nowOf, timeline, type Filter, type Line, type Now, type TickCard as Card } from '../views/agent.ts'
-import { blocksByRule, deals as dealsOf, ledger as ledgerOf, share, STATUS_TONE, type Blocks, type DecideSlot, type Deal, type Ledger } from '../views/decisions.ts'
+import { blocksByRule, deals as dealsOf, isWrite, ledger as ledgerOf, share, STATUS_TONE, type Blocks, type DecideSlot, type Deal, type Ledger, type Run } from '../views/decisions.ts'
 import { Badge, Empty, EventLink, Panel, RefChip, Seg } from './bits.tsx'
 import { toneOf } from './tone.ts'
 
@@ -30,18 +30,46 @@ function NowStrip({ now }: { now: Now }) {
           </ol>
           <p className="gm-goal">
             <span className="eyebrow">{t.agent.goal}</span>
-            {now.goal || <span className="gm-muted">{t.agent.noGoal}</span>}
+            {now.goal || (now.decision ? t.decide.goal(now.decision.agent, now.decision.kind, now.decision.item, now.decision.counterparty) : <span className="gm-muted">{t.agent.noGoal}</span>)}
           </p>
           <div className="gm-why">
             <div>
               <b className="eyebrow">{t.agent.why}</b>
-              <span>{now.thought ? now.thought.text : <span className="gm-muted">{t.agent.noReasoning}</span>}</span>
-              {now.thought && <EventLink id={now.thought.eventId} />}
+              {now.thought ? (
+                <>
+                  <span>{now.thought.text}</span>
+                  <EventLink id={now.thought.eventId} />
+                </>
+              ) : now.decision ? (
+                <>
+                  <span>
+                    <Why row={now.decision} />
+                  </span>
+                  <EventLink id={now.decision.eventId}>#{now.decision.decision}</EventLink>
+                </>
+              ) : (
+                <span className="gm-muted">{t.agent.noReasoning}</span>
+              )}
             </div>
             <div>
               <b className="eyebrow">{t.agent.did}</b>
-              <span>{now.action ? `${now.action.icon} ${now.action.text}` : <span className="gm-muted">{t.agent.noAction}</span>}</span>
-              {now.action && <EventLink id={now.action.eventId} />}
+              {now.action ? (
+                <>
+                  <span>{`${now.action.icon} ${now.action.text}`}</span>
+                  <EventLink id={now.action.eventId} />
+                </>
+              ) : now.executed?.method ? (
+                <>
+                  <span>
+                    {t.decide.did(now.executed.agent, now.executed.method, now.executed.item, now.executed.price != null ? fmtP(now.executed.price) : null)}
+                    {' · '}
+                    {t.tick} {now.executed.tick}
+                  </span>
+                  <EventLink id={now.executed.eventId}>#{now.executed.decision}</EventLink>
+                </>
+              ) : (
+                <span className="gm-muted">{t.agent.noAction}</span>
+              )}
             </div>
           </div>
         </div>
@@ -98,37 +126,50 @@ function Item({ item }: { item: string }) {
   return setOf(item) ? <RefChip topic={item} /> : <span className="gm-mono gm-dec-item">{item}</span>
 }
 
+/** Why a decision went the way it did: the guardrail's answer (and the rule that blocked it) and Jev's verdict. */
+function Why({ row }: { row: DecisionRow }) {
+  const d = useGameStrings().decide
+  return (
+    <>
+      {row.verdict === 'allowed' && <span className="gm-good">✓ {d.allowed}</span>}
+      {row.verdict === 'denied' && (
+        <span className="gm-dec-rule">
+          <span className="gm-bad">✖ {d.blockedBy}</span> <b className="gm-mono">{row.rule}</b>
+          {row.text && <span className="gm-muted"> · {row.text}</span>}
+        </span>
+      )}
+      {row.verdict == null && isWrite(row.kind) && <span className="gm-muted">{d.noCheck}</span>}
+      {row.jev && (
+        <span className="gm-dec-jev">
+          {' '}
+          {d.jev} <b>{row.jev}</b>
+          {row.jevValue != null && <span className="gm-muted"> {row.jevValue.toFixed(2)}</span>}
+        </span>
+      )}
+    </>
+  )
+}
+
 /** One decision: agent · kind · item · counterparty · price · guardrail · Jev · status (and how it ended). */
-function DecisionLine({ row }: { row: DecisionRow }) {
+function DecisionLine({ row, run }: { row: DecisionRow; run: Run | null }) {
   const t = useGameStrings()
   const d = t.decide
+  const price = run && run.low != null && run.high != null && run.low !== run.high ? `${run.low}–${fmtP(run.high)}` : row.price != null ? fmtP(row.price) : null
   return (
     <li className="gm-dec" data-status={row.status}>
       <span className="gm-dec-agent gm-mono">{row.agent}</span>
       <span className="gm-dec-body">
         <span className="gm-dec-what">
-          <span className="gm-mono">{row.kind}</span>
+          <span className="gm-mono">{d.kind(row.kind)}</span>
           {row.item && <Item item={row.item} />}
           {row.counterparty && <span className="gm-muted">· {row.counterparty}</span>}
-          {row.price != null && <b className="gm-dec-price">{fmtP(row.price)}</b>}
-          <Badge tone={STATUS_TONE[row.status]}>{d.status[row.status]}</Badge>
+          {price != null && <b className="gm-dec-price">{price}</b>}
+          {isWrite(row.kind) && <Badge tone={STATUS_TONE[row.status]}>{d.status[row.status]}</Badge>}
+          {run && <span className="gm-muted gm-num">{d.run(run.count, run.from, run.to)}</span>}
           {row.error && <Badge tone="bad">{d.error(row.error)}</Badge>}
         </span>
         <span className="gm-dec-why">
-          {row.verdict === 'allowed' && <span className="gm-good">✓ {d.allowed}</span>}
-          {row.verdict === 'denied' && (
-            <span className="gm-dec-rule">
-              <span className="gm-bad">✖ {d.blockedBy}</span> <b className="gm-mono">{row.rule}</b>
-              {row.text && <span className="gm-muted"> · {row.text}</span>}
-            </span>
-          )}
-          {row.verdict == null && <span className="gm-muted">{d.noCheck}</span>}
-          {row.jev && (
-            <span className="gm-dec-jev">
-              {d.jev} <b>{row.jev}</b>
-              {row.jevValue != null && <span className="gm-muted"> {row.jevValue.toFixed(2)}</span>}
-            </span>
-          )}
+          <Why row={row} />
           {row.outcome && (
             <span className="gm-dec-out">
               <Badge tone={row.outcome === 'good' ? 'good' : row.outcome === 'bad' ? 'bad' : 'neutral'}>{row.outcome}</Badge>
@@ -138,7 +179,7 @@ function DecisionLine({ row }: { row: DecisionRow }) {
           )}
         </span>
       </span>
-      <EventLink id={row.eventId} />
+      <EventLink id={row.eventId}>#{row.decision}</EventLink>
     </li>
   )
 }
@@ -149,10 +190,10 @@ function DecideSlots({ slots }: { slots: DecideSlot[] }) {
     <ul className="gm-decs">
       {slots.map((slot) =>
         slot.kind === 'row' ? (
-          <DecisionLine key={slot.row.decision} row={slot.row} />
+          <DecisionLine key={slot.row.decision} row={slot.row} run={slot.run} />
         ) : (
-          <li key={`idle-${slot.agent}`} className="gm-dec gm-dec-idle">
-            <span className="gm-muted">{t.decide.idle(slot.agent, slot.last)}</span>
+          <li key="idle" className="gm-dec gm-dec-idle">
+            <span className="gm-muted">{t.decide.idle(slot.agents)}</span>
           </li>
         ),
       )}
@@ -262,6 +303,9 @@ function LedgerTile({ ledger }: { ledger: Ledger | null }) {
   )
 }
 
+/** An outcome's subject as its real id: `thread:574` → `thread #574`. */
+const subjectLabel = (subject: string): string => subject.replace(':', ' #')
+
 function DealsTile({ deals }: { deals: Deal[] }) {
   const t = useGameStrings()
   const d = t.decide
@@ -269,7 +313,7 @@ function DealsTile({ deals }: { deals: Deal[] }) {
     <Panel title={d.deals} sub={d.dealsSub}>
       {deals.length ? (
         <ul className="gm-deals">
-          {deals.map(({ row, edge, verdict }) => (
+          {deals.map(({ row, value, edge, verdict }) => (
             <li key={`${row.target}-${row.subject}`} className="gm-deal">
               <span className="gm-deal-head">
                 {row.item ? <Item item={row.item} /> : <span className="gm-mono">{row.subject}</span>}
@@ -277,13 +321,13 @@ function DealsTile({ deals }: { deals: Deal[] }) {
                   {d.target[row.target]}
                   {row.counterparty && ` · ${row.counterparty}`}
                 </span>
-                <EventLink id={row.eventId} />
+                <EventLink id={row.eventId}>{subjectLabel(row.subject)}</EventLink>
               </span>
               <span className="gm-deal-body">
                 {row.price != null && (
                   <span>
                     {fmtP(row.price)}
-                    {row.value != null && <span className="gm-muted"> vs {fmtP(row.value)}</span>}
+                    {value != null && <span className="gm-muted"> vs {fmtP(value)}</span>}
                   </span>
                 )}
                 {edge != null && verdict != null ? (
@@ -291,7 +335,7 @@ function DealsTile({ deals }: { deals: Deal[] }) {
                     <span className="gm-gain">{edge === 0 ? '±0 P' : signed(edge)}</span> {d[verdict]}
                   </span>
                 ) : (
-                  <span className="gm-muted">{d.unscored}</span>
+                  <span className="gm-muted">{row.price != null ? d.noValue : d.unscored}</span>
                 )}
                 {row.jev && (
                   <span>

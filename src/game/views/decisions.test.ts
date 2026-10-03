@@ -54,11 +54,11 @@ test('an unknown agent or a decision without an id is dropped', () => {
   assert.deepEqual(s.agents.decisions, { taker: [], maker: [], duels: [] })
 })
 
-test('the Decide lane: one row per decision, or "no decision this tick" with the last tick it decided', () => {
+test('the Decide lane: one row per decision, then one compact line naming who did not decide and when they last did', () => {
   const s = feed(fresh(12), [decision(1, 'taker', 10), decision(2, 'maker', 11), decision(3, 'taker', 12), decision(4, 'taker', 12, { kind: 'dealer_bid' })])
   const slots = decideSlots(s, 12)
-  assert.deepEqual(slots.map((x) => (x.kind === 'row' ? [x.row.agent, x.row.decision] : [x.agent, 'idle', x.last])), [
-    ['taker', 3], ['taker', 4], ['maker', 'idle', 11], ['duels', 'idle', null],
+  assert.deepEqual(slots.map((x) => (x.kind === 'row' ? [x.row.agent, x.row.decision] : ['idle', x.agents.map((i) => [i.agent, i.last])])), [
+    ['taker', 3], ['taker', 4], ['idle', [['maker', 11], ['duels', null]]],
   ])
 })
 
@@ -72,8 +72,9 @@ test('the timeline gives the current tick a card once decisions arrive, and puts
   const cards = timeline(s)
   assert.deepEqual(cards.map((c) => c.tick), [12, 10])
   assert.deepEqual(cards[0]?.lanes.map((l) => l.lane), ['decide'])
-  assert.deepEqual(cards[0]?.decide.map((d) => d.kind), ['idle', 'idle', 'idle'])
-  assert.deepEqual(cards[1]?.decide.map((d) => d.kind), ['row', 'idle', 'idle'])
+  assert.deepEqual(cards[0]?.decide.map((d) => d.kind), ['idle'])
+  // a past tick shows its rows only: "no decision" is said once, on the current tick
+  assert.deepEqual(cards[1]?.decide.map((d) => d.kind), ['row'])
   // "actions" keeps the rows, not the idle lines; "deals" keeps neither
   assert.deepEqual(timeline(s, { filter: 'actions' }).map((c) => [c.tick, c.decide.length]), [[10, 1]])
   assert.deepEqual(timeline(s, { filter: 'deals' }), [])
