@@ -40,12 +40,13 @@ npm run test:coverage  # with v8 coverage
 
 | Parameter | Effect |
 |---|---|
-| `?mock=1` | Plays `src/mock/fixtures.json` on a loop instead of the live feeds: a recorded-style afternoon (lists, a reprice with Jev, a guardrail denial, Abuela and El Chato, a deal, a refused accept, a late row). Use it when the doors are closed. |
+| `?mock=1` | On the show, plays `src/mock/fixtures.json` on a loop instead of the live feeds (on the game screens, a made-up match: see below): a recorded-style afternoon (lists, a reprice with Jev, a guardrail denial, Abuela and El Chato, a deal, a refused accept, a late row). Use it when the doors are closed. |
 | `?speed=2` | Mock playback speed, 0.25 to 8. |
 | `?lang=es\|en` | The language of every line, spoken and written. Castellano with a Madrid flavour by default; `en` has its own native English lines (not translated ones). One language per line, never mixed. |
 | `?doors=closed` | With `?mock=1`: the mock's `/health` says the doors are closed (no events, a countdown to the opening), to hear the idle talk. |
 | `?idle=8` | Seconds of quiet before the characters talk about the situation (default 22 s with closed doors or a pause, 35 s otherwise; 2 to 600). |
 | `?mode=dry` | The mock's agents report DRY RUN, so every move is acted out as practice. |
+| `?token=…` | The game screens only: the server's `GAME_VIEW_TOKEN`, when it sets one. Without it a locked server keeps those screens empty. |
 | `?theme=light\|dark` | Forces the light or dark appearance. Without it the page follows the system's setting. |
 | `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) is ElevenLabs v4 when the server has its key, else captions only: no browser-voice or Gemini stand-in. `webspeech` and `gemini` are for development, by name. The header's picker offers ElevenLabs v4 or no voice. |
 
@@ -68,7 +69,7 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
   transcript as history, live events go to the stage.
 - **LIVE / DRY RUN** comes from each agent's `GET /health` (`mode`), polled every 20 s. The header also always shows **which game** they play in, from the same `/health` (`target.mode`): JUEGO REAL / REAL GAME, SIMULADOR / SIMULATOR, MEZCLA / MIXED when the two disagree, `GAME ?` while no agent has reported a target, and the recorded mock labelled as such. The last target each agent reported is kept through a failed poll (it is fixed per deploy). No extra fetch. The maker's
   `GET /state` seeds the board with our open offers.
-- **Only public fields.** `src/model/sanitize.ts` mirrors the allow-list of bazaar PR #69
+- **Only public fields, on the show.** `src/model/sanitize.ts` mirrors the allow-list of bazaar PR #69
   (`public_decision`, `public_execution`): kind, card, venue, counterparty, the price on a row actually
   sent by a live agent, status, the guardrail as a label (`allowed` / `denied`) and Jev's verdict label.
   Values, limits, reasons, console lines, Jev probabilities and the game's answer bodies never reach
@@ -76,6 +77,45 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
   meter (the option Jev picked among its siblings, e.g. quick sale · fair · aggressive) and not
   probabilities: the probabilities are private.
 - **Read-only.** The page never sends anything to the agents or the game.
+- **The exception: the game screens** (below) read the game with the team key, server-side, and show
+  our private state (cash, assets with their values, the album). They are still read-only: nothing is
+  ever posted to the game.
+
+## Game screens (from bazaar's web view)
+
+The Next.js `web/` view that lived on bazaar's `feat/web-live` branch now lives here, on the glass
+design, and that branch is gone. A nav in the header moves between the show and five screens, one per
+question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to the next):
+
+| Route | Answers | Shows |
+|---|---|---|
+| `/agent` | What is our agent doing, and why? | The current phase and goal, then a timeline of our events by tick, each tick read as Observe → Decide → Act → Result (thoughts, actions, our offers, their replies, our settlements with their gain). Nothing from other teams. |
+| `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. Duels below. |
+| `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
+| `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
+| `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
+
+`?mock=1` plays a TypeScript port of bazaar's mock game (`src/game/mock.ts`, seeded): our agent
+haggling with Abuela and other teams, duels, and the rest of the market around it. No key needed.
+
+**The relay.** The data comes from the server (`server/game/`), which reads the game with the team key
+and never hands the key to the page:
+
+| Env | Effect |
+|---|---|
+| `BAZAAR_KEY` | The real game (`https://bazaar.causaprima.ai`). Without it (and without `BAZAAR_SIM`) the relay is off and the screens say so. |
+| `BAZAAR_SIM=1`, `BAZAAR_SIM_KEY` | The simulator instead, with a `sim-…` key (default `sim-team1`). With `sim-team1` the screens show team 1 of the simulator. |
+| `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values and our album. |
+| `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
+
+Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick and after a settlement
+of ours. It never opens the game's SSE stream: its cap of 6 streams per key is shared with the agents.
+Events reach the page in the web view's envelope (made-up `clock`, `agent.hello`, `agent.me` with
+negative ids, then the feed unchanged):
+
+- `GET /api/game` → `{enabled, target, tokenRequired}` (never the key or the URL).
+- `GET /api/game/stream` → server-sent events: one `events` message with the replay (the latest hello,
+  /me, clock first, then the last 5000 events), then one `events` message per poll, and `hb`.
 
 ## Real conversations (LIVE-T1)
 

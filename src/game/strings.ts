@@ -1,0 +1,484 @@
+/**
+ * The words of the game screens, in the page's language. Lines built from the events themselves
+ * (an agent's thought, "bid 12 P to t05 for LAV-03") come as the agent and the game wrote them.
+ */
+import type { Lang } from '../../shared/lang.ts'
+import type { Route } from '../ui/route'
+import { useLang } from '../ui/lang'
+import type { GameStatus } from './store.ts'
+import type { Lane } from './views/agent.ts'
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+export interface GameStrings {
+  readonly nav: Readonly<Record<Route, string>>
+  readonly navHint: Readonly<Record<Route, string>>
+  readonly navLabel: string
+  readonly brandTag: string
+  readonly status: Readonly<Record<GameStatus, string>>
+  readonly notice: { readonly off: string; readonly locked: string; readonly mock: string; readonly noTeam: string; readonly tryMock: string }
+  readonly day: string
+  readonly tick: string
+  readonly secondsLeft: (s: number) => string
+  readonly cash: string
+  readonly score: string
+  readonly rank: string
+  readonly pause: string
+  readonly resume: string
+  readonly pauseTitle: string
+  readonly phases: Readonly<Record<'observe' | 'decide' | 'act', string>>
+  readonly lanes: Readonly<Record<Lane, string>>
+  readonly agent: {
+    readonly now: string
+    readonly loop: string
+    readonly goal: string
+    readonly noGoal: string
+    readonly why: string
+    readonly did: string
+    readonly noReasoning: string
+    readonly noAction: string
+    readonly openThreads: string
+    readonly ourTrades: string
+    readonly gained: string
+    readonly timeline: string
+    readonly timelineSub: string
+    readonly filters: Readonly<Record<'all' | 'actions' | 'deals', string>>
+    readonly show: string
+    readonly follow: string
+    readonly followTitle: string
+    readonly newer: (n: number) => string
+    readonly waiting: string
+    readonly nothingKind: string
+    readonly now_: string
+    readonly deals: (n: number) => string
+  }
+  readonly badge: {
+    readonly final: string
+    readonly injection: string
+    readonly injectionTitle: string
+    readonly expired: string
+    readonly expiredTitle: string
+    readonly expiresTitle: string
+    readonly closed: string
+    readonly buy: string
+    readonly sell: string
+    readonly complete: string
+    readonly master: string
+    readonly ours: string
+    readonly market: string
+  }
+  readonly neg: {
+    readonly threads: string
+    readonly threadsSub: (open: number, closed: number) => string
+    readonly ourThreads: string
+    readonly conversation: string
+    readonly with: (id: number, who: string) => string
+    readonly noThreads: string
+    readonly noThread: string
+    readonly noOffers: string
+    readonly their: (label: string) => string
+    readonly our: (label: string) => string
+    readonly ask: string
+    readonly bid: string
+    readonly gap: string
+    readonly rounds: string
+    readonly roundsAxis: string
+    readonly last: (id: number) => string
+    readonly we: string
+    readonly railLabel: (id: number) => string
+    readonly convoLabel: (id: number) => string
+    readonly duels: string
+    readonly duelsSub: (live: number) => string
+    readonly noDuels: string
+    readonly duelHead: readonly string[]
+    readonly duelStatus: Readonly<Record<'open' | 'deal' | 'no deal', string>>
+  }
+  readonly album: {
+    readonly album: string
+    readonly score: string
+    readonly snapshots: (n: number) => string
+    readonly closest: string
+    readonly setOrder: string
+    readonly waiting: string
+    readonly pagesComplete: string
+    readonly masters: (n: number) => string
+    readonly missingSlots: string
+    readonly slotsToFill: string
+    readonly duplicates: string
+    readonly noneSpare: string
+    readonly cheapest: string
+    readonly nothingMissing: string
+    readonly book: string
+    readonly total: string
+    readonly dealsCount: (n: number) => string
+    readonly parts: Readonly<Record<'duel_points' | 'ladder_points' | 'neg_points' | 'mm_points', string>>
+    readonly rarity: Readonly<Record<string, string>>
+    readonly missing: string
+    readonly spare: string
+    readonly over: (label: string, n: number) => string
+  }
+  readonly market: {
+    readonly tape: string
+    readonly tapeSub: (n: number, volume: number) => string
+    readonly which: string
+    readonly others: string
+    readonly all: string
+    readonly search: string
+    readonly searchLabel: string
+    readonly prices: string
+    readonly pricesSub: (n: number) => string
+    readonly teams: string
+    readonly teamsSub: (n: number) => string
+    readonly noTrades: string
+    readonly noCards: string
+    readonly noTeams: string
+    readonly tapeHead: readonly string[]
+    readonly cardHead: readonly string[]
+    readonly teamHead: readonly string[]
+    readonly noBook: string
+    readonly bookPrice: (p: string) => string
+  }
+  readonly debug: {
+    readonly stream: string
+    readonly sub: (shown: string, scanned: number, ours: boolean) => string
+    readonly of: (a: number, b: number) => string
+    readonly source: string
+    readonly sources: Readonly<Record<'ours' | 'market' | 'all', string>>
+    readonly family: string
+    readonly clear: string
+    readonly search: string
+    readonly unknownOnly: string
+    readonly noEvents: string
+    readonly head: readonly string[]
+    readonly notKnown: string
+    readonly stats: Readonly<Record<'window' | 'mine' | 'last' | 'perTick' | 'unknown' | 'types', string>>
+    readonly perTick: (avg: string, last: number) => string
+  }
+  readonly inspector: { readonly label: string; readonly copy: string; readonly close: string; readonly evicted: string; readonly inspect: string }
+}
+
+const EN: GameStrings = {
+  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', album: 'Album', market: 'Market', debug: 'Debug' },
+  navHint: {
+    show: 'the buyer and the seller, out loud',
+    agent: 'what our agent is doing, tick by tick',
+    negotiations: 'our threads and duels',
+    album: 'pages and score',
+    market: 'everyone else',
+    debug: 'the raw event stream',
+  },
+  navLabel: 'Screens',
+  brandTag: 'our agent, tick by tick',
+  status: { connecting: 'CONNECTING', live: 'LIVE', reconnecting: 'RECONNECTING', off: 'NO FEED', locked: 'LOCKED', mock: 'MOCK GAME' },
+  notice: {
+    off: 'The server has no team key (BAZAAR_KEY), so the game screens have no feed. Want a preview? Try',
+    locked: 'This view is private: open it with ?token=… (the GAME_VIEW_TOKEN of the server).',
+    mock: 'Mock game: a made-up match on a loop, our agent included. Drop ?mock=1 for the real game.',
+    noTeam: 'The key cannot read /me, so nothing here is ours yet: Market and Debug show the whole game.',
+    tryMock: '?mock=1',
+  },
+  day: 'day',
+  tick: 'tick',
+  secondsLeft: (s) => `${s} s to the next tick`,
+  cash: 'cash',
+  score: 'score',
+  rank: 'rank',
+  pause: 'Pause',
+  resume: 'Resume',
+  pauseTitle: 'Freeze the view (the feed keeps up underneath)',
+  phases: { observe: 'observe', decide: 'decide', act: 'act' },
+  lanes: { observe: 'Observe', decide: 'Decide', act: 'Act', result: 'Result' },
+  agent: {
+    now: 'Now',
+    loop: 'Agent loop',
+    goal: 'Goal',
+    noGoal: 'no goal yet',
+    why: 'Why',
+    did: 'Did',
+    noReasoning: 'no reasoning yet',
+    noAction: 'no action yet',
+    openThreads: 'Open threads',
+    ourTrades: 'Our trades',
+    gained: 'Value gained',
+    timeline: 'Timeline',
+    timelineSub: 'our agent only, newest tick first',
+    filters: { all: 'All', actions: 'Actions', deals: 'Deals' },
+    show: 'Show',
+    follow: 'Follow live',
+    followTitle: 'When off, the timeline stays on the ticks it has now',
+    newer: (n) => `${plural(n, 'newer tick', 'newer ticks')} ↑`,
+    waiting: "Waiting for our agent's first tick",
+    nothingKind: 'Nothing of this kind yet',
+    now_: 'now',
+    deals: (n) => plural(n, 'deal', 'deals'),
+  },
+  badge: {
+    final: 'FINAL',
+    injection: 'INJECTION?',
+    injectionTitle: 'The counterparty text carries instructions: only the structured offer counts',
+    expired: 'expired',
+    expiredTitle: 'The offer has expired',
+    expiresTitle: 'Ticks until the last offer expires',
+    closed: 'closed',
+    buy: 'BUY',
+    sell: 'SELL',
+    complete: 'COMPLETE',
+    master: 'MASTER',
+    ours: 'OURS',
+    market: 'MARKET',
+  },
+  neg: {
+    threads: 'Threads',
+    threadsSub: (open, closed) => `${open} open · ${closed} closed`,
+    ourThreads: 'Our threads',
+    conversation: 'Conversation',
+    with: (id, who) => `#${id} with ${who}`,
+    noThreads: 'No threads yet.',
+    noThread: 'No thread selected. Our threads show up here as soon as the agent opens one.',
+    noOffers: 'No offers yet.',
+    their: (label) => `their ${label}`,
+    our: (label) => `our ${label}`,
+    ask: 'ask',
+    bid: 'bid',
+    gap: 'gap',
+    rounds: 'rounds',
+    roundsAxis: 'rounds →',
+    last: (id) => `last #${id}`,
+    we: 'we',
+    railLabel: (id) => `Price rail of thread ${id}`,
+    convoLabel: (id) => `Conversation in thread ${id}`,
+    duels: 'Duels',
+    duelsSub: (live) => `${live} live`,
+    noDuels: 'No duels yet.',
+    duelHead: ['duel', 'role', 'us', 'them', 'gap', 'rounds', 'status', 'deal', 'points', 'event'],
+    duelStatus: { open: 'open', deal: 'deal', 'no deal': 'no deal' },
+  },
+  album: {
+    album: 'Album',
+    score: 'Score',
+    snapshots: (n) => plural(n, 'snapshot', 'snapshots'),
+    closest: 'Closest',
+    setOrder: 'Set order',
+    waiting: 'Waiting for agent.me',
+    pagesComplete: 'Pages complete',
+    masters: (n) => `${n} master`,
+    missingSlots: 'Missing slots',
+    slotsToFill: 'page slots still to fill',
+    duplicates: 'Duplicates to sell',
+    noneSpare: 'none spare',
+    cheapest: 'Cheapest missing',
+    nothingMissing: 'nothing missing',
+    book: 'book',
+    total: 'total',
+    dealsCount: (n) => plural(n, 'deal', 'deals'),
+    parts: { duel_points: 'Duels', ladder_points: 'Ladder', neg_points: 'Negotiation', mm_points: 'Market-making' },
+    rarity: { common: 'common', uncommon: 'uncommon', rare: 'rare', epic: 'epic', legendary: 'legendary' },
+    missing: 'missing',
+    spare: '×2 spare copies',
+    over: (label, n) => `${label} over ${plural(n, 'snapshot', 'snapshots')}`,
+  },
+  market: {
+    tape: 'Market tape',
+    tapeSub: (n, volume) => `${plural(n, 'trade', 'trades')} · ${volume} P`,
+    which: 'Which trades',
+    others: 'Others',
+    all: 'All',
+    search: 'team, card, venue, s/e/# id',
+    searchLabel: 'Filter trades',
+    prices: 'Card prices',
+    pricesSub: (n) => `${plural(n, 'card', 'cards')} · by trades`,
+    teams: 'Most active teams',
+    teamsSub: (n) => plural(n, 'counterparty', 'counterparties'),
+    noTrades: 'No trades match yet.',
+    noCards: 'No card has traded yet.',
+    noTeams: 'No counterparty has traded yet.',
+    tapeHead: ['tick', 'venue', 'seller → buyer', 'card', 'price', 'vs book', 'fee', 'settle', 'event'],
+    cardHead: ['card', 'trades', 'last', 'median', 'min – max', 'book', 'trend'],
+    teamHead: ['team', 'trades', 'volume', 'bought', 'sold', 'last tick'],
+    noBook: 'no book price',
+    bookPrice: (p) => `book ${p}`,
+  },
+  debug: {
+    stream: 'Event stream',
+    sub: (shown, scanned, ours) => `${shown} shown · ${scanned} in ${ours ? 'ours' : 'the window'}`,
+    of: (a, b) => `${a} of ${b}`,
+    source: 'Source',
+    sources: { ours: 'Ours', market: 'Market', all: 'All' },
+    family: 'Type family',
+    clear: 'clear',
+    search: 'search type, actor, ids, JSON…',
+    unknownOnly: 'unknown types only',
+    noEvents: 'No events match these filters.',
+    head: ['id', 'tick', 'type', 'actor', 'scope', 'source', 'summary'],
+    notKnown: 'not a type the screens know',
+    stats: { window: 'window', mine: 'ours kept', last: 'last', perTick: 'per tick', unknown: 'unknown', types: 'types' },
+    perTick: (avg, last) => `${avg}/tick · last ${last}`,
+  },
+  inspector: { label: 'Event inspector', copy: 'Copy', close: 'Close', evicted: 'evicted', inspect: 'Inspect event' },
+}
+
+const ES: GameStrings = {
+  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', album: 'Álbum', market: 'Mercado', debug: 'Depurar' },
+  navHint: {
+    show: 'el comprador y el vendedor, en voz alta',
+    agent: 'qué hace nuestro agente, turno a turno',
+    negotiations: 'nuestros hilos y duelos',
+    album: 'páginas y puntuación',
+    market: 'todos los demás',
+    debug: 'el flujo de eventos en bruto',
+  },
+  navLabel: 'Pantallas',
+  brandTag: 'nuestro agente, turno a turno',
+  status: { connecting: 'CONECTANDO', live: 'EN VIVO', reconnecting: 'RECONECTANDO', off: 'SIN FEED', locked: 'BLOQUEADO', mock: 'PARTIDA FALSA' },
+  notice: {
+    off: 'El servidor no tiene la clave del equipo (BAZAAR_KEY), así que las pantallas del juego no tienen feed. ¿Una vista previa? Prueba',
+    locked: 'Esta vista es privada: ábrela con ?token=… (el GAME_VIEW_TOKEN del servidor).',
+    mock: 'Partida falsa: un partido inventado en bucle, con nuestro agente dentro. Quita ?mock=1 para el juego real.',
+    noTeam: 'La clave no puede leer /me, así que aún nada es nuestro: Mercado y Depurar muestran todo el juego.',
+    tryMock: '?mock=1',
+  },
+  day: 'día',
+  tick: 'turno',
+  secondsLeft: (s) => `${s} s para el siguiente turno`,
+  cash: 'caja',
+  score: 'puntos',
+  rank: 'puesto',
+  pause: 'Pausa',
+  resume: 'Seguir',
+  pauseTitle: 'Congela la vista (el feed sigue por debajo)',
+  phases: { observe: 'observa', decide: 'decide', act: 'actúa' },
+  lanes: { observe: 'Observa', decide: 'Decide', act: 'Actúa', result: 'Resultado' },
+  agent: {
+    now: 'Ahora',
+    loop: 'Ciclo del agente',
+    goal: 'Objetivo',
+    noGoal: 'aún sin objetivo',
+    why: 'Por qué',
+    did: 'Hizo',
+    noReasoning: 'aún sin razonamiento',
+    noAction: 'aún sin acción',
+    openThreads: 'Hilos abiertos',
+    ourTrades: 'Nuestros tratos',
+    gained: 'Valor ganado',
+    timeline: 'Cronología',
+    timelineSub: 'solo nuestro agente, el turno más reciente primero',
+    filters: { all: 'Todo', actions: 'Acciones', deals: 'Tratos' },
+    show: 'Mostrar',
+    follow: 'Seguir en vivo',
+    followTitle: 'Apagado, la cronología se queda en los turnos que tiene ahora',
+    newer: (n) => `${plural(n, 'turno nuevo', 'turnos nuevos')} ↑`,
+    waiting: 'Esperando el primer turno de nuestro agente',
+    nothingKind: 'Aún nada de este tipo',
+    now_: 'ahora',
+    deals: (n) => plural(n, 'trato', 'tratos'),
+  },
+  badge: {
+    final: 'FINAL',
+    injection: '¿INYECCIÓN?',
+    injectionTitle: 'El texto de la otra parte trae instrucciones: solo cuenta la oferta estructurada',
+    expired: 'caducada',
+    expiredTitle: 'La oferta ha caducado',
+    expiresTitle: 'Turnos hasta que caduque la última oferta',
+    closed: 'cerrado',
+    buy: 'COMPRA',
+    sell: 'VENTA',
+    complete: 'COMPLETA',
+    master: 'MAESTRA',
+    ours: 'NUESTRO',
+    market: 'MERCADO',
+  },
+  neg: {
+    threads: 'Hilos',
+    threadsSub: (open, closed) => `${open} abiertos · ${closed} cerrados`,
+    ourThreads: 'Nuestros hilos',
+    conversation: 'Conversación',
+    with: (id, who) => `#${id} con ${who}`,
+    noThreads: 'Aún no hay hilos.',
+    noThread: 'Ningún hilo elegido. Nuestros hilos aparecen aquí en cuanto el agente abre uno.',
+    noOffers: 'Aún no hay ofertas.',
+    their: (label) => `su ${label}`,
+    our: (label) => `nuestra ${label}`,
+    ask: 'oferta',
+    bid: 'puja',
+    gap: 'distancia',
+    rounds: 'rondas',
+    roundsAxis: 'rondas →',
+    last: (id) => `último #${id}`,
+    we: 'nosotros',
+    railLabel: (id) => `Precios del hilo ${id}`,
+    convoLabel: (id) => `Conversación del hilo ${id}`,
+    duels: 'Duelos',
+    duelsSub: (live) => `${live} en curso`,
+    noDuels: 'Aún no hay duelos.',
+    duelHead: ['duelo', 'papel', 'nosotros', 'ellos', 'distancia', 'rondas', 'estado', 'trato', 'puntos', 'evento'],
+    duelStatus: { open: 'abierto', deal: 'trato', 'no deal': 'sin trato' },
+  },
+  album: {
+    album: 'Álbum',
+    score: 'Puntuación',
+    snapshots: (n) => plural(n, 'instantánea', 'instantáneas'),
+    closest: 'Más cerca',
+    setOrder: 'Por barrio',
+    waiting: 'Esperando agent.me',
+    pagesComplete: 'Páginas completas',
+    masters: (n) => `${n} maestras`,
+    missingSlots: 'Huecos por llenar',
+    slotsToFill: 'huecos de página aún vacíos',
+    duplicates: 'Repetidas para vender',
+    noneSpare: 'ninguna repetida',
+    cheapest: 'La que menos cuesta',
+    nothingMissing: 'no falta nada',
+    book: 'libro',
+    total: 'total',
+    dealsCount: (n) => plural(n, 'trato', 'tratos'),
+    parts: { duel_points: 'Duelos', ladder_points: 'Escalera', neg_points: 'Negociación', mm_points: 'Creación de mercado' },
+    rarity: { common: 'común', uncommon: 'poco común', rare: 'rara', epic: 'épica', legendary: 'legendaria' },
+    missing: 'falta',
+    spare: '×2 copias repetidas',
+    over: (label, n) => `${label} en ${plural(n, 'instantánea', 'instantáneas')}`,
+  },
+  market: {
+    tape: 'Cinta del mercado',
+    tapeSub: (n, volume) => `${plural(n, 'trato', 'tratos')} · ${volume} P`,
+    which: 'Qué tratos',
+    others: 'Otros',
+    all: 'Todos',
+    search: 'equipo, carta, puesto, id s/e/#',
+    searchLabel: 'Filtrar tratos',
+    prices: 'Precios por carta',
+    pricesSub: (n) => `${plural(n, 'carta', 'cartas')} · por tratos`,
+    teams: 'Equipos más activos',
+    teamsSub: (n) => plural(n, 'contraparte', 'contrapartes'),
+    noTrades: 'Aún no hay tratos que coincidan.',
+    noCards: 'Aún no se ha vendido ninguna carta.',
+    noTeams: 'Aún no ha tratado ninguna contraparte.',
+    tapeHead: ['turno', 'puesto', 'vende → compra', 'carta', 'precio', 'vs libro', 'comisión', 'liquidación', 'evento'],
+    cardHead: ['carta', 'tratos', 'último', 'mediana', 'mín – máx', 'libro', 'tendencia'],
+    teamHead: ['equipo', 'tratos', 'volumen', 'compró', 'vendió', 'último turno'],
+    noBook: 'sin precio de libro',
+    bookPrice: (p) => `libro ${p}`,
+  },
+  debug: {
+    stream: 'Flujo de eventos',
+    sub: (shown, scanned, ours) => `${shown} mostrados · ${scanned} en ${ours ? 'los nuestros' : 'la ventana'}`,
+    of: (a, b) => `${a} de ${b}`,
+    source: 'Origen',
+    sources: { ours: 'Nuestros', market: 'Mercado', all: 'Todos' },
+    family: 'Familia de tipo',
+    clear: 'quitar',
+    search: 'busca tipo, actor, ids, JSON…',
+    unknownOnly: 'solo tipos desconocidos',
+    noEvents: 'Ningún evento coincide con estos filtros.',
+    head: ['id', 'turno', 'tipo', 'actor', 'ámbito', 'origen', 'resumen'],
+    notKnown: 'un tipo que las pantallas no conocen',
+    stats: { window: 'ventana', mine: 'nuestros', last: 'último', perTick: 'por turno', unknown: 'desconocidos', types: 'tipos' },
+    perTick: (avg, last) => `${avg}/turno · último ${last}`,
+  },
+  inspector: { label: 'Inspector de eventos', copy: 'Copiar', close: 'Cerrar', evicted: 'descartado', inspect: 'Ver el evento' },
+}
+
+export const GAME_STRINGS: Readonly<Record<Lang, GameStrings>> = { es: ES, en: EN }
+
+export function useGameStrings(): GameStrings {
+  return GAME_STRINGS[useLang()]
+}

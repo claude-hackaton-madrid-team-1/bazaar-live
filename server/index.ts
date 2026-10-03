@@ -2,11 +2,14 @@
  * Entry point: `node server/index.ts` (Node >= 22.18 runs TypeScript by stripping types).
  * Env: PORT (default 8080), ELEVENLABS_API_KEY, GEMINI_API_KEY, SHOW_DATABASE_URL (the read-only role
  * of db/show.sql; absent = no real transcript) and the optional model and voice overrides listed in README.md. With no key at all the show still speaks with Web Speech.
+ * The game screens: BAZAAR_KEY (the real game) or BAZAAR_SIM=1 with BAZAAR_SIM_KEY (the simulator, default
+ * sim-team1); GAME_VIEW_TOKEN to require a token on their stream; GAME_POLL_MS (default 5000). No key = no feed.
  */
 import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.ts'
+import { startGame } from './game/start.ts'
 import { readLimits } from './limits.ts'
 import { availableProviders, readProviderConfig } from './providers.ts'
 import { startTranscript } from './transcript/start.ts'
@@ -20,6 +23,8 @@ const log = (entry: Record<string, unknown>): void => {
 }
 // SHOW_DATABASE_URL absent or wrong → off, and the show runs as it always did.
 const transcript = startTranscript(process.env, log)
+// No BAZAAR_KEY (or a refused one) → the game screens say so, and the show runs as it always did.
+const game = startGame(process.env, log)
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
 const server = createServer(
   createApp({
@@ -29,6 +34,7 @@ const server = createServer(
       maxPerAddress: Number.isInteger(perAddress) && perAddress > 0 ? perAddress : undefined,
       vouchQuotes: process.env.TRANSCRIPT_SPEAK_QUOTES === '1',
     },
+    game,
   }),
 )
 
@@ -38,6 +44,7 @@ server.listen(port, '0.0.0.0', () => {
 
 const shutdown = (): void => {
   void transcript.stop()
+  game.stop()
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(0), 3000).unref()
 }
