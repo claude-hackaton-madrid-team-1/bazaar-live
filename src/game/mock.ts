@@ -181,7 +181,8 @@ export class MockGame {
   // ---------------------------------------------------------------- events
 
   private ev(type: string, payload: Payload, actor = ''): GameEvent {
-    const scope = type.startsWith('agent.') || type.startsWith('clock') ? 'team' : 'public'
+    // Duels are team-only in the game; the relay sends ours as `team` too.
+    const scope = type.startsWith('agent.') || type.startsWith('clock') || type.startsWith('duel.') ? 'team' : 'public'
     return { id: this.ids(), tick: this.tick, t: Math.round((this.tick / 240) * 1e4) / 1e4, type, scope, actor, payload }
   }
 

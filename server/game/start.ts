@@ -27,7 +27,7 @@ export function startGame(env: Readonly<Record<string, string | undefined>>, log
     const relay = new GameRelay({ url: config.url, key: config.key, hub, log, pollMs: config.pollMs, ...(fetchImpl ? { fetchImpl } : {}) })
     relay.start()
     log({ route: 'game', event: 'on', target: config.target, pollMs: config.pollMs, token: config.token !== null })
-    if (config.token === null) log({ route: 'game', event: 'open_stream', note: 'GAME_VIEW_TOKEN unset: the team\'s private state is readable by anyone with the URL' })
+    if (config.token === null) log({ route: 'game', event: 'open_stream', note: 'GAME_VIEW_TOKEN unset: the team\'s private state (cash, assets, our duel offers) is readable by anyone with the URL' })
     return { hub, relay, enabled: () => !relay.keyRefused, target: config.target, token: config.token, stop: () => relay.stop() }
   } catch (error: unknown) {
     log({ route: 'game', event: 'start_failed', message: error instanceof Error ? error.name : 'ERR' })
