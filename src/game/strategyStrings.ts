@@ -4,6 +4,7 @@
  */
 import type { Lang } from '../../shared/lang.ts'
 import { useLang } from '../ui/lang'
+import { percent } from './humanize.ts'
 import type { StrategyStatus } from './strategy.ts'
 import type { Binding, JevVeto, RuleCount, RuleId, SpareWhy, Unblock } from './views/strategy.ts'
 
@@ -38,7 +39,8 @@ export interface StrategyStrings {
   readonly why: string
   readonly whySub: (ticks: number) => string
   readonly headline: (b: Binding, cash: number | null, room: number | null, spent: number | null) => string
-  readonly latest: (card: string, price: number | null, value: number | null, count: number, tick: number, onSale: boolean, cashNeeded: number | null) => string
+  /** `card` is the card's name, `when` the last refusal said as "3 min ago". */
+  readonly latest: (card: string, price: number | null, value: number | null, count: number, when: string, onSale: boolean, cashNeeded: number | null) => string
   readonly unblock: (u: Unblock) => string
   readonly board: (total: number, wanted: number, missing: number, held: number, notChased: number, offAlbum: number) => string
   readonly boardMissing: (price: number, cap: number | null, room: number | null) => string
@@ -50,7 +52,6 @@ export interface StrategyStrings {
   readonly onSaleNow: (price: number) => string
   readonly notOnSale: string
   readonly allRules: string
-  readonly ticks: (first: number, last: number) => string
   readonly noBlocks: string
   readonly jev: (j: JevVeto) => string
   // 3. why we hold
@@ -84,6 +85,9 @@ const RULES_EN: Readonly<Record<RuleId, string>> = {
 
 const RARITY_EN: Readonly<Record<string, string>> = { common: 'common', uncommon: 'uncommon', rare: 'rare', epic: 'epic', legendary: 'legendary', pack: 'pack' }
 const RARITY_ES: Readonly<Record<string, string>> = { common: 'común', uncommon: 'poco común', rare: 'rara', epic: 'épica', legendary: 'legendaria', pack: 'sobre' }
+
+/** A 0–1 confidence as "29 %". */
+const pctOf = (v: number | null): string => (percent(v) == null ? '—' : `${percent(v)} %`)
 
 const EN: StrategyStrings = {
   notice: {
@@ -132,8 +136,8 @@ const EN: StrategyStrings = {
         return 'Nothing refused: no card we need is on sale at a price we would pay'
     }
   },
-  latest: (card, price, value, count, tick, onSale, cashNeeded) =>
-    `${card} asked from ${p(price)}, worth ${p(value)} to us${price != null && value != null ? ` (${signed(value - price)})` : ''}: refused ×${count}, last t${tick}${cashNeeded != null ? ` · fits with cash ${cashNeeded}` : ''}${onSale ? '' : ' · no longer on sale'}`,
+  latest: (card, price, value, count, when, onSale, cashNeeded) =>
+    `${card} asked from ${p(price)}, worth ${p(value)} to us${price != null && value != null ? ` (${signed(value - price)})` : ''}: refused ×${count}, last ${when}${cashNeeded != null ? ` · fits with cash ${cashNeeded}` : ''}${onSale ? '' : ' · no longer on sale'}`,
   unblock: (u) => {
     const what = `${plural(u.cards, 'buy', 'buys')} worth ${signed(u.surplus)} surplus blocked by ${u.rule === 'max_price' ? `max_price_${u.rarity ?? '?'}` : u.rule} ${u.limit ?? ''}`.trim()
     return u.rule === 'cash_floor' && u.cheapest && u.cashNeeded != null ? `${what}; ${u.cheapest.card} at ${p(u.cheapest.price)} fits with cash ${u.cashNeeded}` : what
@@ -151,9 +155,8 @@ const EN: StrategyStrings = {
   onSaleNow: (price) => `on sale now at ${p(price)}`,
   notOnSale: 'not on sale now',
   allRules: 'every rule',
-  ticks: (first, last) => (first === last ? `t${last}` : `t${first}–${last}`),
   noBlocks: 'No buy refused in the window.',
-  jev: (j) => `Jev refused ${plural(j.count, 'swap', 'swaps')} (confidence ${j.value ?? '—'} < ${j.bar})${j.give && j.want ? `, the last one ${j.give} for ${j.want}` : ''}`,
+  jev: (j) => `Jev refused ${plural(j.count, 'swap', 'swaps')} (confidence ${pctOf(j.value)} under the ${pctOf(j.bar)} it needs)${j.give && j.want ? `, the last one ${j.give} for ${j.want}` : ''}`,
   hold: 'Why we hold',
   holdSub: (copies, album, onSale, notListed) => `${copies} cards · ${album} for the album · ${onSale} on sale · ${notListed} spare, not listed`,
   album: 'Kept for the album',
@@ -240,8 +243,8 @@ const ES: StrategyStrings = {
         return 'Nada rechazado: no se vende ninguna carta que necesitemos a un precio que pagaríamos'
     }
   },
-  latest: (card, price, value, count, tick, onSale, cashNeeded) =>
-    `${card} pedía desde ${p(price)}, nos vale ${p(value)}${price != null && value != null ? ` (${signed(value - price)})` : ''}: rechazada ×${count}, la última en t${tick}${cashNeeded != null ? ` · cabría con caja ${cashNeeded}` : ''}${onSale ? '' : ' · ya no está a la venta'}`,
+  latest: (card, price, value, count, when, onSale, cashNeeded) =>
+    `${card} pedía desde ${p(price)}, nos vale ${p(value)}${price != null && value != null ? ` (${signed(value - price)})` : ''}: rechazada ×${count}, la última ${when}${cashNeeded != null ? ` · cabría con caja ${cashNeeded}` : ''}${onSale ? '' : ' · ya no está a la venta'}`,
   unblock: (u) => {
     const what = `${plural(u.cards, 'compra', 'compras')} con ${signed(u.surplus)} de excedente bloqueadas por ${u.rule === 'max_price' ? `max_price_${u.rarity ?? '?'}` : u.rule} ${u.limit ?? ''}`.trim()
     return u.rule === 'cash_floor' && u.cheapest && u.cashNeeded != null ? `${what}; ${u.cheapest.card} a ${p(u.cheapest.price)} cabe con caja ${u.cashNeeded}` : what
@@ -259,9 +262,8 @@ const ES: StrategyStrings = {
   onSaleNow: (price) => `a la venta ahora a ${p(price)}`,
   notOnSale: 'ya no está a la venta',
   allRules: 'todas las reglas',
-  ticks: (first, last) => (first === last ? `t${last}` : `t${first}–${last}`),
   noBlocks: 'Ninguna compra rechazada en la ventana.',
-  jev: (j) => `Jev rechazó ${plural(j.count, 'intercambio', 'intercambios')} (confianza ${j.value ?? '—'} < ${j.bar})${j.give && j.want ? `, el último ${j.give} por ${j.want}` : ''}`,
+  jev: (j) => `Jev rechazó ${plural(j.count, 'intercambio', 'intercambios')} (confianza ${pctOf(j.value)}, necesita ${pctOf(j.bar)})${j.give && j.want ? `, el último ${j.give} por ${j.want}` : ''}`,
   hold: 'Por qué guardamos',
   holdSub: (copies, album, onSale, notListed) => `${copies} cartas · ${album} para el álbum · ${onSale} en venta · ${notListed} sobrantes sin anunciar`,
   album: 'Guardadas para el álbum',
