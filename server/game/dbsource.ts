@@ -10,10 +10,12 @@
  * replays a bounded window (the newest feed rows and duels). No exception ever leaves `pollOnce()`; the
  * views missing (db/game.sql not applied) is reported once, through `onMissing`, and the source stops.
  *
- * Other teams' set multipliers (`show.game_team_affinity`) ride along, at most every `affinityEveryMs`: validated
- * (`shared/affinity.ts`) and published as the sticky status `agent.affinity` {rows} only when they changed. That
- * view is optional (it exists once bazaar's schema.sql has `team_affinity` and db/game.sql was re-applied): its
- * absence is said once and re-checked every `affinityRecheckMs`, and never stops the rest of the source.
+ * Other teams' set multipliers (`show.game_team_affinity`) ride along, at most every `affinityEveryMs`, and only
+ * when `affinity` is on (`./start.ts` turns it on only behind GAME_VIEW_TOKEN: `inferred` is our intel, `said` and
+ * the quote are other teams' private thread words): validated (`shared/affinity.ts`) and published as the sticky
+ * status `agent.affinity` {rows} only when they changed. That view is optional (it exists once bazaar's schema.sql
+ * has `team_affinity` and db/game.sql was re-applied): its absence is said once and re-checked every
+ * `affinityRecheckMs`, and never stops the rest of the source.
  */
 import { cleanAffinityPayload, MAX_AFFINITY_ROWS } from '../../shared/affinity.ts'
 import type { Db } from '../transcript/poller.ts'
@@ -122,6 +124,11 @@ export interface DbSourceDeps {
   readonly duelLimit?: number
   readonly maxDelayMs?: number
   readonly secrets?: readonly string[]
+  /**
+   * Read and relay other teams' set multipliers. Off by default: only a stream behind GAME_VIEW_TOKEN may carry
+   * them (our intel and other teams' private words), so ./start.ts turns it on only when the token is set.
+   */
+  readonly affinity?: boolean
   /** Other teams' set multipliers are read at most this often. */
   readonly affinityEveryMs?: number
   /** While show.game_team_affinity is missing, it is looked for again this often. */
@@ -161,7 +168,7 @@ export class GameDbSource {
     this.deps = deps
     this.o = {
       intervalMs: 3000, feedBackfill: 2000, cap: 500, duelLimit: 50, maxDelayMs: 60_000, secrets: [],
-      affinityEveryMs: 15_000, affinityRecheckMs: 60_000, now: Date.now, random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+      affinity: false, affinityEveryMs: 15_000, affinityRecheckMs: 60_000, now: Date.now, random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
   }
@@ -300,7 +307,7 @@ export class GameDbSource {
       this.failed(error)
       return
     }
-    await this.pollAffinity()
+    if (this.o.affinity) await this.pollAffinity()
   }
 
   /** Other teams' set multipliers, when due: published only when they changed. Never throws, never stops the source. */

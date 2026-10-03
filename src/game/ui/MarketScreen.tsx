@@ -175,7 +175,8 @@ function AffinityCell({ cell }: { cell: TeamAffinity | undefined }) {
     <td>
       <span className="mkt-aff">
         {cell.said !== null && (
-          // the quote is another team's text: a title attribute (plain text), never markup
+          // the quote is another team's untrusted words: plain text in a title attribute only (React escapes it), never
+          // markup, markdown, a voice (TTS) or any prompt; the server already cut it to 200 characters without Cc/Cf
           <span className="mkt-aff-said" title={t.market.saidTitle(cell.quote, cell.saidTick)}>
             <b>{fmtMultiplier(cell.said)}</b> <Badge tone="warn">{t.market.saidLabel}</Badge>
           </span>

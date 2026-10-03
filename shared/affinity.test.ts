@@ -51,6 +51,31 @@ describe('cleanAffinityRow', () => {
   })
 })
 
+describe('cleanAffinityRow: control, bidi and format characters in the quote', () => {
+  // Cc: C0, DEL, C1 (NEL, CSI). Cf: bidi embeddings, overrides, isolates and marks, zero-width characters, word
+  // joiner, BOM, soft hyphen, interlinear annotations, and the invisible tag characters (U+E0000 block).
+  const HIDDEN = [
+    '\u0000', '\u0007', '\u001b', '\u007f', '\u0085', '\u009b',
+    '\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2067', '\u2068', '\u2069', '\u200e', '\u200f', '\u061c',
+    '\u200b', '\u200c', '\u200d', '\u2060', '\ufeff', '\u00ad', '\ufff9', '\ufffb', '\u{e0001}', '\u{e0041}', '\u{e007f}',
+  ]
+  const CC_CF = /[\p{Cc}\p{Cf}]/u
+
+  it.each(HIDDEN.map((c) => [c.codePointAt(0)?.toString(16), c]))('removes or blanks U+%s', (_, c) => {
+    const quote = cleanAffinityRow({ ...ROW, quote: `we${c} pay${c}${c} x1.6${c}` })?.quote ?? ''
+    expect(quote).not.toMatch(CC_CF)
+    expect(quote.replace(/ /g, '')).toBe('wepayx1.6')
+  })
+
+  it('leaves no Cc or Cf character in any quote, and at most 200 characters', () => {
+    const noisy = Array.from({ length: 400 }, (_, i) => `${HIDDEN[i % HIDDEN.length]}w${i}`).join(' ')
+    const quote = cleanAffinityRow({ ...ROW, quote: noisy })?.quote ?? ''
+    expect(quote.length).toBeGreaterThan(0)
+    expect(quote.length).toBeLessThanOrEqual(AFFINITY_QUOTE_MAX)
+    expect(quote).not.toMatch(CC_CF)
+  })
+})
+
 describe('cleanAffinityPayload', () => {
   it('keeps the valid rows, one per team and set, sorted, capped', () => {
     const rows = [{ ...ROW, team: 't09' }, { bad: true }, ROW, { ...ROW, set_code: 'CHA' }, { ...ROW, said: 1.1 }]

@@ -118,8 +118,11 @@ and never hands the key to the page:
 
 Other teams' set multipliers come only from the database source: bazaar's `team_affinity` table (its `schema.sql`)
 through `show.game_team_affinity` (db/game.sql), read at most every 15 s, validated again (`shared/affinity.ts`: team
-and set ids, multipliers in range, the quote as plain text of at most 200 characters) and sent as the sticky
-`agent.affinity` {rows} only when they changed. db/game.sql creates that view only once the table exists, so re-apply
+and set ids, multipliers in range, the quote as plain text of at most 200 characters with no control, bidi or format
+character) and sent as the sticky `agent.affinity` {rows} only when they changed, and only when `GAME_VIEW_TOKEN` is set
+(`inferred` is our intel, `said` and the quote are other teams' private thread words: without the token the stream is
+open, so they are not relayed, `affinity_off` is logged and the panel says "no data yet"). The quote is shown as plain
+text on hover and nowhere else: never as markup or markdown, never to a voice (TTS) or a prompt. db/game.sql creates that view only once the table exists, so re-apply
 it after bazaar's schema.sql has it; until then the panel says "no data yet" and the rest of the screens are unchanged.
 
 Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick and after a settlement

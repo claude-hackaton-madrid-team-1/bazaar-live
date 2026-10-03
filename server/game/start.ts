@@ -5,6 +5,9 @@
  * Two sources, one hub. With the show's pool (SHOW_DATABASE_URL) and GAME_SOURCE not `api`, our own database
  * (`./dbsource.ts`, db/game.sql's views); if those views are missing, it says so once and falls back to the
  * game's API. Otherwise the API relay (`./relay.ts`) with the team key, as before.
+ *
+ * Other teams' set multipliers (the database source's `agent.affinity`) are relayed only when GAME_VIEW_TOKEN is set:
+ * they are our intel and other teams' private thread words, never for a stream anyone with the URL can open.
  */
 import type { SharedShowPool } from '../transcript/pg.ts'
 import { readGameConfig, type GameTarget } from './config.ts'
@@ -54,9 +57,10 @@ export function startGame(
       log({ route: 'game', event: 'on', source: 'api', target: config.target, pollMs: config.pollMs, token: token !== null })
     }
     if (fromDb) {
-      db = new GameDbSource({ db: show.pool, hub, log, secrets: show.secrets, onMissing: startRelay })
+      db = new GameDbSource({ db: show.pool, hub, log, secrets: show.secrets, onMissing: startRelay, affinity: token !== null })
       db.start()
       log({ route: 'game', event: 'on', source: 'db', token: token !== null })
+      if (token === null) log({ route: 'game', event: 'affinity_off', note: 'GAME_VIEW_TOKEN unset: other teams\' set multipliers and words are relayed only behind the token' })
     } else startRelay()
     if (token === null) log({ route: 'game', event: 'open_stream', note: 'GAME_VIEW_TOKEN unset: the team\'s private state (cash, assets, our duel offers) is readable by anyone with the URL' })
     const source = (): GameSourceKind | null => {

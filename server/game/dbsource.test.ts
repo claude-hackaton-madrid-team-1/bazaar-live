@@ -100,8 +100,7 @@ describe('GameDbSource', () => {
     const db = fakeDb(answers)
     const hub = new GameHub()
     const batches: (readonly GameEvent[])[] = []
-    // the teams' multipliers are a status of their own (tested below)
-    hub.subscribe((b) => b[0]?.type !== 'agent.affinity' && batches.push(b))
+    hub.subscribe((b) => batches.push(b))
     const source = new GameDbSource({ db, hub, log: () => {} })
     await source.pollOnce()
     const first = batches[0] ?? []
@@ -113,7 +112,7 @@ describe('GameDbSource', () => {
     // Nothing new: nothing published. Then a new feed row, a new /me and a new message in the same duel.
     await source.pollOnce()
     expect(batches).toHaveLength(1)
-    const after = db.calls.filter((c) => c.sql !== DB_SQL.affinity).slice(-3)
+    const after = db.calls.slice(-3)
     expect(after.map((c) => c.sql)).toEqual([DB_SQL.feedAfter, DB_SQL.meAfter, DB_SQL.duelsAfter])
     expect(after[0]?.params).toEqual([21155, 500])
     expect(after[1]?.params).toEqual([ME.stamp])
@@ -161,7 +160,7 @@ describe('GameDbSource', () => {
 
 describe('GameDbSource: other teams\' set multipliers', () => {
   const AFFINITY = [
-    { team: 't05', set_code: 'LAV', said: 1.6, said_confidence: 0.9, said_tick: 212, quote: '[laughs] <i>we pay x1.6</i>', inferred: '1.3', inferred_confidence: 0.72, inferred_tick: 230 },
+    { team: 't05', set_code: 'LAV', said: 1.6, said_confidence: 0.9, said_tick: 212, quote: '[laughs] \u202e<i>we pay\u2067 x1.6</i>\u0007', inferred: '1.3', inferred_confidence: 0.72, inferred_tick: 230 },
     { team: 'abuela', set_code: 'LAV', said: 1.1, said_confidence: null, said_tick: 1, quote: 'not a team', inferred: null, inferred_confidence: null, inferred_tick: null },
   ]
   const setup = (answers: Map<string, unknown[] | Error>, logs: Record<string, unknown>[] = []) => {
@@ -171,7 +170,7 @@ describe('GameDbSource: other teams\' set multipliers', () => {
     const statuses: GameEvent[] = []
     hub.subscribe((b) => b.forEach((e) => e.type === 'agent.affinity' && statuses.push(e)))
     const onMissing = vi.fn()
-    const source = new GameDbSource({ db, hub, log: (e) => logs.push(e), onMissing, now: () => now, affinityEveryMs: 15_000, affinityRecheckMs: 60_000, secrets: ['secret-host'] })
+    const source = new GameDbSource({ db, hub, log: (e) => logs.push(e), onMissing, affinity: true, now: () => now, affinityEveryMs: 15_000, affinityRecheckMs: 60_000, secrets: ['secret-host'] })
     return { db, hub, statuses, source, onMissing, logs, at: (ms: number) => (now = ms) }
   }
   const affinityReads = (db: ReturnType<typeof fakeDb>) => db.calls.filter((c) => c.sql === DB_SQL.affinity)
@@ -243,6 +242,15 @@ describe('GameDbSource: other teams\' set multipliers', () => {
     expect(logs.filter((l) => l.event === 'db_affinity_failed')).toHaveLength(1)
   })
 
+  it('is never read or relayed while off (the default: no GAME_VIEW_TOKEN)', async () => {
+    const db = fakeDb(new Map([[DB_SQL.affinity, AFFINITY]]))
+    const hub = new GameHub()
+    const source = new GameDbSource({ db, hub, log: () => undefined })
+    await source.pollOnce()
+    expect(affinityReads(db)).toHaveLength(0)
+    expect(hub.replay().some((e) => e.type === 'agent.affinity')).toBe(false)
+  })
+
   it('is not read when the main poll failed', async () => {
     const { db, source } = setup(new Map([[DB_SQL.feedFirst, Object.assign(new Error('boom'), { code: 'XX000' })]]))
     await source.pollOnce()
@@ -259,6 +267,27 @@ describe('startGame with the show pool', () => {
     expect(game.enabled()).toBe(true)
     expect(game.target).toBe('real')
     game.stop()
+  })
+
+  it('relays other teams\' set multipliers only behind GAME_VIEW_TOKEN', async () => {
+    const rows = [{ team: 't05', set_code: 'LAV', said: 1.6, said_confidence: null, said_tick: 3, quote: 'x1.6', inferred: null, inferred_confidence: null, inferred_tick: null }]
+    const open = pool(new Map([[DB_SQL.affinity, rows]]))
+    const logs: Record<string, unknown>[] = []
+    const openGame = startGame({}, (e) => logs.push(e), undefined, open)
+    openGame.stop()
+    await openGame.db?.pollOnce()
+    expect(open.pool.calls.some((c) => c.sql === DB_SQL.affinity)).toBe(false)
+    expect(openGame.hub?.replay().some((e) => e.type === 'agent.affinity')).toBe(false)
+    expect(logs.map((l) => l.event)).toContain('affinity_off')
+
+    const gated = pool(new Map([[DB_SQL.affinity, rows]]))
+    const gatedLogs: Record<string, unknown>[] = []
+    const gatedGame = startGame({ GAME_VIEW_TOKEN: 'a-long-view-token' }, (e) => gatedLogs.push(e), undefined, gated)
+    gatedGame.stop()
+    await gatedGame.db?.pollOnce()
+    expect(gated.pool.calls.some((c) => c.sql === DB_SQL.affinity)).toBe(true)
+    expect(gatedGame.hub?.replay().find((e) => e.type === 'agent.affinity')?.payload).toMatchObject({ rows: [{ team: 't05', said: 1.6, quote: 'x1.6' }] })
+    expect(gatedLogs.map((l) => l.event)).not.toContain('affinity_off')
   })
 
   it('GAME_SOURCE=api keeps the API relay', () => {
