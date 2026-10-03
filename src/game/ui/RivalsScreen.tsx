@@ -13,7 +13,7 @@ import { SETS } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { nowTick } from '../views/decisions.ts'
-import { compareAlbums, needRows, needsOf, pickTeam, teamRows, type ComparedPage, type NeedRow, type OurSlot, type RivalSlot, type TeamRow } from '../views/rivals.ts'
+import { albumCounts, compareAlbums, needRows, needsOf, pickTeam, teamRows, type AlbumCounts, type ComparedPage, type NeedRow, type OurSlot, type RivalSlot, type TeamRow } from '../views/rivals.ts'
 import { Badge, CardRef, Empty, Fresh, Panel } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 import { Ago } from './words.tsx'
@@ -140,7 +140,7 @@ function Standings({ rows, selected, onPick }: { rows: TeamRow[]; selected: stri
   )
 }
 
-function Cell({ c }: { c: RivalSlot }) {
+function Cell({ c, probable }: { c: RivalSlot; probable: boolean }) {
   const t = useRivalStrings()
   const g = useGameStrings()
   const { state } = useGame()
@@ -150,7 +150,7 @@ function Cell({ c }: { c: RivalSlot }) {
   if (c.known) {
     lines.push(t.since(c.known.how, agoOf(c.known.since)))
     if (c.known.seen > c.known.since) lines.push(t.seen(agoOf(c.known.seen)))
-  } else lines.push(t.unknown)
+  } else lines.push(probable ? t.unknownProbable : t.unknown)
   // A card we need is worth a highlight only where they hold it: an unknown slot is no swap target.
   const need = c.need && c.known != null
   if (need) lines.push(t.needed)
@@ -181,13 +181,13 @@ function Cells({ children }: { children: ReactNode[] }) {
 }
 
 /** Our album beside the picked rival's, neighbourhood by neighbourhood, in our Album screen's order. */
-function CompareAlbum({ team, row, us, pages }: { team: string; row: TeamRow | null; us: TeamRow | null; pages: ComparedPage[] }) {
+function CompareAlbum({ team, row, us, pages, counts }: { team: string; row: TeamRow | null; us: TeamRow | null; pages: ComparedPage[]; counts: AlbumCounts }) {
   const t = useRivalStrings()
   const g = useGameStrings()
   const name = whoName(g, team)
-  const seen = pages.reduce((n, p) => n + p.theirs.slots.filter((s) => s.known).length, 0)
+  const gap = counts.complete !== null && counts.complete > counts.seen
   return (
-    <Panel title={t.compare(name)} sub={t.albumSub(seen)} className="rv-album">
+    <Panel title={t.compare(name)} sub={gap ? t.albumGap(counts.complete ?? 0, counts.seen) : t.publicOnly} className="rv-album">
       <div className="rv-cmp-cols">
         <span className="rv-cmp-col" data-side="us">
           <b>{t.usCol}</b>
@@ -196,6 +196,9 @@ function CompareAlbum({ team, row, us, pages }: { team: string; row: TeamRow | n
         <span className="rv-cmp-col" data-side="them">
           <b>{name}</b>
           {row && <span>{t.albumHead(row.rank, row.score, row.pages)}</span>}
+          <span title={t.heldKnownTitle(counts.held !== null)}>
+            {t.heldKnown(counts.held, counts.known)}
+          </span>
         </span>
       </div>
       <div className="rv-cmp-pages">
@@ -223,8 +226,14 @@ function CompareAlbum({ team, row, us, pages }: { team: string; row: TeamRow | n
               <span className="rv-cmp-meta">
                 <span className="rv-cmp-who">{name}</span>
                 {t.known(p.theirs.known, p.theirs.of)}
+                {p.theirs.probable && (
+                  <>
+                    {' '}
+                    <Badge title={t.probableTitle(p.theirs.known, p.theirs.of, counts.complete ?? 0, counts.seen)}>{t.probable}</Badge>
+                  </>
+                )}
               </span>
-              <Cells>{p.theirs.slots.map((c) => <Cell key={c.ref} c={c} />)}</Cells>
+              <Cells>{p.theirs.slots.map((c) => <Cell key={c.ref} c={c} probable={p.theirs.probable} />)}</Cells>
             </div>
           </div>
         ))}
@@ -238,10 +247,7 @@ function CompareAlbum({ team, row, us, pages }: { team: string; row: TeamRow | n
           <i className="alb-swatch rv-swatch" data-known />
           {t.legendKnown}
         </span>
-        <span>
-          <i className="alb-swatch" data-missing />
-          {t.legendUnknown}
-        </span>
+        <span>{t.legendUnknown}</span>
         <span>
           <i className="alb-swatch rv-swatch" data-need />
           {t.legendNeed}
@@ -267,6 +273,7 @@ export function RivalsScreen() {
   }, [snapshot, state])
   const team = pickTeam(v.teams, asked)
   const pages = useMemo(() => (team ? compareAlbums(snapshot, state, team, v.needList) : []), [snapshot, state, team, v.needList])
+  const counts = useMemo(() => albumCounts(snapshot, team ?? '', pages.map((p) => p.theirs)), [snapshot, team, pages])
   const pick = (id: string) => {
     setParam('team', id)
     document.getElementById('rv-album')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -300,7 +307,7 @@ export function RivalsScreen() {
           <Standings rows={v.teams} selected={team} onPick={pick} />
         </Panel>
         <div id="rv-album" className="rv-album-wrap">
-          {team ? <CompareAlbum team={team} row={v.teams.find((r) => r.team === team) ?? null} us={v.teams.find((r) => r.us) ?? null} pages={pages} /> : null}
+          {team ? <CompareAlbum team={team} row={v.teams.find((r) => r.team === team) ?? null} us={v.teams.find((r) => r.us) ?? null} pages={pages} counts={counts} /> : null}
         </div>
       </div>
     </>

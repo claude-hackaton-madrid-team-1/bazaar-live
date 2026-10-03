@@ -15,8 +15,10 @@ describe('rivals rows', () => {
 
   it('reads a team: numbers only in its set interest, never a dealer', () => {
     expect(teamOf({ team: 't14', rank: 1, score: '30.36', level: 4, pages: 2, deals: 34, tick: 850, set_interest: { RET: 9, LAT: '-108', note: 3, SAL: 'x' } })).toEqual({
-      team: 't14', rank: 1, score: 30.36, level: 4, pages: 2, deals: 34, tick: 850, interest: { RET: 9, LAT: -108 },
+      team: 't14', rank: 1, score: 30.36, level: 4, pages: 2, deals: 34, tick: 850, albumFilled: null, albumSlots: null, interest: { RET: 9, LAT: -108 },
     })
+    expect(teamOf({ team: 't10', rank: 1, score: 34, pages: 3, album_filled: 36, album_slots: '50' })).toMatchObject({ albumFilled: 36, albumSlots: 50 })
+    expect(teamOf({ team: 't10', rank: 1, score: 34, album_filled: -1, album_slots: 0 })).toMatchObject({ albumFilled: null, albumSlots: null })
     expect(teamOf({ team: 'abuela', rank: 1, score: 1 })).toBeNull()
     expect(teamOf({ team: 't14', rank: 1 })).toBeNull()
   })

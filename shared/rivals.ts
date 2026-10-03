@@ -36,6 +36,12 @@ export interface RivalTeam {
   readonly pages: number | null
   readonly deals: number | null
   readonly tick: number | null
+  /**
+   * Its filled album slots, of `albumSlots`, by the leaderboard: null until the agents store them
+   * (leaderboard_snapshots has no such column yet; db/rival_albums.sql reads them the day it does).
+   */
+  readonly albumFilled: number | null
+  readonly albumSlots: number | null
   /** Set → +1 per buy, bid or dealer ask in it, -1 per sale or listing: the top one hints at its ×1.6 set. */
   readonly interest: Readonly<Record<string, number>>
 }

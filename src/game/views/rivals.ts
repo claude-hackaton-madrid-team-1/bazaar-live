@@ -161,12 +161,58 @@ export interface RivalPage {
   readonly of: number
   /** Of the cards we need on this page, how many it holds. */
   readonly needs: number
+  /** Not seen complete, but among the likeliest of the complete pages the leaderboard counts and we do not see. */
+  readonly probable: boolean
   readonly slots: readonly RivalSlot[]
 }
 
 /**
+ * The leaderboard counts a team's complete pages; public moves may show fewer of them complete. Flags the likeliest of
+ * the others, as many as we miss: the most cards known first (9 of 10 known is likely complete), the given order on a
+ * tie. A page with no card known is no evidence, never flagged.
+ */
+export function markProbable(pages: readonly RivalPage[], complete: number | null): RivalPage[] {
+  const seen = pages.filter((p) => p.known >= p.of).length
+  const missing = Math.max(0, (complete ?? 0) - seen)
+  const picked = new Set(
+    pages
+      .filter((p) => p.known > 0 && p.known < p.of)
+      .sort((a, b) => b.known - a.known)
+      .slice(0, missing)
+      .map((p) => p.set),
+  )
+  return pages.map((p) => (picked.has(p.set) ? { ...p, probable: true } : p))
+}
+
+/** A team's album in numbers: what the leaderboard says beside what public moves show. */
+export interface AlbumCounts {
+  /** Filled album slots, by the leaderboard: null until the agents store it. */
+  readonly held: number | null
+  /** Page cards public moves show it holding. */
+  readonly known: number
+  /** Complete pages, by the leaderboard. */
+  readonly complete: number | null
+  /** Pages we see complete (every card known). */
+  readonly seen: number
+  /** Pages flagged probably complete. */
+  readonly probable: number
+}
+
+export function albumCounts(snap: RivalsSnapshot, team: string, pages: readonly RivalPage[]): AlbumCounts {
+  const row = snap.teams.find((t) => t.team === team)
+  return {
+    held: row?.albumFilled ?? null,
+    known: pages.reduce((n, p) => n + p.known, 0),
+    complete: row?.pages ?? null,
+    seen: pages.filter((p) => p.known >= p.of).length,
+    probable: pages.filter((p) => p.probable).length,
+  }
+}
+
+/**
  * A team's album as far as the public feed shows it: every set we know of, in `order` (our album's order) first, the
- * sets we have no page of after it in the catalog's order.
+ * sets we have no page of after it in the catalog's order; the pages the leaderboard says are complete though we do
+ * not see them so, flagged (markProbable).
  */
 export function rivalAlbum(snap: RivalsSnapshot, team: string, needs: readonly Need[] = [], order: readonly string[] = []): RivalPage[] {
   const mine = new Map(snap.holdings.filter((h) => h.holder === team).map((h) => [h.card, h]))
@@ -176,7 +222,7 @@ export function rivalAlbum(snap: RivalsSnapshot, team: string, needs: readonly N
   for (const n of needs) sets.add(n.set)
   const catalog = Object.keys(SETS)
   const rank = (set: string) => (order.includes(set) ? order.indexOf(set) : order.length + catalog.indexOf(set))
-  return [...sets]
+  const pages = [...sets]
     .filter((set) => set in SETS)
     .sort((a, b) => rank(a) - rank(b))
     .map((set): RivalPage => {
@@ -194,9 +240,11 @@ export function rivalAlbum(snap: RivalsSnapshot, team: string, needs: readonly N
         set, name: SETS[set]?.name ?? set, color: SETS[set]?.color ?? 'var(--text-muted)',
         known: page.filter((c) => c.known).length, of: PAGE_SLOTS,
         needs: page.filter((c) => c.known && c.need).length,
+        probable: false,
         slots,
       }
     })
+  return markProbable(pages, snap.teams.find((t) => t.team === team)?.pages ?? null)
 }
 
 /** One card of our page, beside the rival's. */
