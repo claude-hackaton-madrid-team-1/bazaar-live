@@ -3852,7 +3852,8 @@
   color: var(--gm-bad);
 }
 
-.st-headline[data-rule='none'] {
+.st-headline[data-rule='none'],
+.st-headline[data-rule='cleared'] {
   color: var(--gm-good);
 }
 

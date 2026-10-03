@@ -126,6 +126,8 @@ const EN: StrategyStrings = {
         return `Guardrail: ${b.text ?? '—'}`
       case 'unrecorded':
         return 'Refused without a rule in the decision row'
+      case 'cleared':
+        return `Cash ${cash ?? '—'}: no rule stops a buy now`
       case 'none':
         return 'Nothing refused: no card we need is on sale at a price we would pay'
     }
@@ -232,6 +234,8 @@ const ES: StrategyStrings = {
         return `Regla: ${b.text ?? '—'}`
       case 'unrecorded':
         return 'Rechazadas sin regla anotada en la decisión'
+      case 'cleared':
+        return `Caja ${cash ?? '—'}: ninguna regla frena una compra ahora`
       case 'none':
         return 'Nada rechazado: no se vende ninguna carta que necesitemos a un precio que pagaríamos'
     }

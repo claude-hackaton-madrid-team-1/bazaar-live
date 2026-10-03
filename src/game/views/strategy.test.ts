@@ -102,10 +102,17 @@ describe('why we do not buy', () => {
     expect(STRATEGY_STRINGS.en.headline(binding, levers.cash, levers.room, levers.spent)).toBe('Cash 81, floor 50: only 31 to buy with')
   })
 
-  it('with cash back, the rule of the newest refusal binds; with nothing refused, none', () => {
+  it('with cash back the floor no longer binds: cleared, or the rule that does not move with cash; nothing refused, none', () => {
     const rich = { ...mock, me: mock.me && { ...mock.me, cash: 400 } }
     const r = all(rich)
-    expect(r.binding.rule).toBe('cash_floor') // the newest MAL-10 refusal names only the floor
+    expect(r.binding).toMatchObject({ rule: 'cleared', latest: { card: 'MAL-10' } }) // its refusals named only the floor
+    expect(unblockOf(r.binding, r.blocked, r.levers)).toBeNull()
+    expect(STRATEGY_STRINGS.es.headline(r.binding, 400, 150, 0)).toBe('Caja 400: ninguna regla frena una compra ahora')
+    const both: StrategySnapshot = {
+      ...rich,
+      decisions: [d({ id: 9, tick: 629, card: 'LAV-09', rarity: 'rare', total: 120, value: 150, guardrail: 'denied: price 120 > max_price_rare 95; cash 130 - 120 < cash_floor 50' })],
+    }
+    expect(all(both).binding).toMatchObject({ rule: 'max_price', rarity: 'rare', limit: 95 })
     const capped: StrategySnapshot = {
       ...rich,
       decisions: [d({ id: 9, tick: 629, card: 'LAV-09', rarity: 'rare', total: 120, value: 150, guardrail: 'denied: price 120 > max_price_rare 95' })],

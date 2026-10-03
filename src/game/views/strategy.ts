@@ -305,8 +305,9 @@ export function blockedBuys(s: StrategySnapshot, win: readonly StrategyDecision[
 }
 
 export interface Binding {
-  /** The rule that stops buys now; `none`: nothing was refused in the window. */
-  readonly rule: RuleId | 'none'
+  /** The rule that stops buys now; `none`: nothing was refused in the window; `cleared`: the money rule that refused
+   *  the newest buy no longer binds (cash came back) and no other rule refused it. */
+  readonly rule: RuleId | 'none' | 'cleared'
   readonly rarity: string | null
   readonly limit: number | null
   readonly text: string | null
@@ -323,13 +324,17 @@ export function bindingOf(blocked: readonly BlockedBuy[], levers: Levers): Bindi
   const open = blocked.filter((b) => !b.heldNow)
   const latest = [...open].sort((a, b) => b.lastTick - a.lastTick)[0] ?? null
   if (!latest) return { rule: 'none', rarity: null, limit: null, text: null, latest: null }
-  const money = latest.rules.filter((r) => r.rule === 'cash_floor' || r.rule === 'max_spend_per_game_hour')
+  const isMoney = (r: { rule: RuleId }) => r.rule === 'cash_floor' || r.rule === 'max_spend_per_game_hour'
+  const money = latest.rules.filter(isMoney)
   if (money.length && latest.price !== null && levers.room !== null && latest.price > levers.room) {
     const cashBinds = levers.cashRoom !== null && (levers.spendRoom === null || levers.cashRoom <= levers.spendRoom)
     const rule = cashBinds ? 'cash_floor' : 'max_spend_per_game_hour'
     return { rule, rarity: null, limit: (rule === 'cash_floor' ? levers.floor : levers.maxSpend).value, text: null, latest }
   }
-  const main = latest.main ?? latest.rules[0]
+  // the money is there now: only a rule that does not move with cash still stops this buy
+  const rest = money.length ? [...latest.rules.filter((r) => !isMoney(r))].sort((a, b) => PRIORITY.indexOf(a.rule) - PRIORITY.indexOf(b.rule)) : null
+  if (rest && !rest.length) return { rule: 'cleared', rarity: null, limit: null, text: null, latest }
+  const main = rest ? rest[0] : (latest.main ?? latest.rules[0])
   return { rule: main?.rule ?? 'unrecorded', rarity: main?.rarity ?? null, limit: main?.limit ?? null, text: main?.text ?? null, latest }
 }
 
