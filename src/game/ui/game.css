@@ -3406,6 +3406,116 @@
   font-size: 0.9375rem;
 }
 
+/* the dealer chooser: every dealer, or one; a row that scrolls sideways when it does not fit */
+
+.neg-dealers {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.neg-dealers::-webkit-scrollbar {
+  display: none;
+}
+
+.neg-dealer-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--gm-well);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+
+.neg-dealer-chip:hover {
+  color: var(--text);
+}
+
+.neg-dealer-chip[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+}
+
+.neg-dealer-live {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--gm-us);
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* one dealer: our edge with them, how they move, what closed */
+
+.neg-dealer-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3) var(--s-5);
+}
+
+.neg-dealer-edge {
+  display: grid;
+  gap: 2px;
+}
+
+.neg-dealer-edge b {
+  font-size: 1.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--text-2);
+}
+
+.neg-dealer-edge[data-tone='good'] b {
+  color: var(--gm-good);
+}
+
+.neg-dealer-edge[data-tone='bad'] b {
+  color: var(--gm-bad);
+}
+
+.neg-dealer-how {
+  display: grid;
+  flex: 1 1 18rem;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.neg-dealer-how p {
+  margin: 0;
+}
+
+.neg-dealer-moves {
+  font-size: 0.9375rem;
+}
+
+.neg-dealer-tactics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+}
+
 /* ended threads, one line each */
 
 .neg-ended-list {
@@ -3457,6 +3567,11 @@
 @media (max-width: 960px) {
   .neg-split {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* one dealer's history before the long conversation it opens */
+  .neg-split[data-dealer] > :nth-child(2) {
+    order: -1;
   }
 }
 
