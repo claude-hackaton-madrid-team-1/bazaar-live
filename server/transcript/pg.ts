@@ -36,11 +36,11 @@ export function readShowDatabase(env: Readonly<Record<string, string | undefined
   }
 }
 
-/** A tiny pool: two connections, and no statement may run longer than 2 s. */
-export function poolOptions(url: string): pg.PoolConfig {
+/** A tiny pool: two connections (the role may hold four in all), and no statement may run longer than 2 s. */
+export function poolOptions(url: string, max = 2): pg.PoolConfig {
   return {
     connectionString: url,
-    max: 2,
+    max,
     statement_timeout: 2000,
     query_timeout: 4000,
     connectionTimeoutMillis: 5000,
@@ -68,8 +68,8 @@ export interface ShowPool extends Db {
 }
 
 /** The pool, with an error listener: an idle client dying must never become an uncaught exception. */
-export function createShowPool(url: string, onError: (error: unknown) => void): ShowPool {
-  const pool = new pg.Pool(poolOptions(url))
+export function createShowPool(url: string, onError: (error: unknown) => void, max?: number): ShowPool {
+  const pool = new pg.Pool(poolOptions(url, max))
   pool.on('error', onError)
   return {
     query: (sql, params) => pool.query(sql, params ? [...params] : undefined).then((r) => ({ rows: r.rows as unknown[] })),

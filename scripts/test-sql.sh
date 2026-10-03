@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs db/show.test.ts against a throwaway local Postgres 17 (docker). Nothing here touches Railway.
+# Runs db/show.test.ts and db/learn.test.ts (one after the other: both create and drop the role) against a throwaway local Postgres 17 (docker). Nothing here touches Railway.
 set -eu
 NAME=bazaar-live-sqltest
 PORT=${SQLTEST_PORT:-55433}
@@ -8,4 +8,4 @@ docker run -d --rm --name "$NAME" -e POSTGRES_PASSWORD=localtest -p "127.0.0.1:$
 trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
 until docker exec "$NAME" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 sleep 1
-SHOW_TEST_ADMIN_URL="postgresql://postgres:localtest@127.0.0.1:$PORT/postgres" npx vitest run db/show.test.ts
+SHOW_TEST_ADMIN_URL="postgresql://postgres:localtest@127.0.0.1:$PORT/postgres" npx vitest run --no-file-parallelism db/show.test.ts db/learn.test.ts

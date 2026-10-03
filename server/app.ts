@@ -8,6 +8,7 @@
  *   GET  /api/transcript/stream  the same as server-sent events
  *   GET  /api/game             {enabled, target, tokenRequired}: the game screens' feed (the team key's relay)
  *   GET  /api/game/stream      that feed as server-sent events (GAME_VIEW_TOKEN as ?token= when set)
+ *   GET  /api/learn            what our agents learned, JSON (db/learn.sql; GAME_VIEW_TOKEN as ?token= when set)
  *   GET  /*                    dist/ (SPA)
  *
  * The proxy is public, so it only speaks the show's own short lines: same-origin requests, one of
@@ -18,6 +19,7 @@ import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isLang, LANGS, type Lang } from '../shared/lang.ts'
+import { EMPTY_LEARN } from '../shared/learn.ts'
 import { isShowLine } from '../shared/lines.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { isRealLine } from '../shared/real-lines.ts'
@@ -25,6 +27,7 @@ import { isSpeaker, type Speaker } from '../shared/tags.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
 import { createGameRoutes, type GameRouteDeps } from './game/routes.ts'
+import { createLearnRoutes, type LearnRouteDeps } from './learn/routes.ts'
 import { createStatic } from './static.ts'
 import { createTranscriptRoutes, type TranscriptRouteDeps } from './transcript/routes.ts'
 import { TranscriptStore } from './transcript/store.ts'
@@ -49,6 +52,8 @@ export interface AppDeps {
   }
   /** The game screens' feed (server/game); absent → /api/game answers `enabled: false`. */
   readonly game?: Pick<GameRouteDeps, 'hub' | 'enabled' | 'target' | 'token'> & Partial<Pick<GameRouteDeps, 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter' | 'maxQueuedBytes'>>
+  /** What our agents learned (server/learn); absent → /api/learn answers `enabled: false`. */
+  readonly learn?: Pick<LearnRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<LearnRouteDeps, 'limiter'>>
 }
 
 const CSP = [
@@ -200,6 +205,13 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     address: (req) => clientAddress(req, limits.clientIpHeader),
   })
 
+  const learn = createLearnRoutes({
+    enabled: () => false, snapshot: () => EMPTY_LEARN, token: null,
+    ...deps.learn,
+    headers: SECURITY_HEADERS,
+    address: (req) => clientAddress(req, limits.clientIpHeader),
+  })
+
   async function synthesize(req: TtsRequest): Promise<Audio> {
     if (req.provider === 'elevenlabs' && deps.config.elevenlabs) return elevenLabs(deps.config.elevenlabs, req.speaker, req.lang, req.text, fetchImpl)
     if (req.provider === 'gemini' && deps.config.gemini) return gemini(deps.config.gemini, req.speaker, req.lang, req.text, fetchImpl)
@@ -269,6 +281,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       if (path === '/api/tts') return await tts(req, res)
       if (transcript(req, res, path)) return
       if (game(req, res, path)) return
+      if (learn(req, res, path)) return
       if (path.startsWith('/api/')) return json(res, 404, { error: 'not_found' })
       if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' })
       await serveStatic(req, res, SECURITY_HEADERS)

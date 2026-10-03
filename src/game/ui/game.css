@@ -1437,3 +1437,59 @@
     forced-color-adjust: none;
   }
 }
+
+/* ---------------------------------------------------------------- learn */
+
+.gm-learnings {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-learning {
+  display: grid;
+  gap: 6px;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--gm-well);
+}
+
+.gm-learning-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 0.8125rem;
+}
+
+.gm-learning-subject {
+  font-weight: 600;
+}
+
+.gm-learning-claim {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.gm-learning-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: 0.75rem;
+}
+
+.gm-learning-conf {
+  display: inline-grid;
+  grid-template-columns: 4.5rem auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.gm-learning-conf .gm-track {
+  height: 5px;
+}

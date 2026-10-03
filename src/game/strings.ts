@@ -177,16 +177,60 @@ export interface GameStrings {
     readonly perTick: (avg: string, last: number) => string
   }
   readonly inspector: { readonly label: string; readonly copy: string; readonly close: string; readonly evicted: string; readonly inspect: string }
+  readonly learn: {
+    readonly notice: Readonly<Record<'loading' | 'off' | 'locked' | 'error' | 'mock', string>>
+    readonly missing: string
+    readonly asOf: (time: string) => string
+    readonly search: string
+    readonly searchLabel: string
+    readonly inForce: string
+    readonly inForceSub: (n: number, lifted: number) => string
+    readonly noneInForce: string
+    readonly lifts: (n: number) => string
+    readonly liftsUnknown: string
+    readonly forUs: string
+    readonly forAll: string
+    readonly lessons: string
+    readonly lessonsSub: (n: number) => string
+    readonly noLessons: string
+    readonly facts: string
+    readonly factsSub: (n: number) => string
+    readonly noFacts: string
+    readonly support: (n: number) => string
+    readonly confidence: string
+    readonly kinds: Readonly<Record<string, string>>
+    readonly sources: Readonly<Record<string, string>>
+    readonly dealers: string
+    readonly dealersSub: (n: number) => string
+    readonly noDealers: string
+    readonly dealerHead: readonly string[]
+    readonly dealerHint: Readonly<Record<'fill' | 'ourFill' | 'firm' | 'concession', string>>
+    readonly moves: string
+    readonly movesSub: (n: number) => string
+    readonly noMoves: string
+    readonly moveHead: readonly string[]
+    readonly which: string
+    readonly ours: string
+    readonly all: string
+    readonly us: string
+    readonly feed: string
+    readonly events: Readonly<Record<string, string>>
+    readonly rivals: string
+    readonly rivalsSub: (n: number) => string
+    readonly noRivals: string
+    readonly rivalHead: readonly string[]
+  }
 }
 
 const EN: GameStrings = {
-  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', album: 'Album', market: 'Market', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', album: 'Album', market: 'Market', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
     negotiations: 'our threads and duels',
     album: 'pages and score',
     market: 'everyone else',
+    learn: 'what our agents learned: blockers, lessons, dealers, rivals',
     debug: 'the raw event stream',
   },
   navLabel: 'Screens',
@@ -359,16 +403,74 @@ const EN: GameStrings = {
     perTick: (avg, last) => `${avg}/tick · last ${last}`,
   },
   inspector: { label: 'Event inspector', copy: 'Copy', close: 'Close', evicted: 'evicted', inspect: 'Inspect event' },
+  learn: {
+    notice: {
+      loading: 'Reading what our agents learned…',
+      off: 'No database: set SHOW_DATABASE_URL on the server and apply db/learn.sql to see what our agents learned.',
+      locked: 'This screen needs ?token= (GAME_VIEW_TOKEN): it shows the team\'s private memory.',
+      error: 'The server did not answer: showing the last snapshot read.',
+      mock: 'Made-up learnings around the mock game. Remove ?mock=1 for our agents\' real memory.',
+    },
+    missing: 'not applied yet (db/learn.sql)',
+    asOf: (time) => `read at ${time}`,
+    search: 'dealer, team, claim…',
+    searchLabel: 'Filter learnings',
+    inForce: 'Blocking us now',
+    inForceSub: (n, lifted) => `${plural(n, 'learning', 'learnings')}${lifted ? ` · ${lifted} lifted` : ''}`,
+    noneInForce: 'Nothing is blocking a deal right now.',
+    lifts: (n) => (n <= 0 ? 'lifts now' : `lifts in ${n}t`),
+    liftsUnknown: 'until a tick',
+    forUs: 'us',
+    forAll: 'everyone',
+    lessons: 'What our outcomes taught us',
+    lessonsSub: (n) => `${plural(n, 'lesson', 'lessons')} · most confident first`,
+    noLessons: 'No lesson yet: they come from settled, scored outcomes.',
+    facts: 'Read from the feed',
+    factsSub: (n) => `${plural(n, 'fact', 'facts')} · newest first`,
+    noFacts: 'No fact read from the feed yet.',
+    support: (n) => `${n} ×`,
+    confidence: 'confidence',
+    kinds: {
+      blocker: 'blocked', cooloff: 'cooloff', quota: 'quota', sold_out: 'sold out', price_floor: 'price floor', behaviour: 'behaviour',
+      rule_change: 'rule', fee_change: 'fee', announcement: 'notice', lesson: 'lesson', policy: 'policy', tactic: 'tactic',
+    },
+    sources: { rules: 'rules', llm: 'LLM', outcome: 'outcome' },
+    dealers: 'How each dealer behaves',
+    dealersSub: (n) => `${plural(n, 'dealer', 'dealers')} · curves of every team, moves of the last window`,
+    noDealers: 'No dealer curve or move stored yet.',
+    dealerHead: ['dealer', 'threads', 'deals', 'opening', 'fill', 'fill / open', 'ours', 'firm', 'concession', 'steps', 'last'],
+    dealerHint: {
+      fill: 'what a deal cost against her opening ask, every team: 100% = paid the opening',
+      ourFill: 'the same, our threads only',
+      firm: 'share of her priced answers that held or went final instead of conceding',
+      concession: 'mean drop of her price on a concession',
+    },
+    moves: 'Dealer moves',
+    movesSub: (n) => plural(n, 'move', 'moves'),
+    noMoves: 'No dealer move matches.',
+    moveHead: ['tick', 'dealer', 'thread', 'move', 'her price', 'our price', 'step', 'whose'],
+    which: 'Whose threads',
+    ours: 'Ours',
+    all: 'All',
+    us: 'ours',
+    feed: 'feed',
+    events: { open: 'opens', counter: 'counters', concede: 'concedes', hold: 'holds', final: 'final', walk: 'walks', deal: 'deal', cooloff: 'cooloff', lie_suspected: 'lie?' },
+    rivals: 'Rivals',
+    rivalsSub: (n) => `${plural(n, 'team', 'teams')} · most active first`,
+    noRivals: 'No rival profile yet.',
+    rivalHead: ['team', 'level', 'venue', 'bought', 'sold', 'spent', 'earned', 'chases', 'dealer deals', 'pack price', 'tick'],
+  },
 }
 
 const ES: GameStrings = {
-  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', album: 'Álbum', market: 'Mercado', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', album: 'Álbum', market: 'Mercado', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
     negotiations: 'nuestros hilos y duelos',
     album: 'páginas y puntuación',
     market: 'todos los demás',
+    learn: 'lo que aprendieron nuestros agentes: bloqueos, lecciones, tratantes, rivales',
     debug: 'el flujo de eventos en bruto',
   },
   navLabel: 'Pantallas',
@@ -541,6 +643,63 @@ const ES: GameStrings = {
     perTick: (avg, last) => `${avg}/turno · último ${last}`,
   },
   inspector: { label: 'Inspector de eventos', copy: 'Copiar', close: 'Cerrar', evicted: 'descartado', inspect: 'Ver el evento' },
+  learn: {
+    notice: {
+      loading: 'Leyendo lo que aprendieron nuestros agentes…',
+      off: 'Sin base de datos: pon SHOW_DATABASE_URL en el servidor y aplica db/learn.sql para ver lo que aprendieron nuestros agentes.',
+      locked: 'Esta pantalla necesita ?token= (GAME_VIEW_TOKEN): muestra la memoria privada del equipo.',
+      error: 'El servidor no respondió: se muestra la última lectura.',
+      mock: 'Aprendizajes inventados alrededor de la partida falsa. Quita ?mock=1 para ver la memoria real de nuestros agentes.',
+    },
+    missing: 'aún sin aplicar (db/learn.sql)',
+    asOf: (time) => `leído a las ${time}`,
+    search: 'tratante, equipo, texto…',
+    searchLabel: 'Filtrar aprendizajes',
+    inForce: 'Lo que nos bloquea ahora',
+    inForceSub: (n, lifted) => `${plural(n, 'aprendizaje', 'aprendizajes')}${lifted ? ` · ${lifted} levantados` : ''}`,
+    noneInForce: 'Nada bloquea un trato ahora mismo.',
+    lifts: (n) => (n <= 0 ? 'se levanta ya' : `se levanta en ${n}t`),
+    liftsUnknown: 'hasta un turno',
+    forUs: 'nosotros',
+    forAll: 'todos',
+    lessons: 'Lo que nos enseñaron los resultados',
+    lessonsSub: (n) => `${plural(n, 'lección', 'lecciones')} · las más seguras primero`,
+    noLessons: 'Aún no hay lecciones: salen de resultados cerrados y puntuados.',
+    facts: 'Leído del feed',
+    factsSub: (n) => `${plural(n, 'hecho', 'hechos')} · los más recientes primero`,
+    noFacts: 'Aún no se ha leído ningún hecho del feed.',
+    support: (n) => `${n} ×`,
+    confidence: 'confianza',
+    kinds: {
+      blocker: 'bloqueo', cooloff: 'enfriamiento', quota: 'cupo', sold_out: 'agotado', price_floor: 'precio suelo', behaviour: 'conducta',
+      rule_change: 'regla', fee_change: 'comisión', announcement: 'aviso', lesson: 'lección', policy: 'política', tactic: 'táctica',
+    },
+    sources: { rules: 'reglas', llm: 'LLM', outcome: 'resultado' },
+    dealers: 'Cómo se comporta cada tratante',
+    dealersSub: (n) => `${plural(n, 'tratante', 'tratantes')} · curvas de todos los equipos, movimientos de la última ventana`,
+    noDealers: 'Aún no hay curvas ni movimientos de tratantes.',
+    dealerHead: ['tratante', 'hilos', 'tratos', 'apertura', 'cierre', 'cierre / apertura', 'nuestro', 'firmeza', 'rebaja', 'pasos', 'último'],
+    dealerHint: {
+      fill: 'lo que costó un trato frente a su primer precio, todos los equipos: 100% = se pagó la apertura',
+      ourFill: 'lo mismo, solo nuestros hilos',
+      firm: 'parte de sus respuestas con precio que mantuvieron o fueron finales en vez de rebajar',
+      concession: 'bajada media de su precio cuando rebaja',
+    },
+    moves: 'Movimientos de los tratantes',
+    movesSub: (n) => plural(n, 'movimiento', 'movimientos'),
+    noMoves: 'Ningún movimiento coincide.',
+    moveHead: ['turno', 'tratante', 'hilo', 'movimiento', 'su precio', 'el nuestro', 'paso', 'de quién'],
+    which: 'Qué hilos',
+    ours: 'Nuestros',
+    all: 'Todos',
+    us: 'nuestro',
+    feed: 'feed',
+    events: { open: 'abre', counter: 'contraoferta', concede: 'rebaja', hold: 'mantiene', final: 'final', walk: 'se va', deal: 'trato', cooloff: 'enfriamiento', lie_suspected: '¿miente?' },
+    rivals: 'Rivales',
+    rivalsSub: (n) => `${plural(n, 'equipo', 'equipos')} · los más activos primero`,
+    noRivals: 'Aún no hay perfiles de rivales.',
+    rivalHead: ['equipo', 'nivel', 'puesto', 'compró', 'vendió', 'gastó', 'ganó', 'busca', 'tratos con tratantes', 'precio sobre', 'turno'],
+  },
 }
 
 export const GAME_STRINGS: Readonly<Record<Lang, GameStrings>> = { es: ES, en: EN }

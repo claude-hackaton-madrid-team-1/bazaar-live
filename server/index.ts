@@ -4,12 +4,14 @@
  * of db/show.sql; absent = no real transcript) and the optional model and voice overrides listed in README.md. With no key at all the show still speaks with Web Speech.
  * The game screens: BAZAAR_KEY (the real game) or BAZAAR_SIM=1 with BAZAAR_SIM_KEY (the simulator, default
  * sim-team1); GAME_VIEW_TOKEN to require a token on their stream; GAME_POLL_MS (default 5000). No key = no feed.
+ * The Learn screen reads db/learn.sql's views with the same SHOW_DATABASE_URL, behind the same GAME_VIEW_TOKEN.
  */
 import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.ts'
 import { startGame } from './game/start.ts'
+import { startLearn } from './learn/start.ts'
 import { readLimits } from './limits.ts'
 import { availableProviders, readProviderConfig } from './providers.ts'
 import { startTranscript } from './transcript/start.ts'
@@ -25,6 +27,8 @@ const log = (entry: Record<string, unknown>): void => {
 const transcript = startTranscript(process.env, log)
 // No BAZAAR_KEY (or a refused one) → the game screens say so, and the show runs as it always did.
 const game = startGame(process.env, log)
+// Without SHOW_DATABASE_URL (or before db/learn.sql is applied) the Learn screen says so; nothing else changes.
+const learn = startLearn(process.env, log)
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
 const server = createServer(
   createApp({
@@ -35,6 +39,7 @@ const server = createServer(
       vouchQuotes: process.env.TRANSCRIPT_SPEAK_QUOTES === '1',
     },
     game,
+    learn,
   }),
 )
 
@@ -45,6 +50,7 @@ server.listen(port, '0.0.0.0', () => {
 const shutdown = (): void => {
   void transcript.stop()
   game.stop()
+  void learn.stop()
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(0), 3000).unref()
 }
