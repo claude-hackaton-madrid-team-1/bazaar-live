@@ -43,8 +43,8 @@ export function parseDenial(text: string | null | undefined): Denial | null {
 /** The rarity a `max_price_<rarity>` rule caps, or null. */
 export const rarityOfRule = (rule: string): string | null => /^max_price_([a-z]+)$/.exec(rule)?.[1] ?? null
 
-/** The game's three dealers by their stall names: proper nouns, the same in both languages. */
-const DEALERS: Readonly<Record<string, string>> = { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar' }
+/** The game's dealers by their stall names: proper nouns, the same in both languages. Los Pícaros open at level 4. */
+const DEALERS: Readonly<Record<string, string>> = { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar', picaros: 'Los Pícaros' }
 
 /** Who an id names: a dealer, a rival of the duels, a team (`t06`), a venue (`v03`), or something we keep as written. */
 export type Who =

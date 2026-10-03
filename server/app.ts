@@ -11,6 +11,7 @@
  *   GET  /api/learn            what our agents learned, JSON (db/learn.sql; GAME_VIEW_TOKEN as ?token= when set)
  *   GET  /api/history          our cash over the day and what moved it, JSON (db/history.sql; the same token)
  *   GET  /api/strategy         what we aim for, why we hold and why we do not buy, JSON (db/strategy.sql; the same token)
+ *   GET  /api/rivals           what each rival holds by the public feed, its rank and what it chases, JSON (db/rival_albums.sql; the same token)
  *   GET  /api/injections       the prompt-injection attempts our agents recorded, JSON (db/injections.sql; public, never voiced)
  *   GET  /*                    dist/ (SPA)
  *
@@ -26,6 +27,7 @@ import { isLang, LANGS, type Lang } from '../shared/lang.ts'
 import { EMPTY_HISTORY } from '../shared/history.ts'
 import { EMPTY_INJECTIONS, looksLikeInjection } from '../shared/injections.ts'
 import { EMPTY_LEARN } from '../shared/learn.ts'
+import { EMPTY_RIVALS } from '../shared/rivals.ts'
 import { EMPTY_STRATEGY } from '../shared/strategy.ts'
 import { isShowLine } from '../shared/lines.ts'
 import { detectLang } from '../shared/detect-lang.ts'
@@ -38,6 +40,7 @@ import { createGameRoutes, type GameRouteDeps } from './game/routes.ts'
 import { createHistoryRoutes, type HistoryRouteDeps } from './history/routes.ts'
 import { createInjectionsRoutes, type InjectionsRouteDeps } from './injections/routes.ts'
 import { createLearnRoutes, type LearnRouteDeps } from './learn/routes.ts'
+import { createRivalsRoutes, type RivalsRouteDeps } from './rivals/routes.ts'
 import { createStatic } from './static.ts'
 import { createStrategyRoutes, type StrategyRouteDeps } from './strategy/routes.ts'
 import { createTranscriptRoutes, type TranscriptRouteDeps } from './transcript/routes.ts'
@@ -69,6 +72,8 @@ export interface AppDeps {
   readonly history?: Pick<HistoryRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<HistoryRouteDeps, 'limiter'>>
   /** What we aim for and why we hold or do not buy (server/strategy); absent → /api/strategy answers `enabled: false`. */
   readonly strategy?: Pick<StrategyRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<StrategyRouteDeps, 'limiter'>>
+  /** The rivals' albums by the public feed (server/rivals); absent → /api/rivals answers `enabled: false`. */
+  readonly rivals?: Pick<RivalsRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<RivalsRouteDeps, 'limiter'>>
   /** The injection attempts our agents recorded (server/injections); absent → /api/injections answers `enabled: false`. */
   readonly injections?: Pick<InjectionsRouteDeps, 'enabled' | 'snapshot'> & Partial<Pick<InjectionsRouteDeps, 'limiter'>>
   /** The dealers' display names (server/dealers.ts); absent → /api/dealers answers an empty list. */
@@ -285,6 +290,13 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     address: (req) => clientAddress(req, limits.clientIpHeader),
   })
 
+  const rivals = createRivalsRoutes({
+    enabled: () => false, snapshot: () => EMPTY_RIVALS, token: null,
+    ...deps.rivals,
+    headers: SECURITY_HEADERS,
+    address: (req) => clientAddress(req, limits.clientIpHeader),
+  })
+
   const injections = createInjectionsRoutes({
     enabled: () => false, snapshot: () => EMPTY_INJECTIONS,
     ...deps.injections,
@@ -373,6 +385,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       if (learn(req, res, path)) return
       if (history(req, res, path)) return
       if (strategy(req, res, path)) return
+      if (rivals(req, res, path)) return
       if (injections(req, res, path)) return
       if (path.startsWith('/api/')) return json(res, 404, { error: 'not_found' })
       if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' })
