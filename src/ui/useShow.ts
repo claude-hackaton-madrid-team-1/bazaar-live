@@ -44,8 +44,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   const engine = useMemo(() => new ShowEngine({ speech: queue, lang: getLang(), idleAfterMs: config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.idleSeconds])
   const state = useSyncExternalStore(engine.subscribe, engine.getSnapshot)
 
-  const [mutedState, setMutedState] = useState(true)
-  const muted = mutedState
+  const [muted, setMutedState] = useState(true)
   // A browser lets a page play audio only after a tap: every unmute is one, so prime the players there.
   const setMuted = useCallback((next: boolean): void => {
     if (!next) {

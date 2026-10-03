@@ -49,8 +49,9 @@ describe('the shared <audio> element', () => {
   it('a refused play() (no tap yet) fails the line instead of hanging', async () => {
     vi.stubGlobal('Audio', FakeAudio)
     vi.stubGlobal('URL', { createObjectURL: () => 'blob:x', revokeObjectURL: () => undefined })
+    unlockAudio() // the shared element exists whichever test ran first
+    const audio = FakeAudio.last!
     const remote = createRemote('elevenlabs', { fetchImpl: fetchOk })
-    const audio = FakeAudio.last ?? new FakeAudio() // the element the previous test left shared
     const before = audio.plays.length
     const speaking = remote.speak(u('c'), new AbortController().signal)
     await vi.waitFor(() => expect(audio.plays.length).toBe(before + 1))

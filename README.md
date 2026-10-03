@@ -144,9 +144,10 @@ Spec: [`docs/specs/LIVE-T1.md`](docs/specs/LIVE-T1.md).
 
 ## Voices
 
-One queue (`src/tts/queue.ts`): one line at a time, never overlapping, and **gap-free**: the stage hands
-the next line to the queue while the current one is still being said (a remote voice fetches it ahead,
-`prefetch`), so the next line starts the instant the last ends and the captions follow the voice; mute
+One queue (`src/tts/queue.ts`): one line at a time, never overlapping, and **gap-free**: the whole beat is
+fetched ahead (`prefetch`) when it starts, so each voice starts a few milliseconds after the last one ends,
+the captions follow the voice, and `say()` reports whether a line was really heard (a refused, failed, timed-out
+or muted line keeps its caption for its reading time); mute
 stops the current line and drops the rest; a watchdog ends a line whose provider never reports its end; a failing or refused line (a spent budget, a 5xx)
 is skipped: its caption keeps its reading time and the show goes on (no browser voice stands in).
 

@@ -175,3 +175,43 @@ describe('SpeechQueue', () => {
     expect(p.log).toEqual(['start a', 'abort a'])
   })
 })
+
+describe('say() reports whether a line was really heard', () => {
+  it('true for a finished line; false for a rejection, the watchdog, a mute, clear() and a stale language', async () => {
+    const ok = timedProvider('webspeech', 50)
+    const q = new SpeechQueue({ provider: ok.provider })
+    const done = q.say(line('a'))
+    await vi.advanceTimersByTimeAsync(100)
+    expect(await done).toBe(true)
+
+    const broken = timedProvider('elevenlabs', 10, true)
+    const q2 = new SpeechQueue({ provider: broken.provider })
+    const failed = q2.say(line('b'))
+    await vi.advanceTimersByTimeAsync(100)
+    expect(await failed).toBe(false)
+
+    const hung: SpeechProvider = { name: 'webspeech', speak: () => new Promise<void>(() => undefined) }
+    const q3 = new SpeechQueue({ provider: hung, timeoutMs: () => 500 })
+    const slow = q3.say(line('c'))
+    await vi.advanceTimersByTimeAsync(600)
+    expect(await slow).toBe(false)
+
+    const q4 = new SpeechQueue({ provider: timedProvider('webspeech', 1000).provider })
+    const midLine = q4.say(line('d'))
+    const waiting = q4.say(line('e'))
+    await vi.advanceTimersByTimeAsync(10)
+    q4.setMuted(true)
+    expect(await midLine).toBe(false)
+    expect(await waiting).toBe(false)
+    expect(await q4.say(line('f'))).toBe(false)
+
+    const q5 = new SpeechQueue({ provider: timedProvider('webspeech', 1000).provider })
+    const cleared = q5.say(line('g'))
+    await vi.advanceTimersByTimeAsync(10)
+    q5.clear()
+    expect(await cleared).toBe(false)
+
+    const q6 = new SpeechQueue({ provider: timedProvider('webspeech', 50).provider, currentLang: () => 'en' })
+    expect(await q6.say({ ...line('h'), lang: 'es' })).toBe(false)
+  })
+})
