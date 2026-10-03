@@ -777,7 +777,7 @@ export class MockGame {
   /**
    * Two live duels against two rivals, scripted from no random stream: one where their price is already inside our
    * limit (Rival Verde, until tick 30) and one where it is far outside and creeping (Rival Sol, until tick 24). The
-   * duels agent offers on each in turn, every other tick, and is blocked on the second now and then (see `agents()`).
+   * duels agent offers on both every other tick and is blocked on the second now and then (see `agents()`).
    */
   private liveDuels(): GameEvent[] {
     const inside: ScriptedDuel = { id: 6, session: 3, role: 'buyer', rival: 'Rival Verde', item: 'Café en Goya', limit: 68, deadline: 30, ours: 0, theirs: 0 }
@@ -789,17 +789,12 @@ export class MockGame {
     ]
   }
 
-  /** Which scripted duel the duels agent moves on this (even) tick: the outside one (7) at 2, 6, 10…, the inside one (6) at 4, 8… */
-  private duelTurn(): number {
-    return this.tick % 4 === 2 ? 7 : 6
-  }
-
-  /** Our offer on the duel outside our limit (7) is blocked by duel_inside_limit one turn in two (ticks 6, 14, 22). */
+  /** Our offer on the duel outside our limit (7) is blocked by duel_inside_limit one tick in eight (4, 12, 20). */
   private duelBlocked(id: number): boolean {
-    return id === 7 && this.tick % 8 === 6
+    return id === 7 && this.tick % 8 === 4
   }
 
-  /** The scripted duels' moves, every other tick: we step towards them on the agent's turn unless blocked, they concede a little, each ends at its deadline. */
+  /** The scripted duels' moves, every other tick: we step towards them unless blocked, they concede a little, each ends at its deadline. */
   private scriptedStep(): GameEvent[] {
     const out: GameEvent[] = []
     for (const d of this.liveScript) {
@@ -808,7 +803,7 @@ export class MockGame {
         out.push(this.duelEnd(d, d.role === 'buyer' ? last : null))
         continue
       }
-      if (this.duelTurn() === d.id && !this.duelBlocked(d.id)) {
+      if (!this.duelBlocked(d.id)) {
         // our offer, as the duels agent decided it this tick: a step towards them, never past their price or our limit
         d.lastOurs = d.lastOurs === undefined ? (d.role === 'buyer' ? 49 : 162) : d.role === 'buyer' ? Math.min(last - 4, d.lastOurs + 1) : Math.max(d.limit + 20, d.lastOurs - 2)
         out.push(this.duelSay(d, true, d.lastOurs))
@@ -981,10 +976,11 @@ export class MockGame {
     // Duels: an id, a status, a rule id and Jev's verdict, never a price (the view keeps our limit out). Every other
     // tick an offer on each live duel; the one outside our limit is blocked by duel_inside_limit one tick in ten.
     if (this.tick % 2 === 0) {
-      const id = this.liveScript.length ? this.duelTurn() : this.duel?.id ?? 8
-      const item = `duel:${id}`
-      if (this.duelBlocked(id)) say('duels', 'duel_offer', { item, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
-      else say('duels', 'duel_offer', { item, status: 'done', jev: 'counter', method: 'duel_say' })
+      for (const id of this.liveScript.length ? this.liveScript.map((d) => d.id) : [this.duel?.id ?? 8]) {
+        const item = `duel:${id}`
+        if (this.duelBlocked(id)) say('duels', 'duel_offer', { item, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
+        else say('duels', 'duel_offer', { item, status: 'done', jev: 'counter', method: 'duel_say' })
+      }
     }
     out.push(...this.negDecisions())
     out.push(this.ev('agent.ledger', { ticks: this.ledger.filter((r) => r.t > this.tick / 240 - 2), limits: MOCK_LIMITS }))
