@@ -5,7 +5,7 @@
 import type { Lang } from '../../shared/lang.ts'
 import type { AlbumImpact, PendingState, Side } from '../../shared/approvals.ts'
 import { useLang } from '../ui/lang'
-import type { PriceError, WriteError } from './approvals.ts'
+import type { AlbumLine, PriceError, WriteError } from './approvals.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v * 10) / 10)}`
@@ -43,7 +43,7 @@ export interface ApprovalsStrings {
   readonly values: string
   readonly ourValue: string
   readonly officialValue: string
-  readonly album: (a: AlbumImpact) => string
+  readonly album: (line: AlbumLine, card: string, a: AlbumImpact) => string
   readonly lastCopy: string
   readonly lastCopyTitle: string
   readonly albumLabel: string
@@ -84,6 +84,8 @@ export interface ApprovalsStrings {
   readonly until: (until: number, left: number) => string
   readonly by: (by: string) => string
   readonly revoke: string
+  /** Why Deny is off on a request: a live approval for the same card and side, which a Deny would revoke too. */
+  readonly liveApproval: (side: Side, price: number | null) => string
 }
 
 /** The write kinds bazaar's guardrails name, as a person says them; an unknown one is shown as it came. */
@@ -124,7 +126,16 @@ const EN: ApprovalsStrings = {
   values: 'Value',
   ourValue: 'to us',
   officialValue: 'official',
-  album: (a) => `${a.set}: we hold ${a.held}${a.page_card ? ' · a page card' : ''}`,
+  album: (line, card, a) => {
+    switch (line.kind) {
+      case 'duplicate':
+        return `duplicate: we already hold ${line.held} of ${card}`
+      case 'fills_slot':
+        return `fills a page slot in ${a.set}`
+      default:
+        return `we hold ${line.held} of ${card}${a.page_card ? ' · a page card' : ''}`
+    }
+  },
   lastCopy: 'LAST COPY of a page card',
   lastCopyTitle: 'selling it breaks a page: its bonus is lost',
   albumLabel: 'Album',
@@ -180,6 +191,7 @@ const EN: ApprovalsStrings = {
   until: (until, left) => (left >= 0 ? `until tick ${until} (${plural(left, 'tick', 'ticks')} left)` : `ended at tick ${until}`),
   by: (by) => `by ${by}`,
   revoke: 'Revoke',
+  liveApproval: (side, price) => `a live approval ${side === 'buy' ? 'up to' : 'down to'} ${p(price)} exists: revoke it below`,
 }
 
 const ES: ApprovalsStrings = {
@@ -210,7 +222,16 @@ const ES: ApprovalsStrings = {
   values: 'Valor',
   ourValue: 'para nosotros',
   officialValue: 'oficial',
-  album: (a) => `${a.set}: tenemos ${a.held}${a.page_card ? ' · carta de página' : ''}`,
+  album: (line, card, a) => {
+    switch (line.kind) {
+      case 'duplicate':
+        return `repetida: ya tenemos ${line.held} de ${card}`
+      case 'fills_slot':
+        return `llena un hueco de la página ${a.set}`
+      default:
+        return `tenemos ${line.held} de ${card}${a.page_card ? ' · carta de página' : ''}`
+    }
+  },
   lastCopy: 'ÚLTIMA COPIA de una carta de página',
   lastCopyTitle: 'venderla rompe una página: se pierde su bonus',
   albumLabel: 'Álbum',
@@ -266,6 +287,7 @@ const ES: ApprovalsStrings = {
   until: (until, left) => (left >= 0 ? `hasta el turno ${until} (quedan ${plural(left, 'turno', 'turnos')})` : `terminó en el turno ${until}`),
   by: (by) => `por ${by}`,
   revoke: 'Revocar',
+  liveApproval: (side, price) => `ya hay una aprobación en vigor ${side === 'buy' ? 'hasta' : 'como mínimo a'} ${p(price)}: revócala abajo`,
 }
 
 export const APPROVALS_STRINGS: Readonly<Record<Lang, ApprovalsStrings>> = { es: ES, en: EN }

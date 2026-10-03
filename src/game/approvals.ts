@@ -45,15 +45,24 @@ export function loginOutcomeOf(status: number, body: unknown, retryAfter: string
   return { kind: 'error' }
 }
 
-/** The CSRF token of a live session, null when there is none; undefined when the server could not say. */
-export async function readSession(signal?: AbortSignal): Promise<string | null | undefined> {
+export type SessionOutcome =
+  | { readonly kind: 'in'; readonly csrf: string }
+  | { readonly kind: 'out' }
+  /** The server could not say (429, 5xx, no answer): ask again in `retryS`, never show the lock for it. */
+  | { readonly kind: 'unknown'; readonly retryS: number }
+
+export function sessionOutcomeOf(status: number, body: unknown, retryAfter: string | null): SessionOutcome {
+  if (status === 200 && isObject(body)) return body.authenticated === true && typeof body.csrf === 'string' && body.csrf ? { kind: 'in', csrf: body.csrf } : { kind: 'out' }
+  const seconds = Number(retryAfter)
+  return { kind: 'unknown', retryS: Number.isFinite(seconds) && seconds > 0 ? Math.min(60, seconds) : 5 }
+}
+
+export async function readSession(signal?: AbortSignal): Promise<SessionOutcome> {
   try {
     const res = await fetch('/api/approver/session', { credentials: 'same-origin', cache: 'no-store', signal })
-    const body = await jsonOf(res)
-    if (res.status !== 200 || !isObject(body)) return undefined
-    return body.authenticated === true && typeof body.csrf === 'string' ? body.csrf : null
+    return sessionOutcomeOf(res.status, await jsonOf(res), res.headers.get('retry-after'))
   } catch {
-    return undefined
+    return { kind: 'unknown', retryS: 5 }
   }
 }
 
@@ -157,6 +166,28 @@ export function orderPending(rows: readonly PendingRequest[]): PendingRequest[] 
 /** Active approvals by the tick they end, soonest first. */
 export function orderActive(rows: readonly ActiveApproval[]): ActiveApproval[] {
   return [...rows].sort((a, b) => a.until_tick - b.until_tick)
+}
+
+/** The live approval a Deny on this request would revoke too (bazaar-mcp's revoke ends any approval for card + side). */
+export function liveApprovalFor(row: Pick<PendingRequest, 'card' | 'side'>, active: readonly ActiveApproval[], tick: number): ActiveApproval | null {
+  return active.find((a) => a.card === row.card && a.side === row.side && a.until_tick >= tick) ?? null
+}
+
+/** The form's first price: the asked one in whole primas, rounded so the approval still covers it (a buy up, a sell down). */
+export const prefillPrice = (row: Pick<PendingRequest, 'side' | 'price'>): number => (row.side === 'buy' ? Math.ceil(row.price) : Math.floor(row.price))
+
+export type AlbumLine =
+  | { readonly kind: 'last_copy' | 'held'; readonly held: number }
+  | { readonly kind: 'duplicate'; readonly held: number }
+  | { readonly kind: 'fills_slot' }
+
+/** What a request does to our album: a sell of a page's last copy, a buy of a card we already hold, a buy that fills a slot. */
+export function albumLineOf(row: Pick<PendingRequest, 'side' | 'album'>): AlbumLine | null {
+  const a = row.album
+  if (!a) return null
+  if (row.side === 'sell') return { kind: a.last_copy ? 'last_copy' : 'held', held: a.held }
+  if (a.held >= 1) return { kind: 'duplicate', held: a.held }
+  return a.page_card ? { kind: 'fills_slot' } : { kind: 'held', held: 0 }
 }
 
 export const rowKey = (r: Pick<PendingRequest, 'card' | 'side' | 'price' | 'asked_tick'>): string => `${r.card}|${r.side}|${r.price}|${r.asked_tick ?? ''}`

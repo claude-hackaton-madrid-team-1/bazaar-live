@@ -7,8 +7,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEve
 import type { ActiveApproval, ApprovalLimits, ApprovalsSnapshot, PendingRequest } from '../../../shared/approvals.ts'
 import { REASON_MAX } from '../../../shared/approvals.ts'
 import {
-  approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, denyInput, login, logout, orderActive, orderPending, priceBounds, priceWarningOf,
-  readApprovals, readSession, reasonTooLong, REFRESH_MS, revoke, rowKey, staleness, ticksLeft, type LoginOutcome, type WriteOutcome,
+  albumLineOf, approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, denyInput, liveApprovalFor, login, logout, orderActive,
+  orderPending, prefillPrice, priceBounds, priceWarningOf, readApprovals, readSession, reasonTooLong, REFRESH_MS, revoke, rowKey, staleness, ticksLeft,
+  type LoginOutcome, type WriteOutcome,
 } from '../approvals.ts'
 import { p, useApprovalsStrings } from '../approvalsStrings.ts'
 import { Badge, CardRef, Empty, Panel } from './bits.tsx'
@@ -20,10 +21,20 @@ export function ApprovalsScreen() {
   const [csrf, setCsrf] = useState<string | null | undefined>(undefined)
   useEffect(() => {
     const controller = new AbortController()
-    void readSession(controller.signal).then((token) => {
-      if (!controller.signal.aborted) setCsrf(token ?? null)
-    })
-    return () => controller.abort()
+    let retry: ReturnType<typeof setTimeout> | undefined
+    // a 429, a 5xx or no answer is not "locked": keep checking, and ask again when the server says
+    const ask = (): void => {
+      void readSession(controller.signal).then((out) => {
+        if (controller.signal.aborted) return
+        if (out.kind === 'unknown') retry = setTimeout(ask, out.retryS * 1000)
+        else setCsrf(out.kind === 'in' ? out.csrf : null)
+      })
+    }
+    ask()
+    return () => {
+      controller.abort()
+      clearTimeout(retry)
+    }
   }, [])
   const expired = useCallback(() => setCsrf(null), [])
   const lock = useCallback(() => {
@@ -172,8 +183,8 @@ function Approvals({ csrf, onExpired, onLock }: { csrf: string; onExpired: () =>
             <Empty>{t.noPending}</Empty>
           ) : (
             <ul className="ap-list">
-              {pending.map((row, i) => (
-                <PendingRow key={`${rowKey(row)}#${i}`} row={row} tick={snapshot.tick} limits={snapshot.limits} csrf={csrf} onDone={done} />
+              {pending.map((row) => (
+                <PendingRow key={rowKey(row)} row={row} tick={snapshot.tick} limits={snapshot.limits} live={liveApprovalFor(row, snapshot.active, snapshot.tick)} csrf={csrf} onDone={done} />
               ))}
             </ul>
           )}
@@ -185,8 +196,8 @@ function Approvals({ csrf, onExpired, onLock }: { csrf: string; onExpired: () =>
             <Empty>{t.noActive}</Empty>
           ) : (
             <ul className="ap-list">
-              {active.map((a, i) => (
-                <ActiveRow key={`${a.card}|${a.side}#${i}`} a={a} tick={snapshot.tick} csrf={csrf} onDone={done} />
+              {active.map((a) => (
+                <ActiveRow key={`${a.card}|${a.side}`} a={a} tick={snapshot.tick} csrf={csrf} onDone={done} />
               ))}
             </ul>
           )}
@@ -245,6 +256,7 @@ function Outcome({ out }: { out: WriteOutcome | null }) {
 function PendingFacts({ row, tick }: { row: PendingRequest; tick: number }) {
   const t = useApprovalsStrings()
   const stale = staleness(row, tick)
+  const album = albumLineOf(row)
   return (
     <dl className="ap-facts">
       {(row.why || row.score_impact !== null) && (
@@ -268,12 +280,12 @@ function PendingFacts({ row, tick }: { row: PendingRequest; tick: number }) {
           <span className="gm-muted">{t.officialValue}</span>
         </dd>
       </div>
-      {row.album && (
+      {row.album && album && (
         <div>
           <dt>{t.albumLabel}</dt>
           <dd className="ap-album">
-            <span>{t.album(row.album)}</span>
-            {row.album.last_copy && (
+            <span>{t.album(album, row.card, row.album)}</span>
+            {album.kind === 'last_copy' && (
               <Badge tone="bad" title={t.lastCopyTitle}>
                 {t.lastCopy}
               </Badge>
@@ -303,9 +315,17 @@ function PendingFacts({ row, tick }: { row: PendingRequest; tick: number }) {
   )
 }
 
-function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; tick: number; limits: ApprovalLimits; csrf: string; onDone: (out: WriteOutcome) => void }) {
+function PendingRow({ row, tick, limits, live, csrf, onDone }: {
+  row: PendingRequest
+  tick: number
+  limits: ApprovalLimits
+  /** A live approval for the same card and side: a Deny would revoke it too, so Deny is off while it lasts. */
+  live: ActiveApproval | null
+  csrf: string
+  onDone: (out: WriteOutcome) => void
+}) {
   const t = useApprovalsStrings()
-  const [price, setPrice] = useState(String(row.price))
+  const [price, setPrice] = useState(String(prefillPrice(row)))
   const [ttl, setTtl] = useState(String(limits.ttl_default))
   const [reason, setReason] = useState('')
   const [confirming, setConfirming] = useState(false)
@@ -388,10 +408,15 @@ function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; 
             <span>{t.reasonLabel}</span>
             <input className="ap-input" type="text" maxLength={REASON_MAX} value={reason} aria-invalid={reasonTooLong(reason)} onChange={(e) => edit(setReason)(e.target.value)} />
           </label>
+          {/* three slots: Approve | Deny | (Confirm). While confirming, Cancel takes Approve's slot and Deny's stays a
+              disabled placeholder, so a double-click or a held Enter can never land on Confirm or Deny. */}
           {confirming && input ? (
             <div className="ap-buttons">
               <button type="button" className="gm-btn" disabled={busy} onClick={() => setConfirming(false)}>
                 {t.cancel}
+              </button>
+              <button type="button" className="gm-btn ap-deny" disabled aria-hidden="true" tabIndex={-1}>
+                {t.deny}
               </button>
               <button type="button" className="gm-btn ap-primary" data-confirm disabled={busy} onClick={onConfirm}>
                 {busy ? t.sending : t.confirm(row.card, row.side, input.price)}
@@ -402,7 +427,13 @@ function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; 
               <button type="button" className="gm-btn ap-primary" disabled={!input || busy} onClick={onApprove}>
                 {t.approve}
               </button>
-              <button type="button" className="gm-btn ap-deny" disabled={busy} onClick={() => void run(() => revoke(csrf, denyInput(row)))}>
+              <button
+                type="button"
+                className="gm-btn ap-deny"
+                disabled={busy || live !== null}
+                title={live ? t.liveApproval(live.side, approvalLimitOf(live).price) : undefined}
+                onClick={() => void run(() => revoke(csrf, denyInput(row)))}
+              >
                 {busy ? t.sending : t.deny}
               </button>
             </div>
@@ -411,6 +442,7 @@ function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; 
             {!priceCheck.ok && <span className="gm-bad">{t.priceError(priceCheck.error, bounds.min, bounds.max, bounds.cap?.rule ?? null)}</span>}
             {!ttlCheck.ok && <span className="gm-bad">{t.ttlError(limits.ttl_min, limits.ttl_max)}</span>}
             {reasonTooLong(reason) && <span className="gm-bad">{t.reasonError(REASON_MAX)}</span>}
+            {live && <span className="gm-muted">{t.liveApproval(live.side, approvalLimitOf(live).price)}</span>}
             {warning && <span className="gm-warn">{warning.kind === 'above_official' ? t.aboveOfficial(warning.value) : t.belowOurs(warning.value)}</span>}
             {confirming && input && <span>{t.scope(row.card, row.side, input.ttl_ticks)}</span>}
           </p>

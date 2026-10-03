@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CONTRACT_LIMITS, type PendingRequest } from '../../shared/approvals.ts'
 import {
-  approvalLimitOf, approve, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, CONFIRM_DELAY_MS, denyInput, login, loginOutcomeOf, orderActive, orderPending, priceBounds, priceWarningOf,
+  albumLineOf, approvalLimitOf, approve, liveApprovalFor, prefillPrice, sessionOutcomeOf, approveInputFrom, checkPrice, checkTtl, confirmClickCounts, CONFIRM_DELAY_MS, denyInput, login, loginOutcomeOf, orderActive, orderPending, priceBounds, priceWarningOf,
   readOutcomeOf, readSession, revoke, staleness, writeOutcomeOf,
 } from './approvals.ts'
 import { APPROVALS_STRINGS } from './approvalsStrings.ts'
+import { probeOutcomeOf } from '../ui/approver.ts'
 
 const row = (over: Partial<PendingRequest> = {}): PendingRequest => ({
   card: 'SAL-09', side: 'buy', price: 260, asked_tick: 905, stale_after_tick: 1145, state: 'waiting', counterparty: 'chato', asked_by: 'accept_buy',
@@ -95,6 +96,49 @@ describe('the approve form', () => {
   })
 })
 
+describe('the probe and the session', () => {
+  it('turns approvals off only on a 404; anything else is asked again', () => {
+    expect(probeOutcomeOf(200, null)).toEqual({ kind: 'on' })
+    expect(probeOutcomeOf(404, null)).toEqual({ kind: 'off' })
+    expect(probeOutcomeOf(429, '30')).toEqual({ kind: 'retry', retryS: 30 })
+    expect(probeOutcomeOf(429, '900')).toEqual({ kind: 'retry', retryS: 60 })
+    expect(probeOutcomeOf(502, null)).toEqual({ kind: 'retry', retryS: 5 })
+    expect(probeOutcomeOf(null, null)).toEqual({ kind: 'retry', retryS: 5 })
+    expect(sessionOutcomeOf(404, null, null)).toEqual({ kind: 'unknown', retryS: 5 })
+  })
+})
+
+describe('what a request does', () => {
+  const active = { card: 'SAL-09', side: 'buy' as const, max_price: 270, min_price: null, until_tick: 1000, by: null, reason: null, created_at: null }
+
+  it('finds the live approval a Deny would revoke too', () => {
+    expect(liveApprovalFor(row(), [active], 912)).toBe(active)
+    expect(liveApprovalFor(row(), [active], 1001)).toBeNull()
+    expect(liveApprovalFor(row({ side: 'sell' }), [active], 912)).toBeNull()
+    expect(liveApprovalFor(row({ card: 'LAV-01' }), [active], 912)).toBeNull()
+  })
+
+  it('prefills whole primas that still cover the request: a buy rounded up, a sell down', () => {
+    expect(prefillPrice(row({ price: 260.2 }))).toBe(261)
+    expect(prefillPrice(row({ side: 'sell', price: 280.8 }))).toBe(280)
+    expect(prefillPrice(row())).toBe(260)
+  })
+
+  it('says LAST COPY only for a sell, and duplicate or a page slot for a buy', () => {
+    const album = { set: 'SAL', held: 1, page_card: true, last_copy: true }
+    expect(albumLineOf(row({ side: 'sell', album }))).toEqual({ kind: 'last_copy', held: 1 })
+    expect(albumLineOf(row({ side: 'buy', album }))).toEqual({ kind: 'duplicate', held: 1 })
+    expect(albumLineOf(row({ side: 'buy', album: { ...album, held: 0, last_copy: false } }))).toEqual({ kind: 'fills_slot' })
+    expect(albumLineOf(row({ side: 'sell', album: { ...album, held: 2, last_copy: false } }))).toEqual({ kind: 'held', held: 2 })
+    expect(albumLineOf(row({ album: null }))).toBeNull()
+    const en = APPROVALS_STRINGS.en
+    expect(en.album({ kind: 'duplicate', held: 1 }, 'SAL-09', album)).toBe('duplicate: we already hold 1 of SAL-09')
+    expect(en.album({ kind: 'fills_slot' }, 'SAL-09', album)).toBe('fills a page slot in SAL')
+    expect(en.album({ kind: 'last_copy', held: 1 }, 'SAL-09', album)).toBe('we hold 1 of SAL-09 · a page card')
+    expect(en.liveApproval('buy', 270)).toBe('a live approval up to 270 P exists: revoke it below')
+  })
+})
+
 describe('the server\'s answers', () => {
   it('reads a login', () => {
     expect(loginOutcomeOf(200, { csrf: 'abc' }, null)).toEqual({ kind: 'in', csrf: 'abc' })
@@ -156,15 +200,17 @@ describe('the requests the page sends', () => {
     expect(calls.map((c) => c.url)).toEqual(['/api/approver/revoke', '/api/approver/approve'])
   })
 
-  it('reads a session: its token, none, or unknown when the server did not answer', async () => {
+  it('reads a session: its token, none, or unknown (retry) on a 429, a 5xx or no answer, never the lock for those', async () => {
     capture(200, { authenticated: true, csrf: 'tok' })
-    expect(await readSession()).toBe('tok')
+    expect(await readSession()).toEqual({ kind: 'in', csrf: 'tok' })
     capture(200, { authenticated: false })
-    expect(await readSession()).toBeNull()
-    capture(404, { error: 'not_found' })
-    expect(await readSession()).toBeUndefined()
+    expect(await readSession()).toEqual({ kind: 'out' })
+    capture(429, { error: 'rate_limited' }, { 'Retry-After': '12' })
+    expect(await readSession()).toEqual({ kind: 'unknown', retryS: 12 })
+    capture(503, null)
+    expect(await readSession()).toEqual({ kind: 'unknown', retryS: 5 })
     vi.stubGlobal('fetch', async () => Promise.reject(new TypeError('offline')))
-    expect(await readSession()).toBeUndefined()
+    expect(await readSession()).toEqual({ kind: 'unknown', retryS: 5 })
     expect(await approve('t', { card: 'SAL-09', side: 'buy', price: 1, ttl_ticks: 1 })).toEqual({ kind: 'error', error: 'network' })
   })
 })
