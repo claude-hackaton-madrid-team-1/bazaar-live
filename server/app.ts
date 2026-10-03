@@ -13,6 +13,8 @@
  *   GET  /api/strategy         what we aim for, why we hold and why we do not buy, JSON (db/strategy.sql; the same token)
  *   GET  /api/rivals           what each rival holds by the public feed, its rank and what it chases, JSON (db/rival_albums.sql; the same token)
  *   GET  /api/injections       the prompt-injection attempts our agents recorded, JSON (db/injections.sql; public, never voiced)
+ *   /api/approver/*            the Approvals screen (server/approvals): a password login, then bazaar-mcp's human tools,
+ *                              called from here; without its four variables these paths answer like any unknown /api path
  *   GET  /*                    dist/ (SPA)
  *
  * The proxy is public, so it only speaks the show's own short lines: same-origin requests, one of
@@ -36,6 +38,7 @@ import { isSpeaker, type Speaker } from '../shared/tags.ts'
 import type { DealerNames } from './dealers.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
+import { createApprovalsRoutes, type ApprovalsRouteDeps } from './approvals/routes.ts'
 import { createGameRoutes, type GameRouteDeps } from './game/routes.ts'
 import { createHistoryRoutes, type HistoryRouteDeps } from './history/routes.ts'
 import { createInjectionsRoutes, type InjectionsRouteDeps } from './injections/routes.ts'
@@ -78,6 +81,9 @@ export interface AppDeps {
   readonly injections?: Pick<InjectionsRouteDeps, 'enabled' | 'snapshot'> & Partial<Pick<InjectionsRouteDeps, 'limiter'>>
   /** The dealers' display names (server/dealers.ts); absent → /api/dealers answers an empty list. */
   readonly dealerNames?: () => Promise<DealerNames>
+  /** The Approvals screen (server/approvals); absent → every /api/approver/* path answers like an unknown /api path. */
+  readonly approvals?: Pick<ApprovalsRouteDeps, 'config'> &
+    Partial<Pick<ApprovalsRouteDeps, 'fetchImpl' | 'timeoutMs' | 'sessions' | 'guard' | 'writeLimiter' | 'sessionWriteLimiter' | 'readLimiter'>>
 }
 
 const CSP = [
@@ -304,6 +310,19 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     address: (req) => clientAddress(req, limits.clientIpHeader),
   })
 
+  // Off: never mounted, so /api/approver/* falls through to the unknown-/api answer below, byte for byte.
+  const approvals = deps.approvals
+    ? createApprovalsRoutes({
+        fetchImpl,
+        log,
+        ...deps.approvals,
+        headers: SECURITY_HEADERS,
+        address: (req) => clientAddress(req, limits.clientIpHeader),
+        sameOrigin,
+        readBody,
+      })
+    : null
+
   async function synthesize(req: TtsRequest): Promise<Audio> {
     if (req.provider === 'elevenlabs' && deps.config.elevenlabs) return elevenLabs(deps.config.elevenlabs, req.speaker, req.lang, req.text, fetchImpl)
     if (req.provider === 'gemini' && deps.config.gemini) return gemini(deps.config.gemini, req.speaker, req.lang, req.text, fetchImpl)
@@ -387,6 +406,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       if (strategy(req, res, path)) return
       if (rivals(req, res, path)) return
       if (injections(req, res, path)) return
+      if (approvals && (await approvals(req, res, path))) return
       if (path.startsWith('/api/')) return json(res, 404, { error: 'not_found' })
       if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' })
       await serveStatic(req, res, SECURITY_HEADERS)

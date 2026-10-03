@@ -16,11 +16,14 @@
  * forces the API); views missing → the API relay. One pool for all of them: the role holds four connections.
  * With SHOW_DATABASE_URL the server also listens to the agents' /events sockets and reads at once on a live event
  * (the 3 s poll stays): AGENTS_WS=off turns that off, =watch only logs; AGENT_TAKER_WS_URL / _MAKER_WS_URL override.
+ * The Approvals screen: APPROVER_PASSWORD (16+ characters), BAZAAR_MCP_URL, BAZAAR_MCP_TOKEN and BAZAAR_APPROVER_TOKEN,
+ * all four, or it is off and /api/approver/* answers like any unknown /api path. It never touches the database.
  */
 import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.ts'
+import { readApprovalsConfig } from './approvals/config.ts'
 import { createDealerNames, dealersUrl } from './dealers.ts'
 import { startAgentsWs } from './game/agentsws.ts'
 import { startDecisions } from './game/decisions.ts'
@@ -76,6 +79,8 @@ const pages = startPages(process.env, {
   hub: game.hub, agents: agentsWs, log,
   pollers: { history: history.poller, learn: learn.poller, strategy: strategy.poller, rivals: rivals.poller },
 })
+// The Approvals screen: bazaar-mcp's human tools behind a password; off unless all four of its variables are set.
+const approvals = readApprovalsConfig(process.env, log)
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
 const server = createServer(
   createApp({
@@ -92,6 +97,7 @@ const server = createServer(
     rivals,
     injections,
     dealerNames: createDealerNames({ url: dealersUrl(process.env) }),
+    approvals: approvals ? { config: approvals } : undefined,
   }),
 )
 
