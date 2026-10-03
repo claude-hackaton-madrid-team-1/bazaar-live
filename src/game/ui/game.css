@@ -3071,6 +3071,61 @@
   opacity: 1;
 }
 
+/* the tactic our agent picked for its words: a quiet outlined chip, so the price stays the loud one */
+
+.neg-tactic {
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--gm-us) 36%, transparent);
+  border-radius: var(--r-pill);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--gm-us) 70%, var(--text));
+}
+
+.neg-tactic b {
+  font-variant-numeric: tabular-nums;
+}
+
+.neg-tactic[data-good] {
+  border-color: color-mix(in srgb, var(--gm-good) 45%, transparent);
+  color: var(--gm-good);
+}
+
+/* what worked: per dealer, each tactic with its deals out of the threads that used it */
+
+.neg-worked {
+  display: grid;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.neg-worked h3 {
+  margin: 0;
+}
+
+.neg-worked-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.neg-worked-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  padding: 0 var(--s-3);
+}
+
+.neg-worked-row .neg-who {
+  font-size: 0.9375rem;
+}
+
 /* ended threads, one line each */
 
 .neg-ended-list {

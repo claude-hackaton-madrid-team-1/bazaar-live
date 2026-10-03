@@ -3,8 +3,8 @@ import { fmtP } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
-  conversation, duelColumns, duelRows, negRows, rivalSummary, selectedThreadId,
-  type Bubble, type Conversation, type DuelRow, type NegRow, type NegStatus, type RivalRow,
+  conversation, dealerTactics, duelColumns, duelRows, negRows, rivalSummary, selectedThreadId,
+  type Bubble, type Conversation, type DealerTactics, type DuelRow, type NegRow, type NegStatus, type RivalRow,
 } from '../views/negotiations.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
 
@@ -85,7 +85,16 @@ function NegCard({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSe
   )
 }
 
-/** An ended thread in one line: how it ended against our value, and how far the dealer came down. */
+function Tactic({ id }: { id: string }) {
+  const t = useGameStrings()
+  return (
+    <span className="neg-tactic" data-tactic={id} title={t.neg.tacticTitle}>
+      {t.neg.tactic(id)}
+    </span>
+  )
+}
+
+/** An ended thread in one line: how it ended against our value, how far the dealer came down, and the tactics we used. */
 function EndedLine({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSelect: () => void }) {
   const t = useGameStrings()
   const first = r.ended?.firstAsk
@@ -100,6 +109,9 @@ function EndedLine({ r, selected, onSelect }: { r: NegRow; selected: boolean; on
         <span className="neg-ended-text" data-state={r.state}>
           {t.neg.verdict(r.verdict, r.side)}
         </span>
+        {r.tactics.map((id) => (
+          <Tactic key={id} id={id} />
+        ))}
         <span className="neg-ended-meta">
           {first != null && `${t.neg.opened(first)} · `}
           {t.neg.rounds(r.rounds)}
@@ -117,6 +129,7 @@ function BubbleItem({ b, who }: { b: Bubble; who: string }) {
         <span className="neg-chip" data-side={b.side}>
           {fmtP(b.price)}
         </span>
+        {b.tactic && <Tactic id={b.tactic} />}
         {b.final && <Badge tone="warn">{t.badge.final}</Badge>}
         <Injection on={b.suspicious} />
         {b.text != null ? <span className="neg-msg-text">{b.text}</span> : <span className="neg-msg-who">{who}</span>}
@@ -142,6 +155,34 @@ function ConversationView({ convo }: { convo: Conversation | null }) {
         <BubbleItem key={b.eventId} b={b} who={b.side === 'us' ? t.neg.we : b.maker} />
       ))}
     </ol>
+  )
+}
+
+/** Per dealer, each tactic of our ended threads with how many of them closed a deal: what to try again. */
+function Worked({ rows }: { rows: DealerTactics[] }) {
+  const t = useGameStrings()
+  if (!rows.length) return null
+  return (
+    <section className="neg-worked" aria-label={t.neg.worked}>
+      <h3 className="eyebrow" title={t.neg.workedSub}>
+        {t.neg.worked}
+      </h3>
+      <ul className="neg-worked-list">
+        {rows.map((d) => (
+          <li key={d.with} className="neg-worked-row">
+            <span className="neg-who" title={d.with}>
+              {d.with}
+            </span>
+            <span className="neg-ended-meta">{t.neg.workedDealer(d.threads, d.deals)}</span>
+            {d.tactics.map((x) => (
+              <span key={x.tactic} className="neg-tactic" data-good={x.deals > 0 || undefined} title={t.neg.workedTallyTitle}>
+                {t.neg.tactic(x.tactic)} <b>{t.neg.workedTally(x.deals, x.threads)}</b>
+              </span>
+            ))}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -268,6 +309,7 @@ export function NegotiationsScreen() {
         </Panel>
         {ended.length > 0 && (
           <Panel title={t.neg.ended} sub={t.neg.endedSub(won, ended.length - won)}>
+            <Worked rows={dealerTactics(state, rows)} />
             <ul className="neg-ended-list">
               {ended.map((r) => (
                 <EndedLine key={r.id} r={r} selected={r.id === selected} onSelect={() => select(r.id)} />
