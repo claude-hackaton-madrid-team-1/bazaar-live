@@ -113,7 +113,7 @@ describe('outcomeOf and ledgerOf', () => {
   it('reads the ledger rows and carries the caps', () => {
     expect(ledgerOf([{ tick: 100, t_hours: '1.6667', spent: 24, accepts: 1, listings: 0 }, { tick: 'x' }], DEFAULT_LIMITS)).toEqual({
       ticks: [{ tick: 100, t: 1.6667, spent: 24, accepts: 1, listings: 0 }],
-      limits: { spendPerHour: 250, cashFloor: 20, acceptsPerTick: 1, bondReserve: 270 },
+      limits: { spendPerHour: GUARDRAILS_DOC.maxSpendPerHour, cashFloor: GUARDRAILS_DOC.cashFloor, acceptsPerTick: 1, bondReserve: GUARDRAILS_DOC.venueBondReserve },
       venue: null,
     })
     expect(ledgerOf([], DEFAULT_LIMITS, true).venue).toBe(true)

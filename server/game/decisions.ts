@@ -16,7 +16,7 @@ import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import { redact, type Db } from '../transcript/poller.ts'
 import type { GameEvent } from './relay.ts'
 
-/** GUARDRAILS.md as shared/guardrails.ts copies it (bazaar#216: `cash_floor` 20, `max_spend_per_game_hour` 250). Not in
+/** GUARDRAILS.md as shared/guardrails.ts copies it (bazaar#219: `cash_floor` 5; #216: `max_spend_per_game_hour` 250). Not in
  * the database: a GUARDRAIL_* variable overrides one until the docs follow an edit. */
 export const DEFAULT_LIMITS: GuardrailLimits = {
   spendPerHour: GUARDRAILS_DOC.maxSpendPerHour,

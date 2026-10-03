@@ -124,7 +124,7 @@ export function mockStrategy(tick: number): StrategySnapshot {
   push({ tick: t - 3, agent: 'maker', kind: 'post_ask', status: 'done', guardrail: null, allowed: true, card: 'LAT-03', rarity: 'common', price: 12, total: null, value: 6.8, surplus: null, reason: 'ours 5 + page bonus 1.8 (LAT ×0.5); nobody seen chasing LAT; tape LAT-03 ×2 9; spare: ours + 5' })
   push({ tick: t - 50, agent: 'maker', kind: 'cancel_ask', status: 'done', guardrail: null, allowed: true, card: 'LAT-02', rarity: null, price: 10, total: null, value: null, surplus: null, reason: 'LAT-02 is no longer a sell target' })
   for (let k = 0; k < 12; k++) {
-    push({ tick: t - 200 - k * 4, agent: 'taker', kind: 'accept_ask', status: 'rejected', guardrail: k % 3 ? 'denied: price 31 > max_price_uncommon 26' : `denied: price 31 > max_price_uncommon 26; cash 45 - 31 < cash_floor ${GUARDRAILS_DOC.cashFloor}`, card: 'SAL-08', rarity: 'uncommon', price: 29, total: 31, value: 55.2, surplus: 24.2, reason: 'worth 25×1.3 + bonus share 22.7 = 55.2; ask 29 + fee 2 on rastro = 31' })
+    push({ tick: t - 200 - k * 4, agent: 'taker', kind: 'accept_ask', status: 'rejected', guardrail: k % 3 ? 'denied: price 31 > max_price_uncommon 26' : `denied: price 31 > max_price_uncommon 26; cash 33 - 31 < cash_floor ${GUARDRAILS_DOC.cashFloor}`, card: 'SAL-08', rarity: 'uncommon', price: 29, total: 31, value: 55.2, surplus: 24.2, reason: 'worth 25×1.3 + bonus share 22.7 = 55.2; ask 29 + fee 2 on rastro = 31' })
   }
   decisions.sort((a, b) => b.id - a.id)
   const ask = (offer: number, card: string, price: number, ours = false, to: string | null = null): OpenAsk => ({

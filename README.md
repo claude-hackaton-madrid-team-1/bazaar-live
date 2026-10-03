@@ -201,8 +201,8 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
 - The caps are in no live source (the agents' `/health` and `/events` leave limits out, the database only keeps a
   denial's text), so the newest evidence wins (`src/game/limits.ts`): a denial text newer than the docs
   (`cash 73 - 67 < cash_floor 20`, the newest per rule by tick), else `GUARDRAIL_SPEND_PER_HOUR`,
-  `GUARDRAIL_CASH_FLOOR`, `GUARDRAIL_ACCEPTS_PER_TICK`, else `shared/guardrails.ts` (bazaar#216: floor 20, 250 an
-  hour). A denial is newer when its tick is at or past the docs' `since` tick in the same run (or in a run whose clock
+  `GUARDRAIL_CASH_FLOOR`, `GUARDRAIL_ACCEPTS_PER_TICK`, else `shared/guardrails.ts` (bazaar#219: floor 5; #216: 250
+  an hour). A `GUARDRAIL_*` variable left behind after the docs move on overrides them: remove it once the docs agree. A denial is newer when its tick is at or past the docs' `since` tick in the same run (or in a run whose clock
   started again below it). The floor holds `venue_bond_reserve` (270) only while `allow_venue_open` is on and our venue
   is not open yet; `agent.ledger` carries `venue` (from the Strategy poller's `show.strategy_me`) to tell.
 - How the page reads them (`src/game/views/decisions.ts`, `agent.ts`): the feed keeps only its last window, so

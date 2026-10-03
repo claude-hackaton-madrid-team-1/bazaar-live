@@ -746,7 +746,7 @@ const EN: GameStrings = {
     rolling: 'a rolling game hour: each buy leaves it one game hour after it was made',
     binds: 'limits us',
     available: 'Can buy now',
-    source: (source, tick) => (source === 'denial' ? `as our agents applied it at tick ${tick ?? '—'}` : source === 'env' ? 'from the server (GUARDRAIL_* variable)' : 'from GUARDRAILS.md (bazaar#216)'),
+    source: (source, tick) => (source === 'denial' ? `as our agents applied it at tick ${tick ?? '—'}` : source === 'env' ? 'from the server (GUARDRAIL_* variable)' : 'from GUARDRAILS.md (shared/guardrails.ts)'),
   },
   decide: {
     idle: (agents) => `no decision this tick: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (last at tick ${last})` : ''}`).join(', ')}`,
@@ -1323,7 +1323,7 @@ const ES: GameStrings = {
     rolling: 'hora de juego móvil: cada compra sale de ella una hora de juego después de hacerse',
     binds: 'nos frena',
     available: 'Para comprar ahora',
-    source: (source, tick) => (source === 'denial' ? `como lo aplicaron nuestros agentes en el turno ${tick ?? '—'}` : source === 'env' ? 'del servidor (variable GUARDRAIL_*)' : 'de GUARDRAILS.md (bazaar#216)'),
+    source: (source, tick) => (source === 'denial' ? `como lo aplicaron nuestros agentes en el turno ${tick ?? '—'}` : source === 'env' ? 'del servidor (variable GUARDRAIL_*)' : 'de GUARDRAILS.md (shared/guardrails.ts)'),
   },
   decide: {
     idle: (agents) => `sin decisión este turno: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (la última en el turno ${last})` : ''}`).join(', ')}`,
