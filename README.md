@@ -104,7 +104,7 @@ and never hands the key to the page:
 | Env | Effect |
 |---|---|
 | `BAZAAR_KEY` | The real game (`https://bazaar.causaprima.ai`). Without it (and without `BAZAAR_SIM`) the relay is off and the screens say so. |
-| `BAZAAR_SIM=1`, `BAZAAR_SIM_KEY` | The simulator instead, with a `sim-…` key (default `sim-team1`). `sim-team1` gets a 401 on `/api/me`, so nothing is "ours": only Market and Debug fill. |
+| `BAZAAR_SIM=1`, `BAZAAR_SIM_KEY` | The simulator instead, with a `sim-…` key (default `sim-team1`). With `sim-team1` the screens show team 1 of the simulator. |
 | `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values and our album. |
 | `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
 
