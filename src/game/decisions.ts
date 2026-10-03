@@ -3,12 +3,14 @@
  * comes again when its status, its request's answer or its outcome changes: the latest wins, in place),
  * `agent.outcome` per scored deal, and the latest `agent.ledger`. Bounded; the reducer calls these.
  */
-import { AGENTS, type AgentName, type DecisionPayload, type LedgerPayload, type OutcomePayload } from '../../shared/decisions.ts'
+import { AGENTS, type AgentName, type BrokerPayload, type DecisionPayload, type LedgerPayload, type OutcomePayload } from '../../shared/decisions.ts'
 import type { GameEvent } from './state.ts'
 
 export type DecisionRow = DecisionPayload & { readonly eventId: number; readonly tick: number }
 
 export type OutcomeRow = OutcomePayload & { readonly eventId: number; readonly tick: number | null }
+
+export type BrokerRow = BrokerPayload & { readonly eventId: number; readonly tick: number }
 
 export type DecisionLog = {
   /** Per agent, oldest first. */
@@ -16,12 +18,25 @@ export type DecisionLog = {
   /** Newest last. */
   outcomes: OutcomeRow[]
   ledger: LedgerPayload | null
+  /** Our venue's broker's matches (`agent.broker`), oldest first. */
+  broker: BrokerRow[]
 }
 
-export const DECISION_LIMITS = { perAgent: 400, outcomes: 200 }
+export const DECISION_LIMITS = { perAgent: 400, outcomes: 200, broker: 200 }
 
 export function createDecisionLog(): DecisionLog {
-  return { decisions: { taker: [], maker: [], duels: [] }, outcomes: [], ledger: null }
+  return { decisions: { taker: [], maker: [], duels: [] }, outcomes: [], ledger: null, broker: [] }
+}
+
+export function applyBroker(s: DecisionLog, e: GameEvent): void {
+  const p = e.payload as Partial<BrokerPayload>
+  if (typeof p.decision !== 'number' || typeof e.tick !== 'number') return
+  if (s.broker.some((r) => r.decision === p.decision)) return
+  const row = { ...(p as BrokerPayload), eventId: e.id, tick: e.tick }
+  let i = s.broker.length
+  while (i > 0 && (s.broker[i - 1]?.decision ?? 0) > row.decision) i -= 1
+  s.broker.splice(i, 0, row)
+  if (s.broker.length > DECISION_LIMITS.broker) s.broker.splice(0, s.broker.length - DECISION_LIMITS.broker)
 }
 
 const isAgent = (v: unknown): v is AgentName => (AGENTS as readonly unknown[]).includes(v)

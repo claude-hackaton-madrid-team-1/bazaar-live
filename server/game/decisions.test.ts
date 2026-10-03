@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Db } from '../transcript/poller.ts'
-import { DecisionsPoller, DEFAULT_LIMITS, FIRST_ID, SQL, decisionOf, ledgerOf, outcomeOf, readLimits, ruleText, startDecisions } from './decisions.ts'
-import { GameHub, type GameEvent } from './relay.ts'
+import { DecisionsPoller, DEFAULT_LIMITS, FIRST_ID, SQL, brokerOf, decisionOf, ledgerOf, outcomeOf, ourVenueOf, readLimits, ruleText, startDecisions } from './decisions.ts'
+import { GameHub, STICKY, type GameEvent } from './relay.ts'
 
 const SECRET_URL = 'postgresql://bazaar_live_reader:hunter2-secret@postgres.railway.internal:5432/railway'
 
@@ -123,12 +123,12 @@ describe('outcomeOf and ledgerOf', () => {
 })
 
 describe('DecisionsPoller', () => {
-  it('reads only the three views, never a table or a private column', async () => {
+  it('reads only its five views, never a table or a private column', async () => {
     const { calls, poller } = setup()
     await poller.pollOnce()
     await poller.pollOnce()
     for (const c of calls) {
-      expect(c.sql).toMatch(/show\.agent_(decisions|outcomes|ledger)/)
+      expect(c.sql).toMatch(/show\.(agent_(decisions|outcomes|ledger|broker)|our_venues)/)
       expect(c.sql).not.toMatch(/public\.|candidates|reason|payload|request|response|explanation|details|your_limit|source/)
     }
   })
@@ -279,5 +279,70 @@ describe('DecisionsPoller.poke', () => {
 
   it('startDecisions hands out poke, and a no-op one while off', () => {
     expect(startDecisions({}, { db: null, hub: null, log: () => undefined }).poke()).toBe(false)
+  })
+})
+
+describe('our broker\'s matches (show.agent_broker)', () => {
+  const match = (id: number, extra: Record<string, unknown> = {}) => ({ id: String(id), tick: 930, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: '15.0', ...extra })
+
+  it('brokerOf keeps the pair, the price and the surplus, and drops anything that is not a plain id', () => {
+    expect(brokerOf(match(2114))).toEqual({ tick: 930, payload: { decision: 2114, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: 15 } })
+    expect(brokerOf(match(2115, { bench: false, item: 'LAV-08', buyer: 't05', seller: '<script>', price: 25, surplus: null }))?.payload).toMatchObject({ bench: false, item: 'LAV-08', buyer: 't05', seller: null, surplus: null })
+    expect(brokerOf({ id: 'x', tick: 1 })).toBeNull()
+  })
+
+  it('publishes each match once, after the last id, as agent.broker', async () => {
+    let rows = [match(1), match(2)]
+    const { db, calls } = fakeDb((c) => (c.sql === SQL.brokerBackfill ? rows : c.sql === SQL.brokerAfter ? rows.filter((r) => Number(r.id) > (c.params[0] as number)) : []))
+    const hub = new GameHub()
+    const batches: GameEvent[][] = []
+    hub.subscribe((b) => batches.push([...b]))
+    const poller = new DecisionsPoller({ db, hub, log: () => undefined })
+    await poller.pollOnce()
+    rows = [match(1), match(2), match(3, { tick: 931 })]
+    await poller.pollOnce()
+    const broker = batches.flat().filter((e) => e.type === 'agent.broker')
+    expect(broker.map((e) => [e.payload.decision, e.tick, e.actor, e.scope])).toEqual([[1, 930, 'broker', 'team'], [2, 930, 'broker', 'team'], [3, 931, 'broker', 'team']])
+    expect(calls.filter((c) => c.sql === SQL.brokerAfter).map((c) => c.params[0])).toEqual([2])
+  })
+
+  it('a missing broker view (the SQL not re-applied yet) is said once and never stops the other views', async () => {
+    const { db } = fakeDb((c) => (c.sql.includes('show.agent_broker') ? pgError('42P01', 'relation "show.agent_broker" does not exist') : c.sql === SQL.decisionsBackfill ? [decisionRow(1)] : []))
+    const hub = new GameHub()
+    const batches: GameEvent[][] = []
+    hub.subscribe((b) => batches.push([...b]))
+    const logs: Record<string, unknown>[] = []
+    const poller = new DecisionsPoller({ db, hub, log: (e) => logs.push(e) })
+    await poller.pollOnce()
+    await poller.pollOnce()
+    expect(poller.off).toBe(false)
+    expect(batches.flat().some((e) => e.type === 'agent.decision')).toBe(true)
+    expect(logs.filter((l) => l.event === 'broker_off')).toHaveLength(1)
+  })
+})
+
+describe('our venues (show.our_venues)', () => {
+  const v19 = { venue: 'v19', tick: 262, name: 'Team 1 market', bond: 250, mechanism: 'board', fee_bps: 0, fee_per_card: 0, closed_tick: null }
+
+  it('ourVenueOf keeps a venue id, its name, bond, mechanism, fees and close; drops a malformed row', () => {
+    expect(ourVenueOf(v19)).toEqual({ venue: 'v19', tick: 262, name: 'Team 1 market', bond: 250, mechanism: 'board', feeBps: 0, feePerCard: 0, closedTick: null })
+    expect(ourVenueOf({ ...v19, venue: 'v19; drop table' })).toBeNull()
+    expect(ourVenueOf({ ...v19, name: '<b>x</b>' })?.name).toBeNull()
+  })
+
+  it('publishes them once as a sticky agent.venues, re-reads every venuesEvery polls, sends again only on a change', async () => {
+    let rows: Record<string, unknown>[] = [v19]
+    const { db, calls } = fakeDb((c) => (c.sql === SQL.ourVenues ? rows : []))
+    const hub = new GameHub()
+    const batches: GameEvent[][] = []
+    hub.subscribe((b) => batches.push([...b]))
+    const poller = new DecisionsPoller({ db, hub, log: () => undefined, venuesEvery: 3 })
+    for (let i = 0; i < 4; i++) await poller.pollOnce()
+    expect(calls.filter((c) => c.sql === SQL.ourVenues)).toHaveLength(2) // polls 1 and 4
+    rows = [v19, { ...v19, venue: 'v20', tick: 950, name: 'Team 1 annex' }]
+    for (let i = 0; i < 3; i++) await poller.pollOnce()
+    const sent = batches.flat().filter((e) => e.type === 'agent.venues')
+    expect(sent.map((e) => (e.payload.venues as { venue: string }[]).map((v) => v.venue))).toEqual([['v19'], ['v19', 'v20']])
+    expect((STICKY as readonly string[]).includes('agent.venues')).toBe(true)
   })
 })

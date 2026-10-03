@@ -17,6 +17,7 @@ import { HistoryScreen } from './HistoryScreen.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LearnScreen } from './LearnScreen.tsx'
 import { MarketScreen } from './MarketScreen.tsx'
+import { OurMarketScreen } from './OurMarketScreen.tsx'
 import { NegotiationsScreen } from './NegotiationsScreen.tsx'
 import { RivalsScreen } from './RivalsScreen.tsx'
 import { StrategyScreen } from './StrategyScreen.tsx'
@@ -30,6 +31,7 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   album: () => <AlbumScreen />,
   rivals: () => <RivalsScreen />,
   market: () => <MarketScreen />,
+  ourmarket: () => <OurMarketScreen />,
   history: () => <HistoryScreen />,
   learn: () => <LearnScreen />,
   debug: () => <DebugScreen />,

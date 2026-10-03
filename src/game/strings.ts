@@ -645,7 +645,7 @@ const HUM_ES: GameStrings['hum'] = {
 
 const EN: GameStrings = {
   hum: HUM_EN,
-  nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', rivals: 'Rivals', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', rivals: 'Rivals', market: 'Market', ourmarket: 'Our market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
@@ -655,6 +655,7 @@ const EN: GameStrings = {
     album: 'pages and score',
     rivals: 'the other teams\' albums: who is ahead, who has the cards we need',
     market: 'everyone else',
+    ourmarket: 'our venue, our broker, and what people ask of us',
     history: 'our cash and every movement of it',
     learn: 'what our agents learned: blockers, lessons, dealers, rivals',
     debug: 'the raw event stream',
@@ -1209,7 +1210,7 @@ const EN: GameStrings = {
 
 const ES: GameStrings = {
   hum: HUM_ES,
-  nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', rivals: 'Rivales', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', rivals: 'Rivales', market: 'Mercado', ourmarket: 'Nuestro mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
@@ -1219,6 +1220,7 @@ const ES: GameStrings = {
     album: 'páginas y puntuación',
     rivals: 'los álbumes de los otros equipos: quién va delante, quién tiene lo que nos falta',
     market: 'todos los demás',
+    ourmarket: 'nuestro puesto, nuestro bróker y lo que nos piden',
     history: 'nuestra caja y cada movimiento',
     learn: 'lo que aprendieron nuestros agentes: bloqueos, lecciones, tratantes, rivales',
     debug: 'el flujo de eventos en bruto',

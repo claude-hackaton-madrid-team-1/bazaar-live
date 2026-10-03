@@ -7,9 +7,9 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export type Route = 'show' | 'agent' | 'strategy' | 'negotiations' | 'duels' | 'album' | 'rivals' | 'market' | 'history' | 'learn' | 'debug'
+export type Route = 'show' | 'agent' | 'strategy' | 'negotiations' | 'duels' | 'album' | 'rivals' | 'market' | 'ourmarket' | 'history' | 'learn' | 'debug'
 
-export const ROUTES: readonly Route[] = ['show', 'agent', 'strategy', 'negotiations', 'duels', 'album', 'rivals', 'market', 'history', 'learn', 'debug']
+export const ROUTES: readonly Route[] = ['show', 'agent', 'strategy', 'negotiations', 'duels', 'album', 'rivals', 'market', 'ourmarket', 'history', 'learn', 'debug']
 
 export const PATHS: Readonly<Record<Route, string>> = {
   show: '/',
@@ -20,6 +20,7 @@ export const PATHS: Readonly<Record<Route, string>> = {
   album: '/album',
   rivals: '/rivals',
   market: '/market',
+  ourmarket: '/our-market',
   history: '/history',
   learn: '/learn',
   debug: '/debug',

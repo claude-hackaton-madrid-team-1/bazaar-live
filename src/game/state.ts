@@ -1,6 +1,7 @@
 import { HEALTH_AGENTS, type HealthReport } from '../../shared/health.ts'
-import { applyDecision, applyLedger, applyOutcome, createDecisionLog, type DecisionLog } from './decisions.ts'
-import { isOurTeamThread, isTeamThread, teamThreadClosed, teamThreadMessage, teamThreadOpened, type TeamThread } from './teamThreads.ts'
+import { applyBroker, applyDecision, applyLedger, applyOutcome, createDecisionLog, type DecisionLog } from './decisions.ts'
+import { applyMarketExtras, createMarketExtras, type MarketExtras } from './marketExtras.ts'
+import { isOurTeamThread, isTeamThread, sideOf, teamThreadClosed, teamThreadMessage, teamThreadOpened, type TeamSide, type TeamThread } from './teamThreads.ts'
 
 // The game's JSON, read defensively: every field is optional and falls back with `??`.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,6 +129,9 @@ export type BookOffer = {
   price: number | null
   createdTick: number | undefined
   expiresTick: number | null
+  /** What the maker gives and wants, whole (cards and cash): a swap or an offer addressed to us says it all. */
+  give?: TeamSide
+  want?: TeamSide
 }
 
 export type Venue = {
@@ -176,6 +180,8 @@ export type State = {
   threads: Record<number, Thread>
   /** Our threads with other teams (the team desk's swaps), by id: apart from the dealer threads above. */
   teamThreads: Map<number, TeamThread>
+  /** Each venue's bond and mechanism, its latest announcements, and the bench sessions (the Our market screen). */
+  market: MarketExtras
   duels: Record<number, Duel>
   tape: Trade[]
   prices: Record<string, number[]>
@@ -208,7 +214,7 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
-  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed',
+  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'bench.started', 'agent.broker', 'agent.venues',
 ])
 
 export const LIMITS = {
@@ -220,7 +226,7 @@ export function createState(): State {
   return {
     team: '', name: '', tick: 0, day: '', tickSeconds: 60, phase: 'observe', goal: '',
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
-    log: [], threads: {}, teamThreads: new Map(), duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
+    log: [], threads: {}, teamThreads: new Map(), market: createMarketExtras(), duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
     events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null,
   }
@@ -422,6 +428,7 @@ function offerListed(s: State, e: GameEvent) {
     kind: first?.kind ?? goods?.types?.[0]?.split(':')[0] ?? 'card',
     assetIds: assets.map((a) => a.id).filter((id) => typeof id === 'number'),
     serial: first?.serial ?? null, price: priceOf(offer), createdTick: offer.created_tick ?? e.tick, expiresTick,
+    give: sideOf(offer.give), want: sideOf(offer.want),
   })
   if (venue !== 'direct') touchVenue(s, venue, e.tick)
   let size = bookSize(s)
@@ -473,6 +480,26 @@ function venueEvent(s: State, e: GameEvent) {
       v.status = 'closed'
       s.book.delete(p.venue)
       break
+  }
+}
+
+/**
+ * The venues we opened, from our database (`agent.venues`, sticky): the feed window starts long after we opened ours,
+ * so its venue.opened never reaches the page. Sent first to a late page; the window's own venue events come after.
+ */
+function ourVenuesEvent(s: State, e: GameEvent) {
+  const list: Payload[] = Array.isArray(e.payload.venues) ? e.payload.venues : []
+  if (!s.team) return
+  for (const x of list) {
+    if (typeof x?.venue !== 'string' || typeof x.tick !== 'number') continue
+    const v = touchVenue(s, x.venue, x.tick)
+    v.owner = s.team
+    if (typeof x.name === 'string') v.name = x.name
+    if (typeof x.feeBps === 'number') v.feeBps = x.feeBps
+    if (typeof x.feePerCard === 'number') v.feePerCard = x.feePerCard
+    v.openedTick = x.tick
+    if (typeof x.closedTick === 'number') v.status = 'closed'
+    s.market.venues.set(x.venue, { bond: typeof x.bond === 'number' ? x.bond : null, mechanism: typeof x.mechanism === 'string' ? x.mechanism : null })
   }
 }
 
@@ -646,6 +673,10 @@ export function apply(s: State, e: GameEvent): State {
     case 'venue.closing':
     case 'venue.closed':
       venueEvent(s, e)
+      applyMarketExtras(s.market, e)
+      break
+    case 'bench.started':
+      applyMarketExtras(s.market, e)
       break
     case 'pack.opened':
       push(s.packsOpened, { eventId: e.id, tick: e.tick, team: p.team ?? '?', name: p.name ?? p.team ?? '?', pack: p.pack ?? '?', best: p.best ?? null }, LIMITS.packsOpened)
@@ -699,6 +730,12 @@ export function apply(s: State, e: GameEvent): State {
       break
     case 'agent.ledger':
       applyLedger(s.agents, e)
+      break
+    case 'agent.broker':
+      applyBroker(s.agents, e)
+      break
+    case 'agent.venues':
+      ourVenuesEvent(s, e)
       break
   }
   return s

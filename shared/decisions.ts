@@ -59,6 +59,32 @@ export interface OutcomePayload {
   readonly jevRight: boolean | null
 }
 
+/** One match our venue's broker made (`agent.broker`): the pair as the venue names its traders, the price, the surplus. */
+export interface BrokerPayload {
+  readonly decision: number
+  /** A bench book (the organisers' synthetic traders), or a live match on our venue. */
+  readonly bench: boolean
+  /** The bench (`bench:b69`) or the card the match moved. */
+  readonly item: string | null
+  readonly buyer: string | null
+  readonly seller: string | null
+  readonly price: number | null
+  /** Bid minus ask of the pair it matched: the value the match created. */
+  readonly surplus: number | null
+}
+
+/** A venue we opened (`agent.venues`): the page's feed window starts long after, so this is how it knows ours. */
+export interface OurVenuePayload {
+  readonly venue: string
+  readonly tick: number
+  readonly name: string | null
+  readonly bond: number | null
+  readonly mechanism: string | null
+  readonly feeBps: number | null
+  readonly feePerCard: number | null
+  readonly closedTick: number | null
+}
+
 export interface LedgerTick {
   readonly tick: number
   /** Game hours played at that tick (`t_hours`). */

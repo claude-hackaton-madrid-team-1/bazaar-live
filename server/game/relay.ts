@@ -32,7 +32,7 @@ export interface GameEvent {
 }
 
 /** Types a late client always gets first, the latest of each, so its first screen already knows who we are. */
-export const STICKY = ['agent.hello', 'agent.me', 'clock', 'agent.phase', 'agent.ledger', 'agent.health', 'pages.changed'] as const
+export const STICKY = ['agent.hello', 'agent.me', 'clock', 'agent.phase', 'agent.ledger', 'agent.health', 'pages.changed', 'agent.venues'] as const
 
 /** What every viewer shares: the latest sticky events, a bounded backlog, and the batches as they come. */
 export class GameHub {
