@@ -1,5 +1,5 @@
 /**
- * The page's screens, by path: the show at `/`, and the game screens (our agent, negotiations, duels, album,
+ * The page's screens, by path: the show at `/`, and the game screens (our agent, our strategy, negotiations, duels, album,
  * market, our cash's movements, what our agents learned, the raw stream) beside it. The server answers every path with the
  * same page (SPA fallback), so this only reads and writes `location`. Moving between screens keeps the
  * query (`?mock=1`, `?lang=`, `?theme=`, `?token=`) and drops what belongs to one screen (`?id=`, the
@@ -7,13 +7,14 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export type Route = 'show' | 'agent' | 'negotiations' | 'duels' | 'album' | 'market' | 'history' | 'learn' | 'debug'
+export type Route = 'show' | 'agent' | 'strategy' | 'negotiations' | 'duels' | 'album' | 'market' | 'history' | 'learn' | 'debug'
 
-export const ROUTES: readonly Route[] = ['show', 'agent', 'negotiations', 'duels', 'album', 'market', 'history', 'learn', 'debug']
+export const ROUTES: readonly Route[] = ['show', 'agent', 'strategy', 'negotiations', 'duels', 'album', 'market', 'history', 'learn', 'debug']
 
 export const PATHS: Readonly<Record<Route, string>> = {
   show: '/',
   agent: '/agent',
+  strategy: '/strategy',
   negotiations: '/negotiations',
   duels: '/duels',
   album: '/album',

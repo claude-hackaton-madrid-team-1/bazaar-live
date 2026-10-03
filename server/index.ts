@@ -5,7 +5,7 @@
  * The game screens: BAZAAR_KEY (the real game) or BAZAAR_SIM=1 with BAZAAR_SIM_KEY (the simulator, default
  * sim-team1); GAME_VIEW_TOKEN to require a token on their stream; GAME_POLL_MS (default 5000). No key = no feed.
  * The Learn screen reads db/learn.sql's views with the same SHOW_DATABASE_URL, behind the same GAME_VIEW_TOKEN;
- * the Movements screen reads db/history.sql's views the same way.
+ * the Movements screen reads db/history.sql's views the same way, and the Strategy screen db/strategy.sql's.
  * With the game stream on, the taker's and the maker's /health join it every 10 s (AGENT_HEALTH=off turns it off;
  * RAILWAY_SERVICE_BAZAAR_TAKER_URL / _MAKER_URL override where they are).
  * With SHOW_DATABASE_URL (or a game key and the database), our agents' decisions join that stream (GUARDRAIL_* override the caps shown).
@@ -24,6 +24,7 @@ import { startHealth } from './game/health.ts'
 import { startGame } from './game/start.ts'
 import { startHistory } from './history/start.ts'
 import { startLearn } from './learn/start.ts'
+import { startStrategy } from './strategy/start.ts'
 import { readLimits } from './limits.ts'
 import { availableProviders, readProviderConfig } from './providers.ts'
 import { startShowPool } from './transcript/pg.ts'
@@ -52,6 +53,8 @@ const health = startHealth(process.env, { hub: game.hub, log })
 const agentsWs = startAgentsWs(process.env, { database: show !== null, game, decisions, log })
 // Our cash and what moved it (db/history.sql), on the shared pool: no connection of its own.
 const history = startHistory(process.env, log, show)
+// What we aim for, why we hold what we hold and why we do not buy (db/strategy.sql), on the same pool.
+const strategy = startStrategy(process.env, log, show)
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
 const server = createServer(
   createApp({
@@ -64,6 +67,7 @@ const server = createServer(
     game: { ...game, sockets: agentsWs.sockets },
     learn,
     history,
+    strategy,
   }),
 )
 
@@ -78,6 +82,7 @@ const shutdown = (): void => {
   void transcript.stop()
   game.stop()
   history.stop()
+  strategy.stop()
   void learn.stop()
   void show?.pool.end().catch(() => undefined)
   server.close(() => process.exit(0))

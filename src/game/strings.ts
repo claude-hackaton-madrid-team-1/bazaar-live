@@ -512,10 +512,11 @@ export interface GameStrings {
 }
 
 const EN: GameStrings = {
-  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
+    strategy: 'what we aim for, why we hold, why we do not buy',
     negotiations: 'our dealer threads',
     duels: 'our duels: is their price inside our limit?',
     album: 'pages and score',
@@ -1057,10 +1058,11 @@ const EN: GameStrings = {
 }
 
 const ES: GameStrings = {
-  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
+    strategy: 'qué buscamos, por qué guardamos, por qué no compramos',
     negotiations: 'nuestros hilos con tratantes',
     duels: 'nuestros duelos: ¿su precio está dentro de nuestro límite?',
     album: 'páginas y puntuación',

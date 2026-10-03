@@ -1,5 +1,5 @@
 /**
- * The game screens: our agent, negotiations, duels, album, market, our cash's movements, what our agents learned and
+ * The game screens: our agent, our strategy, negotiations, duels, album, market, our cash's movements, what our agents learned and
  * the raw stream, fed by the server's relay of the game (or the mock game with `?mock=1`). Loaded on demand: the
  * show never pays for it.
  */
@@ -18,10 +18,12 @@ import { Inspector } from './Inspector.tsx'
 import { LearnScreen } from './LearnScreen.tsx'
 import { MarketScreen } from './MarketScreen.tsx'
 import { NegotiationsScreen } from './NegotiationsScreen.tsx'
+import { StrategyScreen } from './StrategyScreen.tsx'
 import './game.css'
 
 const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   agent: () => <AgentScreen />,
+  strategy: () => <StrategyScreen />,
   negotiations: () => <NegotiationsScreen />,
   duels: () => <DuelsScreen />,
   album: () => <AlbumScreen />,
