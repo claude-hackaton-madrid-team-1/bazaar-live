@@ -77,23 +77,24 @@ const pages = startPages(process.env, {
   pollers: { history: history.poller, learn: learn.poller, strategy: strategy.poller, rivals: rivals.poller },
 })
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
-const server = createServer(
-  createApp({
-    config, distDir, limits: readLimits(process.env), log,
-    transcript: {
-      ...transcript,
-      maxPerAddress: Number.isInteger(perAddress) && perAddress > 0 ? perAddress : undefined,
-      vouchQuotes: process.env.TRANSCRIPT_SPEAK_QUOTES === '1',
-    },
-    game: { ...game, sockets: agentsWs.sockets },
-    learn,
-    history,
-    strategy,
-    rivals,
-    injections,
-    dealerNames: createDealerNames({ url: dealersUrl(process.env) }),
-  }),
-)
+const app = createApp({
+  config, distDir, limits: readLimits(process.env), log,
+  transcript: {
+    ...transcript,
+    maxPerAddress: Number.isInteger(perAddress) && perAddress > 0 ? perAddress : undefined,
+    vouchQuotes: process.env.TRANSCRIPT_SPEAK_QUOTES === '1',
+  },
+  game: { ...game, sockets: agentsWs.sockets },
+  learn,
+  history,
+  strategy,
+  rivals,
+  injections,
+  dealerNames: createDealerNames({ url: dealersUrl(process.env) }),
+})
+const server = createServer(app)
+// The game stream's WebSocket (GET /api/game/ws); every other upgrade is answered 404.
+server.on('upgrade', app.upgrade)
 
 server.listen(port, '0.0.0.0', () => {
   process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), msg: 'bazaar-live listening', port, tts: availableProviders(config) })}\n`)
