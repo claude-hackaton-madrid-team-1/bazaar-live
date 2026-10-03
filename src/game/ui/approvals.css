@@ -1,0 +1,217 @@
+/* ── Approvals (/approvals): the big trades our agents may not make alone, a human's yes or no ── */
+.ap-lead {
+  margin: 0 0 var(--s-3);
+  font-size: 0.875rem;
+}
+
+.ap-login,
+.ap-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2) var(--s-3);
+}
+
+.ap-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.ap-input {
+  height: 32px;
+  min-width: 0;
+  width: 16rem;
+  max-width: 100%;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--gm-well);
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.ap-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.ap-input[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--gm-bad) 60%, transparent);
+}
+
+.ap-num {
+  width: 7.5rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ap-reason {
+  flex: 1 1 14rem;
+}
+
+.ap-reason .ap-input {
+  width: 100%;
+}
+
+.ap-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.gm-btn.ap-primary {
+  height: 32px;
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* the second click unlocks real money: say so in colour as well as in words */
+.gm-btn.ap-primary[data-confirm] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.gm-btn.ap-deny {
+  height: 32px;
+  border-color: color-mix(in srgb, var(--gm-bad) 34%, transparent);
+  color: var(--gm-bad);
+}
+
+.ap-login .gm-btn:disabled,
+.ap-buttons .gm-btn:disabled,
+.ap-row-head .gm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ap-msg {
+  margin: var(--s-2) 0 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--gm-well);
+  font-size: 0.8125rem;
+}
+
+.ap-msg ul {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+}
+
+.ap-msg[data-tone='bad'] {
+  background: color-mix(in srgb, var(--gm-bad) 9%, transparent);
+  color: var(--gm-bad);
+}
+
+.ap-msg[data-tone='warn'] {
+  background: color-mix(in srgb, var(--gm-warn) 10%, transparent);
+}
+
+.ap-msg[data-tone='good'] {
+  background: color-mix(in srgb, var(--gm-good) 10%, transparent);
+}
+
+.ap-notes {
+  margin: var(--s-2) 0 0;
+  padding-left: 1.2em;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.ap-list {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ap-row {
+  display: grid;
+  gap: var(--s-2);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ap-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ap-row[data-state='approved'],
+.ap-row[data-state='denied'] {
+  opacity: 0.6;
+}
+
+.ap-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 0.9375rem;
+}
+
+.ap-price {
+  font-variant-numeric: tabular-nums;
+}
+
+.ap-facts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.ap-facts > div {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: var(--s-2);
+}
+
+.ap-facts dt {
+  color: var(--text-2);
+}
+
+.ap-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ap-album {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.ap-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  flex-basis: 100%;
+  margin: 0;
+  min-height: 1em;
+  font-size: 0.75rem;
+}
+
+.ap-line {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 560px) {
+  .ap-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .ap-input {
+    width: 100%;
+  }
+}

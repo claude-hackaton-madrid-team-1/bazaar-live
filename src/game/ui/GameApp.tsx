@@ -1,6 +1,6 @@
 /**
- * The game screens: our agent, our strategy, negotiations, duels, album, the rivals' albums, market, our cash's movements, what our agents learned and
- * the raw stream, fed by the server's relay of the game (or the mock game with `?mock=1`). Loaded on demand: the
+ * The game screens: our agent, our strategy, negotiations, duels, album, the rivals' albums, market, our cash's movements, what our agents learned,
+ * the raw stream and the approvals of big trades, fed by the server's relay of the game (or the mock game with `?mock=1`). Loaded on demand: the
  * show never pays for it.
  */
 import { MotionConfig } from 'motion/react'
@@ -10,6 +10,7 @@ import type { Route } from '../../ui/route'
 import { GameContext, GameStore } from '../store.ts'
 import { AgentScreen } from './AgentScreen.tsx'
 import { AlbumScreen } from './AlbumScreen.tsx'
+import { ApprovalsScreen } from './ApprovalsScreen.tsx'
 import { DebugScreen } from './DebugScreen.tsx'
 import { DuelsScreen } from './DuelsScreen.tsx'
 import { InjectionsPanel } from '../../ui/InjectionsPanel'
@@ -36,6 +37,8 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   // the judges' view: every injection attempt with its proof, full page
   injections: () => <InjectionsPanel mock={readConfig(window.location.search).mock} />,
   debug: () => <DebugScreen />,
+  // App.tsx renders this route only when the server runs approvals
+  approvals: () => <ApprovalsScreen />,
 }
 
 export default function GameApp({ route }: { route: Exclude<Route, 'show'> }) {
