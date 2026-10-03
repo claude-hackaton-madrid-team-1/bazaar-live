@@ -39,6 +39,8 @@ export interface Strings {
   readonly tags: Readonly<Record<string, string>>
   readonly brandTag: string
   readonly modes: { readonly live: string; readonly dry: string; readonly offline: string }
+  /** Which game the agents play in: always shown in the header. */
+  readonly worlds: { readonly real: string; readonly simulator: string; readonly mixed: string; readonly mock: string; readonly unknown: string }
   readonly who: Readonly<Record<AgentId, string>>
   readonly mock: string
   readonly voiceLabel: string
@@ -101,6 +103,7 @@ const ES: Strings = {
   tags: { laughs: 'ríe', chuckles: 'se ríe', gasps: 'se sorprende', sighs: 'suspira', snorts: 'bufa', sarcastic: 'con sorna', whispers: 'susurra', excited: 'emocionado', mischievously: 'con picardía', curious: 'curioso' },
   brandTag: 'el comprador y el vendedor, hablando en voz alta',
   modes: { live: 'EN VIVO', dry: 'ENSAYO', offline: 'SIN CONEXIÓN' },
+  worlds: { real: 'JUEGO REAL', simulator: 'SIMULADOR', mixed: 'MEZCLA', mock: 'GRABACIÓN', unknown: 'JUEGO ¿?' },
   who: { taker: 'comprador', maker: 'vendedor' },
   mock: 'SIMULACRO',
   voiceLabel: 'Proveedor de voz',
@@ -161,6 +164,7 @@ const EN: Strings = {
   tags: {},
   brandTag: 'the buyer and the seller, talking out loud',
   modes: { live: 'LIVE', dry: 'DRY RUN', offline: 'OFFLINE' },
+  worlds: { real: 'REAL GAME', simulator: 'SIMULATOR', mixed: 'MIXED', mock: 'RECORDING', unknown: 'GAME ?' },
   who: { taker: 'buyer', maker: 'seller' },
   mock: 'MOCK',
   voiceLabel: 'Voice provider',
