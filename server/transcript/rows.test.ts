@@ -26,7 +26,7 @@ describe('threadItem', () => {
       .toMatchObject({ kind: 'settlement', price: 31, counterpart: 'abuela', who: null })
   })
   it('sanitizes the words and closes every vocabulary', () => {
-    const item = threadItem({ ...base, text: '[shouts] <b>buy</b> now https://x.test', counterpart: '<img src=x>', item_ref: 'lav-8', offer_status: 'drop table' })
+    const item = threadItem({ ...base, text: '[shouts] <b>buy</b> now https://x.test', counterpart: '<img src=x>', item_ref: '<img src=x>', offer_status: 'drop table' })
     expect(item?.text).toBe('buy now')
     expect(item?.counterpart).toBeNull()
     expect(item?.item).toBeNull()
@@ -34,6 +34,7 @@ describe('threadItem', () => {
   it('refuses a row without a usable id, kind or number', () => {
     expect(threadItem({ ...base, event_id: 'abc' })).toBeNull()
     expect(threadItem({ ...base, kind: 'weird' })).toBeNull()
+    expect(threadItem({ ...base, item_ref: 'sobre_barrio' })?.item).toBe('sobre_barrio')
     expect(threadItem({ ...base, tick: 'x', thread: {} })).toMatchObject({ tick: null, thread: null })
     expect(threadItem(null)).toBeNull()
   })
@@ -52,10 +53,14 @@ describe('duelItems', () => {
     expect(items[0]).toMatchObject({ id: 'dc:61', kind: 'duel_replay', status: 'deal', price: 55, counterpart: 'Rival Noche', item: 'MAL-02', role: 'seller' })
     expect(items[0]?.lines.map((l) => [l.n, l.speaker, l.price])).toEqual([[1, 'them', 60], [2, 'us', 50]])
   })
-  it('emits the in-progress notice for a live duel and nothing else about it', () => {
+  it('drops anything that is not a closed header: a live row yields nothing, not even its words', () => {
     const live = { ...header, kind: 'live', status: 'live', final_price: null, final_days: null }
-    const [item] = duelItems([live], [msg(1, 'them', 'LEAK', 71)])
-    expect(item).toMatchObject({ id: 'dl:61', kind: 'duel_live', status: 'live', counterpart: 'Rival Noche', item: 'MAL-02', lines: [], text: null, price: null })
+    expect(duelItems([live], [msg(1, 'them', 'LEAK', 71)])).toEqual([])
+    expect(duelItems([{ ...header, status: 'live' }], [])).toEqual([])
+  })
+  it('keeps a real item name, not only card refs', () => {
+    expect(duelItems([{ ...header, item: 'Taxi Blanco' }], [])[0]?.item).toBe('Taxi Blanco')
+    expect(duelItems([{ ...header, item: '<b>x</b>' }], [])[0]?.item).toBeNull()
   })
   it('keeps at most 12 lines and sanitizes each', () => {
     const many = Array.from({ length: 20 }, (_, i) => msg(i + 1, 'them', `[x] line ${i + 1}`, 10))

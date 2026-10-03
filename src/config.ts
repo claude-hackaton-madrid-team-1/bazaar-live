@@ -25,6 +25,8 @@ export interface ShowConfig {
   readonly tts: TtsChoice
   /** `?lang=en` for English; castellano by default. One language per line, never mixed. */
   readonly lang: Lang
+  /** `?quotes=speak`: voice a dealer's or rival's real words when they are in the selected language. Off: captions only. */
+  readonly speakQuotes: boolean
   /** `?mode=dry`: the mock's /health says dry run instead of live. */
   readonly mockMode: 'live' | 'dry'
 }
@@ -45,5 +47,6 @@ export function readConfig(search: string): ShowConfig {
     tts: (TTS_CHOICES as readonly string[]).includes(tts) ? (tts as TtsChoice) : 'auto',
     mockMode: params.get('mode') === 'dry' ? 'dry' : 'live',
     lang: parseLang(params.get('lang')),
+    speakQuotes: params.get('quotes') === 'speak',
   }
 }

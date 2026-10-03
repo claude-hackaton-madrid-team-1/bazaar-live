@@ -25,7 +25,6 @@ export const MOCK_TRANSCRIPT: readonly Step[] = [
   { at: 18_000, item: { ...base, id: 'm3', kind: 'thread_line', who: 'us', counterpart: 'abuela', thread: 901, item: 'LAV-08', offer: OFFER('us', 'bid', 28) } },
   { at: 24_000, item: { ...base, id: 'm4', kind: 'thread_line', who: 'them', counterpart: 'abuela', thread: 901, item: 'LAV-08', text: "Your abuela would've moved more than one. I match what you move, nothing extra.", offer: OFFER('them', 'ask', 29, true) } },
   { at: 31_000, item: { ...base, id: 's1', kind: 'settlement', counterpart: 'abuela', item: 'LAV-08', price: 29 } },
-  { at: 38_000, item: { ...base, id: 'dl1', kind: 'duel_live', counterpart: 'Rival Noche', item: 'MAL-02', role: 'seller', status: 'live' } },
   {
     at: 46_000,
     item: {

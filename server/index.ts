@@ -20,7 +20,17 @@ const log = (entry: Record<string, unknown>): void => {
 }
 // SHOW_DATABASE_URL absent or wrong → off, and the show runs as it always did.
 const transcript = startTranscript(process.env, log)
-const server = createServer(createApp({ config, distDir, limits: readLimits(process.env), log, transcript }))
+const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
+const server = createServer(
+  createApp({
+    config, distDir, limits: readLimits(process.env), log,
+    transcript: {
+      ...transcript,
+      maxPerAddress: Number.isInteger(perAddress) && perAddress > 0 ? perAddress : undefined,
+      vouchQuotes: process.env.TRANSCRIPT_SPEAK_QUOTES === '1',
+    },
+  }),
+)
 
 server.listen(port, '0.0.0.0', () => {
   process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), msg: 'bazaar-live listening', port, tts: availableProviders(config) })}\n`)

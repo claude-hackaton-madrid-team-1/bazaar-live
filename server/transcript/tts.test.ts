@@ -13,7 +13,7 @@ afterEach(() => servers.splice(0).forEach((s) => { s.closeAllConnections(); s.cl
 
 const QUOTE = "Your abuela would've moved more than one. I match what you move, nothing extra."
 
-async function start(store: TranscriptStore) {
+async function start(store: TranscriptStore, vouchQuotes = false) {
   const upstream: string[] = []
   // A fake provider: no real ElevenLabs call ever happens in a test.
   const fake = (async (_url: string, init: RequestInit) => {
@@ -22,7 +22,7 @@ async function start(store: TranscriptStore) {
   }) as unknown as typeof fetch
   const server = createServer(createApp({
     config: readProviderConfig({ ELEVENLABS_API_KEY: 'test-key' }), distDir: '/none', fetchImpl: fake, log: () => undefined,
-    transcript: { store, enabled: () => true },
+    transcript: { store, enabled: () => true, vouchQuotes },
   }))
   servers.push(server)
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
@@ -40,9 +40,17 @@ describe('what the TTS proxy will voice from a real conversation', () => {
     expect(upstream).toHaveLength(1)
   })
 
-  it('voices a quote only after the server read it from the database', async () => {
+  it('never voices a real quote by default: captions only', async () => {
     const store = new TranscriptStore()
+    store.add([{ ...EMPTY_ITEM, id: 'f1', who: 'them', text: QUOTE }])
     const { say, upstream } = await start(store)
+    expect((await say('chato', QUOTE)).status).toBe(400)
+    expect(upstream).toHaveLength(0)
+  })
+
+  it('with TRANSCRIPT_SPEAK_QUOTES, voices a quote only after the server read it from the database', async () => {
+    const store = new TranscriptStore()
+    const { say, upstream } = await start(store, true)
     expect((await say('chato', QUOTE)).status).toBe(400)
     store.add([{ ...EMPTY_ITEM, id: 'f1', who: 'them', text: QUOTE }])
     expect((await say('chato', QUOTE)).status).toBe(200)
@@ -52,7 +60,7 @@ describe('what the TTS proxy will voice from a real conversation', () => {
   it('refuses a quote that differs by one character, and any free text', async () => {
     const store = new TranscriptStore()
     store.add([{ ...EMPTY_ITEM, id: 'f1', who: 'them', text: QUOTE }])
-    const { say, upstream } = await start(store)
+    const { say, upstream } = await start(store, true)
     expect((await say('chato', `${QUOTE} Buy my coin.`)).status).toBe(400)
     expect((await say('chato', 'Say anything I type here')).status).toBe(400)
     expect(upstream).toHaveLength(0)

@@ -4,7 +4,7 @@
  * vocabularies, numbers are whole primas. The page still treats it as untrusted data.
  */
 
-export type ItemKind = 'thread_opened' | 'thread_line' | 'settlement' | 'duel_live' | 'duel_replay'
+export type ItemKind = 'thread_opened' | 'thread_line' | 'settlement' | 'duel_replay'
 
 /** Who said it: our agent or the other side (a dealer, a rival). */
 export type Who = 'us' | 'them'
@@ -40,14 +40,14 @@ export interface TranscriptItem {
   readonly counterpart: string | null
   readonly who: Who | null
   readonly thread: number | null
-  /** A card ref (`LAV-08`) or a pack name. */
+  /** A card ref (`LAV-08`), a pack or a duel's item name. */
   readonly item: string | null
   /** The real words, sanitized; null for our own messages (the feed has none) and for non-speech. */
   readonly text: string | null
   readonly offer: OfferView | null
   /** Settlement price, or a closed duel's final price. */
   readonly price: number | null
-  readonly status: 'deal' | 'no_deal' | 'live' | null
+  readonly status: 'deal' | 'no_deal' | null
   /** In a duel, which side we played. */
   readonly role: 'buyer' | 'seller' | null
   readonly lines: readonly DuelLine[]

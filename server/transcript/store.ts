@@ -64,6 +64,11 @@ export class TranscriptStore {
     return this.ring.filter((i) => i.seq > cursor).slice(0, limit)
   }
 
+  /** Whether an item with this id was already added (the poller skips re-reading what it has). */
+  has(id: string): boolean {
+    return this.ids.has(id)
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)

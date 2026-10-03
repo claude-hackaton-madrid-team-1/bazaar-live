@@ -2,13 +2,13 @@
  * The page's side of the wire: a server batch is still parsed like untrusted JSON, and every text and
  * name is cleaned again. Nothing here trusts the shape it was sent.
  */
-import { cleanInt, cleanName, cleanQuote, cleanRef } from './clean.ts'
+import { cleanInt, cleanItem, cleanName, cleanQuote, cleanRef } from './clean.ts'
 import type { Draft, DuelLine, ItemKind, OfferView, TranscriptBatch, TranscriptItem, Who } from './transcript.ts'
 
 type Json = Record<string, unknown>
 const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-const KINDS: readonly ItemKind[] = ['thread_opened', 'thread_line', 'settlement', 'duel_live', 'duel_replay']
+const KINDS: readonly ItemKind[] = ['thread_opened', 'thread_line', 'settlement', 'duel_replay']
 const whoOf = (v: unknown): Who | null => (v === 'us' || v === 'them' ? v : null)
 
 function offerOf(raw: unknown): OfferView | null {
@@ -39,11 +39,11 @@ export function parseItem(raw: unknown): TranscriptItem | null {
     counterpart: cleanName(raw.counterpart),
     who,
     thread: cleanInt(raw.thread),
-    item: cleanRef(raw.item) ?? (raw.item === 'sobre_barrio' || raw.item === 'sobre_plata' ? raw.item : null),
+    item: cleanItem(raw.item),
     text: who === 'them' ? cleanQuote(raw.text) : null,
     offer: offerOf(raw.offer),
     price: cleanInt(raw.price),
-    status: raw.status === 'deal' || raw.status === 'no_deal' || raw.status === 'live' ? raw.status : null,
+    status: raw.status === 'deal' || raw.status === 'no_deal' ? raw.status : null,
     role: raw.role === 'buyer' || raw.role === 'seller' ? raw.role : null,
     lines: Array.isArray(raw.lines) ? raw.lines.slice(-12).flatMap((l) => lineOf(l) ?? []) : [],
   }

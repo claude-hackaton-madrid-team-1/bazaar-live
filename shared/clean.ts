@@ -57,6 +57,11 @@ export function cleanName(raw: unknown): string | null {
   return NAME.test(name) ? name : null
 }
 
+/** What a duel or a thread is about: a card ref, or a plain name (`Taxi Blanco`, `sobre_barrio`). */
+export function cleanItem(raw: unknown): string | null {
+  return cleanRef(raw) ?? cleanName(raw)
+}
+
 /** A whole number from 0 to the game's cap, or null. */
 export function cleanInt(raw: unknown): number | null {
   return typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw <= MAX_PRIMAS ? raw : null

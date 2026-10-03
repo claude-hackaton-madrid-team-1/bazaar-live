@@ -59,6 +59,9 @@ const DUELS = [
   { duel: 62, status: 'no_deal', role: 'buyer', item: 'SAL-01', rival: 'Rival Mar', price: null, days: null, payload: { messages: [{ from: 'Rival Mar', text: 'No.', tick: 50, price: null, days: null }] } },
   { duel: 63, status: 'live', role: 'buyer', item: 'LAT-05', rival: 'Rival Sol', price: 70, days: 1, payload: { messages: [{ from: 'Rival Sol', text: 'LIVE-TEXT-MUST-NOT-LEAK', tick: 60, price: 71 }], your_offer: { price: 70 } } },
   { duel: 64, status: 'deal', role: 'seller', item: 'RET-03', rival: 'Rival Luna', price: 20, days: 0, payload: 'not an object' },
+  // Same item, two rivals: one closed, one still live. The closed one must stay hidden meanwhile.
+  { duel: 71, status: 'deal', role: 'seller', item: 'Taxi Blanco', rival: 'Rival Verde', price: 30, days: 1, payload: { messages: [{ from: 'Rival Verde', text: 'SIBLING-MUST-WAIT', tick: 70, price: 30 }] } },
+  { duel: 72, status: 'live', role: 'seller', item: 'Taxi Blanco', rival: 'Rival Rojo', price: null, days: null, payload: { messages: [] } },
 ]
 
 const dbName = `show_test_${randomBytes(4).toString('hex')}`
@@ -181,25 +184,36 @@ describe.skipIf(!ADMIN_URL)('db/show.sql privacy (local Postgres)', () => {
     expect(rows.find((r) => r.event_id === '7')).toMatchObject({ thread: null, give_cash: null, want_cash: null })
   })
 
-  it('shows the conversation of CLOSED duels only; a live duel is item and rival', async () => {
+  it('shows the conversation of CLOSED duels only, and nothing of a live one', async () => {
     const { rows } = await reader.query('select * from show.duel_lines order by duel, kind, n')
     const messages = rows.filter((r) => r.kind === 'message')
     expect(messages.map((r) => r.duel).sort()).toEqual([61, 61, 62])
     expect(messages.find((r) => r.duel === 61 && r.n === 1)).toMatchObject({ speaker: 'them', text: 'Sesenta y no se hable más.', price: 60, days: 3, tick: 40, role: 'seller' })
     expect(messages.find((r) => r.duel === 61 && r.n === 2)).toMatchObject({ speaker: 'us', price: 50 })
-    const live = rows.filter((r) => r.duel === 63)
-    expect(live).toHaveLength(1)
-    expect(live[0]).toMatchObject({ kind: 'live', item: 'LAT-05', rival: 'Rival Sol', text: null, price: null, days: null })
-    expect(rows.filter((r) => r.kind === 'closed').map((r) => [r.duel, r.status, r.final_price])).toEqual(
-      expect.arrayContaining([[61, 'deal', 55], [62, 'no_deal', null], [64, 'deal', 20]]),
-    )
+    expect(rows.filter((r) => r.duel === 63 || r.duel === 72)).toEqual([])
+    expect(rows.filter((r) => r.kind === 'live')).toEqual([])
+    expect(rows.filter((r) => r.kind === 'closed').map((r) => [r.duel, r.status, r.final_price]).sort()).toEqual([[61, 'deal', 55], [62, 'no_deal', null], [64, 'deal', 20]])
+  })
+
+  it('holds a closed duel back while another duel over the same item is live, and releases it after', async () => {
+    const held = await reader.query('select 1 from show.duel_lines where duel = 71')
+    expect(held.rowCount).toBe(0)
+    await adminDb.query("update duels set status = 'no_deal' where duel = 72")
+    const released = await reader.query("select item, text from show.duel_lines where duel = 71 and kind = 'message'")
+    expect(released.rows).toEqual([{ item: 'Taxi Blanco', text: 'SIBLING-MUST-WAIT' }])
+    await adminDb.query("update duels set status = 'live' where duel = 72")
+  })
+
+  it('answers through security_barrier views', async () => {
+    const { rows } = await adminDb.query("select relname, reloptions from pg_class where relname in ('thread_lines', 'duel_lines') order by 1")
+    expect(rows).toEqual([{ relname: 'duel_lines', reloptions: ['security_barrier=true'] }, { relname: 'thread_lines', reloptions: ['security_barrier=true'] }])
   })
 
   it('never lets a private key or value into a row, a column or a text', async () => {
     const t = await reader.query('select * from show.thread_lines')
     const d = await reader.query('select * from show.duel_lines')
     const dump = JSON.stringify([t.rows, d.rows, t.fields.map((f) => f.name), d.fields.map((f) => f.name)])
-    for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK']) {
+    for (const secret of [String(SECRET_LIMIT), String(SECRET_RESULT), SECRET_REASON, SECRET_WEIGHT, 'LIVE-TEXT-MUST-NOT-LEAK', 'Rival Sol']) {
       expect(dump).not.toContain(secret)
     }
     const columns = [...t.fields, ...d.fields].map((f) => f.name)

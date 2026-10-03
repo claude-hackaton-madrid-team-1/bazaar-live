@@ -38,7 +38,10 @@ export interface AppDeps {
   readonly budget?: DailyBudget
   readonly log?: (entry: Record<string, unknown>) => void
   /** The real conversations (LIVE-T1); absent → /api/transcript answers `enabled: false`. */
-  readonly transcript?: Pick<TranscriptRouteDeps, 'store' | 'enabled' | 'limiter' | 'maxStreams' | 'maxPerAddress' | 'heartbeatMs'>
+  readonly transcript?: Pick<TranscriptRouteDeps, 'store' | 'enabled' | 'limiter' | 'maxStreams' | 'maxPerAddress' | 'heartbeatMs'> & {
+    /** Voice real quotes the server read from the database. Off by default: they are captions only. */
+    readonly vouchQuotes?: boolean
+  }
 }
 
 const CSP = [
@@ -188,7 +191,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       res.on('finish', () => req.socket.destroy())
       return json(res, 413, { error: 'too_large' }, { Connection: 'close' })
     }
-    const parsed = parseTtsRequest(raw, available, (text) => transcriptStore.quoteLang(text) !== undefined)
+    const parsed = parseTtsRequest(raw, available, (text) => deps.transcript?.vouchQuotes === true && transcriptStore.quoteLang(text) !== undefined)
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
     const key = `${parsed.provider}|${parsed.speaker}|${parsed.text}`
     const started = Date.now()

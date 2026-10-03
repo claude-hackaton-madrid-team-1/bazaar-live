@@ -2,7 +2,7 @@
  * Database rows → wire items. The views already expose only public columns; this is the second wall:
  * every value is re-checked and cleaned, because a row is untrusted data (a dealer's or a rival's text).
  */
-import { cleanInt, cleanName, cleanQuote, cleanRef } from '../../shared/clean.ts'
+import { cleanInt, cleanItem, cleanName, cleanQuote } from '../../shared/clean.ts'
 import { EMPTY_ITEM, type Draft, type DuelLine, type OfferView, type Who } from '../../shared/transcript.ts'
 
 type Row = Readonly<Record<string, unknown>>
@@ -40,7 +40,7 @@ export function threadItem(row: unknown): Draft | null {
   const kind = row.kind === 'opened' ? 'thread_opened' : row.kind === 'message' ? 'thread_line' : row.kind === 'settlement' ? 'settlement' : null
   if (eventId === null || kind === null) return null
   const who = whoOf(row.speaker)
-  const item = cleanRef(row.item_ref)
+  const item = cleanItem(row.item_ref)
   return {
     ...EMPTY_ITEM,
     id: `f${eventId}`,
@@ -65,8 +65,8 @@ function duelLine(row: Row): DuelLine | null {
 }
 
 /**
- * Header rows (`live` / `closed`) and message rows of the same duels → items. A live duel yields the
- * in-progress notice and never its words; a closed one yields one replay with its lines in order.
+ * Header rows of CLOSED duels and their message rows → one replay each, lines in order. The view holds
+ * back everything about a live duel, and this wall drops anything that is not a closed header too.
  */
 export function duelItems(headers: readonly unknown[], messages: readonly unknown[]): Draft[] {
   const lines = new Map<number, DuelLine[]>()
@@ -78,21 +78,21 @@ export function duelItems(headers: readonly unknown[], messages: readonly unknow
   }
   const items: Draft[] = []
   for (const raw of headers) {
-    if (!isRow(raw)) continue
+    if (!isRow(raw) || raw.kind !== 'closed' || (raw.status !== 'deal' && raw.status !== 'no_deal')) continue
     const duel = cleanInt(raw.duel)
     if (duel === null) continue
-    const common = {
+    const ordered = [...(lines.get(duel) ?? [])].sort((a, b) => a.n - b.n).slice(-MAX_DUEL_LINES)
+    items.push({
       ...EMPTY_ITEM,
+      id: `dc:${duel}`,
+      kind: 'duel_replay',
       counterpart: cleanName(raw.rival),
-      item: cleanRef(raw.item),
+      item: cleanItem(raw.item),
       role: raw.role === 'buyer' || raw.role === 'seller' ? raw.role : null,
-    } satisfies Draft
-    if (raw.kind === 'live') {
-      items.push({ ...common, id: `dl:${duel}`, kind: 'duel_live', status: 'live' })
-    } else if (raw.kind === 'closed' && (raw.status === 'deal' || raw.status === 'no_deal')) {
-      const ordered = [...(lines.get(duel) ?? [])].sort((a, b) => a.n - b.n).slice(-MAX_DUEL_LINES)
-      items.push({ ...common, id: `dc:${duel}`, kind: 'duel_replay', status: raw.status, price: cleanInt(raw.final_price), lines: ordered })
-    }
+      status: raw.status,
+      price: cleanInt(raw.final_price),
+      lines: ordered,
+    })
   }
   return items
 }

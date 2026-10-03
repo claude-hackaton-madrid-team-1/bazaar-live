@@ -44,7 +44,7 @@ export function createTranscriptRoutes(deps: TranscriptRouteDeps): (req: Incomin
   const { store } = deps
   const limiter = deps.limiter ?? new RateLimiter({ capacity: 30, refillPerSecond: 1 })
   const maxStreams = deps.maxStreams ?? 100
-  const maxPerAddress = deps.maxPerAddress ?? 4
+  const maxPerAddress = deps.maxPerAddress ?? 24
   const heartbeatMs = deps.heartbeatMs ?? 15_000
   const maxQueued = deps.maxQueuedBytes ?? 256 * 1024
   const perAddress = new Map<string, number>()

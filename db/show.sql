@@ -8,7 +8,7 @@
 --
 -- Idempotent. Two views and one role:
 --   * show.thread_lines  our dealer threads only (thread.opened / thread.message / settlement with t01)
---   * show.duel_lines    the conversation of CLOSED duels; a live duel is one row: item and rival
+--   * show.duel_lines    the conversation of CLOSED duels only; a live duel contributes nothing
 -- The views run with their OWNER's rights, so the role holds no grant on feed_events or duels at all.
 -- Private duel keys (your_limit, your_days_weight, limit_meaning, result, any reason/limit field) are
 -- never selected: message rows copy only from/text/tick/price/days out of the payload.
@@ -40,7 +40,7 @@ $$ select substring(t from '^card:([A-Z]{3}-[0-9]{1,3})$')
 -- these three pure helpers (they read no table). Nobody else is granted them.
 revoke all on function show.as_int(jsonb), show.as_text(jsonb, int), show.card_in(jsonb) from public;
 
-create or replace view show.thread_lines as
+create or replace view show.thread_lines with (security_barrier = true) as
 with opened as (
   select distinct on (show.as_int(payload -> 'thread'))
          show.as_int(payload -> 'thread') as thread,
@@ -79,29 +79,30 @@ select e.id as event_id,
  where (e.type in ('thread.opened', 'thread.message') and e.payload ->> 'team' = 't01')
     or (e.type = 'settlement' and jsonb_typeof(e.payload -> 'parties') = 'array' and e.payload -> 'parties' ? 't01');
 
-create or replace view show.duel_lines as
--- A live duel: that it exists, against whom, over what. No price, no text.
-select 'live'::text as kind, d.duel, 0 as n, d.session, d.status, d.role, d.item, d.rival,
+-- A closed duel's conversation. Nothing of a duel that is still live: not its words, not even its
+-- existence. And a closed duel is held back while ANOTHER duel over the same item is live: the sibling
+-- (same scenario, another rival) must never see our offers by watching the show.
+create or replace view show.duel_lines with (security_barrier = true) as
+with shown as (
+  select d.* from public.duels d
+   where d.status in ('deal', 'no_deal')
+     and not exists (select 1 from public.duels l where l.status = 'live' and l.item is not distinct from d.item)
+)
+-- The outcome.
+select 'closed'::text as kind, d.duel, 0 as n, d.session, d.status, d.role, d.item, d.rival,
        null::text as speaker, null::int as tick, null::int as price, null::int as days, null::text as text,
-       null::int as final_price, null::int as final_days, d.updated_at
-  from public.duels d
- where d.status = 'live'
+       d.price as final_price, d.days as final_days, d.updated_at
+  from shown d
 union all
--- A closed duel: its outcome.
-select 'closed', d.duel, 0, d.session, d.status, d.role, d.item, d.rival,
-       null, null, null, null, null, d.price, d.days, d.updated_at
-  from public.duels d
- where d.status in ('deal', 'no_deal')
-union all
--- A closed duel's conversation, one row per message; only these five keys leave the payload.
+-- One row per message; only these five keys leave the payload.
 select 'message', d.duel, m.n::int, d.session, d.status, d.role, d.item, d.rival,
        case when m.msg ->> 'from' = d.rival then 'them' else 'us' end,
        show.as_int(m.msg -> 'tick'), show.as_int(m.msg -> 'price'), show.as_int(m.msg -> 'days'), show.as_text(m.msg -> 'text'),
        d.price, d.days, d.updated_at
-  from public.duels d
+  from shown d
  cross join lateral jsonb_array_elements(case when jsonb_typeof(d.payload -> 'messages') = 'array' then d.payload -> 'messages' else '[]'::jsonb end)
                     with ordinality as m(msg, n)
- where d.status in ('deal', 'no_deal') and jsonb_typeof(m.msg) = 'object';
+ where jsonb_typeof(m.msg) = 'object';
 
 do $$
 begin

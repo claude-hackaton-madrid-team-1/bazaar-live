@@ -326,7 +326,7 @@ export class ShowEngine {
   }
 
   private prefetch(beat: Beat | null): void {
-    beat?.lines.forEach((line, i) => !line.silent && this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }))
+    beat?.lines.forEach((line, i) => !line.silent && this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text, lang: line.lang }))
   }
 
   private async play(beat: Beat, generation: number): Promise<void> {
@@ -337,7 +337,7 @@ export class ShowEngine {
       if (!this.running || this.generation !== generation) return
       this.set({ line, transcript: this.appendLines(beat, 'played', line) })
       const backlog = this.director.size + this.speech.backlog
-      await Promise.all([line.silent ? Promise.resolve() : this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }), this.sleep(readingMs(line.text, backlog))])
+      await Promise.all([line.silent ? Promise.resolve() : this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text, lang: line.lang }), this.sleep(readingMs(line.text, backlog))])
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)
     this.set(this.clearPatch())

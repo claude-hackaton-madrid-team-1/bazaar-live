@@ -8,7 +8,7 @@ describe('parseItem', () => {
     expect(parseItem(good)).toMatchObject({ id: 'f1', seq: 1, kind: 'thread_line', text: 'hola', offer: { price: 31, final: true } })
   })
   it('cleans again what a server should already have cleaned', () => {
-    expect(parseItem({ ...good, text: '[shouts] hi <b>x</b>', counterpart: '<x>', item: 'drop' })).toMatchObject({ text: 'hi x', counterpart: null, item: null })
+    expect(parseItem({ ...good, text: '[shouts] hi <b>x</b>', counterpart: '<x>', item: '<i>' })).toMatchObject({ text: 'hi x', counterpart: null, item: null })
   })
   it('never carries text for our side', () => {
     expect(parseItem({ ...good, who: 'us', text: 'smuggled' })?.text).toBeNull()

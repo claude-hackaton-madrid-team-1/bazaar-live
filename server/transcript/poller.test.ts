@@ -28,7 +28,7 @@ const threadRow = (id: number, extra: Record<string, unknown> = {}) => ({
 })
 
 const deps = (db: Db, store: TranscriptStore, logs: Record<string, unknown>[] = []) => ({
-  db, store, log: (e: Record<string, unknown>) => logs.push(e), random: () => 0.5, backfill: 40, cap: 100,
+  db, store, log: (e: Record<string, unknown>) => logs.push(e), random: () => 0.5, backfill: 40, cap: 100, idWindow: 1000,
 })
 
 describe('Poller', () => {
@@ -40,7 +40,7 @@ describe('Poller', () => {
     await poller.pollOnce()
     const threadCalls = calls.filter((c) => c.sql.includes('show.thread_lines'))
     expect(threadCalls[0]?.params).toEqual([40])
-    expect(threadCalls[1]?.params).toEqual([6, 100])
+    expect(threadCalls[1]?.params).toEqual([0, 100]) // the mark (6) minus the trailing window, floored at 0
     expect(store.since(null).map((i) => i.id)).toEqual(['f5', 'f6', 'f7'])
   })
 
@@ -60,23 +60,69 @@ describe('Poller', () => {
     expect(store.cursor).toBe(1)
   })
 
-  it('reads closed-duel messages only for the duels whose header it just got', async () => {
-    const header = { kind: 'closed', duel: 61, n: 0, status: 'deal', role: 'seller', item: 'MAL-02', rival: 'Rival Noche', final_price: 55, updated_at: new Date('2026-10-03T08:00:00Z') }
-    const msg = { ...header, kind: 'message', n: 1, speaker: 'them', tick: 40, price: 60, days: 3, text: 'Sesenta y no se hable más.' }
+  const closed = (duel: number, stamp = '2026-10-03T08:00:00.000000Z') => ({
+    kind: 'closed', duel, n: 0, session: 2, status: 'deal', role: 'seller', item: 'MAL-02', rival: 'Rival Noche', final_price: 55, stamp,
+  })
+  const message = (duel: number) => ({ ...closed(duel), kind: 'message', n: 1, speaker: 'them', tick: 40, price: 60, days: 3, text: 'Sesenta y no se hable más.' })
+
+  it('reads closed-duel messages only for the duels whose header it just got, and each duel once', async () => {
     const { db, calls } = fakeDb((c) => {
       if (c.sql.includes('thread_lines')) return []
-      return c.sql.includes("kind = 'message'") ? [msg] : [header]
+      return c.sql.includes("kind = 'message'") ? [message(61)] : [closed(61)]
     })
     const store = new TranscriptStore()
     const poller = new Poller(deps(db, store))
     await poller.pollOnce()
-    const messageCall = calls.find((c) => c.sql.includes("kind = 'message'"))
-    expect(messageCall?.params).toEqual([[61]])
+    expect(calls.find((c) => c.sql.includes("kind = 'message'"))?.params).toEqual([[61]])
     expect(store.since(null)[0]).toMatchObject({ id: 'dc:61', kind: 'duel_replay', lines: [{ n: 1, text: 'Sesenta y no se hable más.' }] })
+    const messageCallsBefore = calls.filter((c) => c.sql.includes("kind = 'message'")).length
     await poller.pollOnce()
-    const headerCalls = calls.filter((c) => c.sql.includes("kind in ('live', 'closed')"))
-    expect(typeof headerCalls[1]?.params[0]).toBe('string')
-    expect(store.cursor).toBe(1) // the same closed duel read again is not a second item
+    const after = calls.filter((c) => c.sql.includes("kind = 'closed' and (updated_at"))
+    expect(after[0]?.params).toEqual(['2026-10-03T08:00:00.000000Z', 61, 100]) // the keyset: exact stamp, duel, cap
+    expect(calls.filter((c) => c.sql.includes("kind = 'message'")).length).toBe(messageCallsBefore) // already shown: not read again
+    expect(store.cursor).toBe(1)
+  })
+
+  it('never reads a live duel: every duel query is for closed ones only', async () => {
+    const { db, calls } = fakeDb(() => [])
+    await new Poller(deps(db, new TranscriptStore())).pollOnce()
+    for (const c of calls.filter((x) => x.sql.includes('duel_lines'))) expect(c.sql).not.toContain("'live'")
+  })
+
+  it('gets past 100 duels that share one updated_at (bazaar re-stamps every finished duel together)', async () => {
+    const all = Array.from({ length: 150 }, (_, i) => closed(i + 1))
+    const { db } = fakeDb((c) => {
+      if (c.sql.includes('thread_lines')) return []
+      if (c.sql.includes("kind = 'message'")) return []
+      if (c.sql.includes('(updated_at, duel) >')) {
+        const [stamp, duel, cap] = c.params as [string, number, number]
+        return all.filter((r) => r.stamp > stamp || (r.stamp === stamp && r.duel > duel)).slice(0, cap)
+      }
+      return all.slice(0, 20)
+    })
+    const store = new TranscriptStore({ ring: 1000 })
+    const poller = new Poller(deps(db, store))
+    for (let i = 0; i < 4; i++) await poller.pollOnce()
+    expect(store.since(0, 1000).filter((i) => i.kind === 'duel_replay')).toHaveLength(150)
+    // A duel that closes later has a later stamp and is not shadowed by the 150 before it.
+    all.push(closed(1150, '2026-10-03T08:00:05.000000Z'))
+    await poller.pollOnce()
+    expect(store.since(0, 1000).some((i) => i.id === 'dc:1150')).toBe(true)
+  })
+
+  it('re-reads a trailing id window, so a gap-fill inserted after a newer id is not lost', async () => {
+    const rows = [threadRow(9_000_002)]
+    const { db } = fakeDb((c) => {
+      if (!c.sql.includes('thread_lines')) return []
+      if (c.params.length === 1) return rows
+      const from = c.params[0] as number
+      return [...rows, threadRow(9_000_001)].filter((r) => Number(r.event_id) > from)
+    })
+    const store = new TranscriptStore()
+    const poller = new Poller(deps(db, store))
+    await poller.pollOnce() // backfill sees only the newer streamed event
+    await poller.pollOnce() // the monitor's gap-fill (older id) landed later: the window still catches it
+    expect(store.since(null).map((i) => i.id).sort()).toEqual(['f9000001', 'f9000002'])
   })
 
   it('never throws: an error is logged without the url, and the next delay grows with a ceiling', async () => {

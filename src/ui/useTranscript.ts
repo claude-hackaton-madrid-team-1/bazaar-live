@@ -14,7 +14,7 @@ import { realBeat } from '../show/real'
 export const TRANSCRIPT_URL = '/api/transcript'
 
 export function useTranscript(engine: ShowEngine, config: ShowConfig): void {
-  const { mock, speed, lang } = config
+  const { mock, speed, lang, speakQuotes } = config
   // The language is read when an item arrives, so a change of language applies to the next line.
   const langRef = useRef<Lang>(lang)
   useEffect(() => {
@@ -24,7 +24,7 @@ export function useTranscript(engine: ShowEngine, config: ShowConfig): void {
   useEffect(() => {
     const play = (items: readonly TranscriptItem[], replay: boolean): void => {
       for (const item of items) {
-        const beat = realBeat(item, langRef.current)
+        const beat = realBeat(item, langRef.current, { speakQuotes })
         if (beat) engine.ingestBeat(beat, replay)
       }
     }
@@ -50,5 +50,5 @@ export function useTranscript(engine: ShowEngine, config: ShowConfig): void {
       feed.stop()
       window.removeEventListener('online', online)
     }
-  }, [engine, mock, speed])
+  }, [engine, mock, speed, speakQuotes])
 }

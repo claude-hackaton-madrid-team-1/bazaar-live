@@ -14,6 +14,7 @@ const dealerLine = (text: string | null, extra: Partial<TranscriptItem> = {}) =>
 
 const spoken = (beat: ReturnType<typeof realBeat>) => (beat?.lines ?? []).filter((l) => !l.silent)
 const shown = (beat: ReturnType<typeof realBeat>) => beat?.lines ?? []
+const SPEAK = { speakQuotes: true } as const
 
 describe('planQuote: a quote is spoken only in its own language', () => {
   it('speaks a quote in the selected language', () => {
@@ -31,13 +32,19 @@ describe('planQuote: a quote is spoken only in its own language', () => {
 
 describe('a dealer thread line', () => {
   it('speaks the dealer real English line when the show is English', () => {
-    const beat = realBeat(dealerLine(EN_QUOTE), 'en')
-    expect(beat?.lines).toEqual([{ speaker: 'chato', text: EN_QUOTE }])
+    const beat = realBeat(dealerLine(EN_QUOTE), 'en', SPEAK)
+    expect(beat?.lines).toEqual([{ speaker: 'chato', text: EN_QUOTE, lang: 'en' }])
     expect(beat?.cue).toMatchObject({ kind: 'dealer', dealer: 'chato', move: 'bid', price: 31 })
   })
 
+  it('by default a real quote is a caption only, even in its own language: the structured line is what is voiced', () => {
+    const beat = realBeat(dealerLine(EN_QUOTE), 'en')
+    expect(shown(beat).map((l) => [l.text, l.silent === true])).toEqual([[EN_QUOTE, true], ['Lavapiés number 8 will cost you 31 primas.', false]])
+    expect(spoken(beat).every((l) => l.lang === 'en')).toBe(true)
+  })
+
   it('shows the English quote and speaks a Spanish line from the offer when the show is Spanish', () => {
-    const beat = realBeat(dealerLine(EN_QUOTE), 'es')
+    const beat = realBeat(dealerLine(EN_QUOTE), 'es', SPEAK)
     expect(shown(beat).map((l) => [l.speaker, l.text, l.silent === true])).toEqual([
       ['chato', EN_QUOTE, true],
       ['chato', 'Lavapiés número 8 te sale por 31 primas.', false],
@@ -45,7 +52,7 @@ describe('a dealer thread line', () => {
   })
 
   it('does the reverse for a Spanish quote in an English show', () => {
-    const beat = realBeat(dealerLine(ES_QUOTE, { counterpart: 'abuela' }), 'en')
+    const beat = realBeat(dealerLine(ES_QUOTE, { counterpart: 'abuela' }), 'en', SPEAK)
     expect(shown(beat).map((l) => [l.speaker, l.silent === true])).toEqual([['abuela', true], ['abuela', false]])
     expect(spoken(beat)[0]?.text).toBe('Lavapiés number 8 will cost you 31 primas.')
   })
@@ -63,7 +70,7 @@ describe('a dealer thread line', () => {
 
   it('speaks the structured offer when the dealer line has no words', () => {
     const beat = realBeat(dealerLine(null), 'en')
-    expect(beat?.lines).toEqual([{ speaker: 'chato', text: 'Lavapiés number 8 will cost you 31 primas.' }])
+    expect(beat?.lines).toEqual([{ speaker: 'chato', text: 'Lavapiés number 8 will cost you 31 primas.', lang: 'en' }])
   })
 
   it('gives a dealer we have no character for to the narrator', () => {
@@ -79,13 +86,13 @@ describe('our own messages', () => {
   const ours = (offer: TranscriptItem['offer']) => item({ who: 'us', counterpart: 'chato', thread: 187, item: 'LAV-08', offer })
   it('speaks our bid from the structure, as the buyer', () => {
     const beat = realBeat(ours({ by: 'us', verb: 'bid', price: 24, item: 'LAV-08', final: false }), 'en')
-    expect(beat?.lines).toEqual([{ speaker: 'buyer', text: 'I offer 24 primas for Lavapiés number 8.' }])
+    expect(beat?.lines).toEqual([{ speaker: 'buyer', text: 'I offer 24 primas for Lavapiés number 8.', lang: 'en' }])
     expect(beat?.agent).toBe('taker')
     expect(beat?.cue).toMatchObject({ kind: 'dealer', dealer: 'chato', move: 'bid', price: 24 })
   })
   it('speaks our ask as the seller, in Spanish when the show is Spanish', () => {
     const beat = realBeat(ours({ by: 'us', verb: 'ask', price: 31, item: 'LAV-08', final: false }), 'es')
-    expect(beat?.lines).toEqual([{ speaker: 'seller', text: 'Quiero 31 primas por Lavapiés número 8.' }])
+    expect(beat?.lines).toEqual([{ speaker: 'seller', text: 'Quiero 31 primas por Lavapiés número 8.', lang: 'es' }])
     expect(beat?.agent).toBe('maker')
   })
   it('says nothing for a message of ours with no offer', () => {
@@ -99,12 +106,12 @@ describe('our own messages', () => {
 
 describe('thread opened and settlement', () => {
   it('opens in the selected language', () => {
-    expect(realBeat(item({ kind: 'thread_opened', who: 'us', counterpart: 'abuela', item: 'LAV-08' }), 'es')?.lines).toEqual([{ speaker: 'buyer', text: 'Voy a por Lavapiés número 8.' }])
+    expect(realBeat(item({ kind: 'thread_opened', who: 'us', counterpart: 'abuela', item: 'LAV-08' }), 'es')?.lines).toEqual([{ speaker: 'buyer', text: 'Voy a por Lavapiés número 8.', lang: 'es' }])
     expect(realBeat(item({ kind: 'thread_opened', who: 'us', counterpart: 'abuela', item: null }), 'es')).toBeNull()
   })
   it('narrates a settlement and plays the deal cue', () => {
     const beat = realBeat(item({ kind: 'settlement', counterpart: 'abuela', item: 'LAV-08', price: 31 }), 'en')
-    expect(beat?.lines).toEqual([{ speaker: 'narrator', text: 'Deal done: Lavapiés number 8 for 31 primas.' }])
+    expect(beat?.lines).toEqual([{ speaker: 'narrator', text: 'Deal done: Lavapiés number 8 for 31 primas.', lang: 'en' }])
     expect(beat?.cue).toMatchObject({ kind: 'deal', big: true })
     expect(beat?.priority).toBeGreaterThanOrEqual(100)
   })
@@ -125,7 +132,7 @@ describe('duels', () => {
     })
 
   it('plays the replay once, with the rival in the opposite chair, then the verdict', () => {
-    const beat = realBeat(replay('seller'), 'es')
+    const beat = realBeat(replay('seller'), 'es', SPEAK)
     expect(shown(beat).map((l) => [l.speaker, l.silent === true])).toEqual([
       ['buyer', false], // the rival, speaking Spanish in a Spanish show
       ['seller', false], // our offer, from the structure (no words of ours in the data)
@@ -141,10 +148,17 @@ describe('duels', () => {
     expect(realBeat(replay('buyer'), 'en')?.lines[0]?.speaker).toBe('seller')
   })
 
-  it('announces a live duel as text only, naming the item and the rival, never its words', () => {
-    const beat = realBeat(item({ id: 'dl:63', kind: 'duel_live', counterpart: 'Rival Sol', item: 'LAT-05', status: 'live' }), 'en')
-    expect(beat?.lines).toEqual([{ speaker: 'narrator', text: 'Duel in progress: LAT-05 vs Rival Sol', silent: true }])
-    expect(realBeat(item({ id: 'dl:63', kind: 'duel_live', counterpart: 'Rival Sol', item: 'LAT-05', status: 'live' }), 'es')?.lines[0]?.text).toBe('Duelo en marcha: LAT-05 contra Rival Sol')
+})
+
+describe('by default no real quote is ever voiced', () => {
+  it('speaks nothing but generated lines, in either language', () => {
+    for (const lang of ['es', 'en'] as const) {
+      for (const text of [EN_QUOTE, ES_QUOTE]) {
+        const beat = realBeat(dealerLine(text), lang)
+        for (const l of spoken(beat)) expect(isRealLine(l.text, lang), l.text).toBe(true)
+        expect(shown(beat).some((l) => l.text === text && l.silent)).toBe(true)
+      }
+    }
   })
 })
 
@@ -161,7 +175,8 @@ describe('one language for every spoken line', () => {
   ]
   it.each<Lang>(['es', 'en'])('every spoken line is a generated %s line or a %s quote', (lang) => {
     for (const sample of samples) {
-      for (const line of spoken(realBeat(sample, lang))) {
+      for (const line of spoken(realBeat(sample, lang, SPEAK))) {
+        expect(line.lang).toBe(lang)
         const generated = isRealLine(line.text, lang)
         const quote = detectLang(line.text) === lang
         expect(generated || quote, `${lang}: ${line.text}`).toBe(true)
