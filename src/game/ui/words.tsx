@@ -11,7 +11,7 @@ export function Ago({ tick, from }: { tick: number; from?: number }) {
   const t = useGameStrings()
   const a = ago(nowTick(state), tick, state.tickSeconds)
   const ticks = from != null && from !== tick ? `${t.tick} ${from}–${tick}` : `${t.tick} ${tick}`
-  return <time title={ticks}>{t.hum.ago(a.ticks, a.seconds)}</time>
+  return <time title={ticks}>{a ? t.hum.ago(a.ticks, a.seconds) : ticks}</time>
 }
 
 /** What a decision is about: a card as its named chip, a duel with its rival, a pack, or the text. */

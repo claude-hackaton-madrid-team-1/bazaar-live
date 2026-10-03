@@ -89,10 +89,12 @@ export function itemOf(item: string, rivalOf: (duel: number) => string | null | 
 
 /**
  * How long ago a tick was, from the newest tick we know (never the wall clock, so it reads the same on every
- * screen and in a frozen timeline): the ticks, and the seconds when the clock says how long a tick lasts.
+ * screen and in a frozen timeline): the ticks, and the seconds when the clock says how long a tick lasts. Null for
+ * a tick ahead of ours (another day's, after the clock started again): the caller says the tick instead of "now".
  */
-export function ago(now: number, tick: number, tickSeconds: number | null | undefined): { readonly ticks: number; readonly seconds: number | null } {
-  const ticks = Math.max(0, now - tick)
+export function ago(now: number, tick: number, tickSeconds: number | null | undefined): { readonly ticks: number; readonly seconds: number | null } | null {
+  if (tick > now) return null
+  const ticks = now - tick
   return { ticks, seconds: tickSeconds && tickSeconds > 0 ? ticks * tickSeconds : null }
 }
 
@@ -133,7 +135,7 @@ export const rivalOf = (t: GameStrings, s: State) => (id: number): string | null
 /** "3 min ago" for a tick, from the newest tick the state knows. */
 export const agoText = (t: GameStrings, s: State, tick: number, now: number): string => {
   const a = ago(now, tick, s.tickSeconds)
-  return t.hum.ago(a.ticks, a.seconds)
+  return a ? t.hum.ago(a.ticks, a.seconds) : `${t.tick} ${tick}`
 }
 
 /** A number of ticks as game time: "~2 min". */

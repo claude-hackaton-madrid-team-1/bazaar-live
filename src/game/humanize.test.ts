@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { nameOfRef } from './cards.ts'
 import { GAME_STRINGS } from './strings.ts'
+import sql from '../../db/agent_decisions.sql?raw'
 import { ago, itemOf, labelOf, parseDenial, percent, rarityOfRule, whoOf } from './humanize.ts'
 
 describe('parseDenial', () => {
@@ -56,7 +57,9 @@ describe('ago, percent, labels', () => {
   it('counts back from the newest tick, in seconds when a tick has a length', () => {
     expect(ago(630, 624, 30)).toEqual({ ticks: 6, seconds: 180 })
     expect(ago(630, 624, null)).toEqual({ ticks: 6, seconds: null })
-    expect(ago(620, 624, 30)).toEqual({ ticks: 0, seconds: 0 })
+    expect(ago(624, 624, 30)).toEqual({ ticks: 0, seconds: 0 })
+    // another day's tick, ahead of ours: no "now", the caller says the tick
+    expect(ago(620, 624, 30)).toBeNull()
   })
   it('turns shares into percentages and unknown ids into words', () => {
     expect(percent(0.29)).toBe(29)
@@ -92,5 +95,20 @@ describe('the words in both languages', () => {
     expect(es.item(itemOf('duel:2513', () => 'Rival Sol'))).toBe('duelo con Rival Sol')
     expect(es.item(itemOf('sobre_plata'))).toBe('sobre de plata')
     expect(es.jev('undecided', percent(0.29))).toBe('Jev: no lo ve claro (29 %)')
+  })
+})
+
+describe('every id the agents write has a word', () => {
+  // The rule ids db/agent_decisions.sql reads out of a denial, plus the two it infers and its fallback.
+  const listed = /substring\(l\.g from '\(([^']+)\)'\)/.exec(sql)?.[1]?.split('|') ?? []
+  const rules = [...listed.filter((r) => !r.includes('[')), 'max_price_common', 'max_price_uncommon', 'max_price_rare', 'max_price_epic', 'max_price_legendary', 'pause_file', 'sell_min_value_ratio', 'other']
+  // The decision kinds of the real game on 2026-10-03, and the ledger's order kinds.
+  const kinds = ['accept_ask', 'duel_offer', 'duel_hold', 'post_ask', 'team_open', 'dealer_sell', 'process_started', 'duel_accept', 'dealer_bid', 'cancel_ask',
+    'dealer_open', 'dealer_opened', 'dealer_closed', 'dealer_accept', 'pack_open', 'dealer_walk', 'listing', 'accept', 'spend']
+  it.each(['es', 'en'] as const)('in %s', (lang) => {
+    const hum = GAME_STRINGS[lang].hum
+    expect(listed.length).toBeGreaterThan(10)
+    expect(rules.filter((r) => !hum.rules[r])).toEqual([])
+    expect(kinds.filter((k) => !hum.kinds[k])).toEqual([])
   })
 })

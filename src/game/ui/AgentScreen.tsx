@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { OutcomeRow } from '../decisions.ts'
 import { fmtP, signed } from '../game.ts'
-import { agentName, ago, denialText, kindName, percent, ruleName, whoName } from '../humanize.ts'
+import { agentName, ago, agoText, denialText, kindName, percent, ruleName, whoName } from '../humanize.ts'
 import { hhmm, useGameStrings, type GameStrings } from '../strings.ts'
 import { useGame, useWallNow } from '../store.ts'
 import { timeline, type Entry, type Filter, type Line } from '../views/agent.ts'
@@ -59,9 +59,9 @@ function AgentRow({ st, why }: { st: AgentStatus; why: string | null }) {
   const t = useGameStrings()
   const { state } = useGame()
   const a = t.agt
-  const seconds = (ticks: number) => ago(nowTick(state), nowTick(state) - ticks, state.tickSeconds).seconds
+  const seconds = (ticks: number) => ago(nowTick(state), nowTick(state) - ticks, state.tickSeconds)?.seconds ?? null
   const alive = (st.state === 'none' ? a.noLog : st.silentFor == null ? a.never : a.ago(st.silentFor, seconds(st.silentFor))) + (why ?? '')
-  const restartedAgo = st.restartedAt == null ? null : ago(nowTick(state), st.restartedAt, state.tickSeconds)
+  const restartedAgo = st.restartedAt == null ? null : agoText(t, state, st.restartedAt, nowTick(state))
   return (
     <li className="agt-agent" data-state={st.state}>
       <div className="agt-who">
@@ -93,7 +93,7 @@ function AgentRow({ st, why }: { st: AgentStatus; why: string | null }) {
               <span className="gm-muted">{a.noBlocks}</span>
             )}
           </dd>
-          {st.restarts > 0 && restartedAgo && <dd className="agt-restarts">↻ {a.restarted(st.restarts, t.hum.ago(restartedAgo.ticks, restartedAgo.seconds))}</dd>}
+          {st.restarts > 0 && restartedAgo && <dd className="agt-restarts">↻ {a.restarted(st.restarts, restartedAgo)}</dd>}
         </dl>
       )}
     </li>
