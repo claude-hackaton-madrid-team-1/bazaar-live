@@ -16,8 +16,17 @@ export const STATUS_TONE: Readonly<Record<DecisionStatus, StatusTone>> = {
 /** True once any decision reached the page: before that the screen says nothing about idle agents. */
 export const hasDecisions = (s: State): boolean => AGENTS.some((a) => s.agents.decisions[a].length > 0)
 
-/** An agent that has not decided for more than this many ticks is silent: the first thing a watcher must see. */
-export const SILENT_AFTER = 3
+/**
+ * Ticks without a decision before an agent is quiet (amber), then silent (red): the first thing a watcher must see.
+ * Per agent: the taker decides every tick (gaps of 5 ticks at p99 on the real game), so it is silent after 3 with no
+ * amber stage; the maker posts in bursts (gaps of 14 ticks at p90, 21 at most), so it is only quiet until 24; the
+ * duels decide while a duel runs, so they get a little longer.
+ */
+export const SILENCE: Readonly<Record<AgentName, { readonly quiet: number; readonly silent: number }>> = {
+  taker: { quiet: 3, silent: 3 },
+  maker: { quiet: 3, silent: 24 },
+  duels: { quiet: 3, silent: 12 },
+}
 
 /** An agent whose last run is this many identical blocks in a row is stuck behind a guardrail. */
 export const STUCK_AFTER = 3
@@ -139,14 +148,15 @@ export function blocksByRule(s: State): Blocks {
   return { fromTick, total: rules.reduce((n, r) => n + r.count, 0), rules }
 }
 
-export type AgentState = 'none' | 'silent' | 'stuck' | 'ok'
+export type AgentState = 'none' | 'silent' | 'quiet' | 'stuck' | 'ok'
 
 /** One agent at a glance: alive or silent, what it last did, and what blocks it most this game hour. */
 export type AgentStatus = {
   readonly agent: AgentName
   /**
-   * `none`: no decision log from this source at all; `silent`: no decision for more than SILENT_AFTER ticks (or
-   * never); `stuck`: deciding, but its last run is STUCK_AFTER or more identical blocks; `ok` otherwise.
+   * `none`: no decision log from this source at all; `silent`: no decision for more than its SILENCE.silent ticks
+   * (or never); `quiet`: for more than its SILENCE.quiet; `stuck`: deciding, but its last run is STUCK_AFTER or more
+   * identical blocks; `ok` otherwise.
    */
   readonly state: AgentState
   /** Its last run of decisions (restarts left out), or null if it never decided. */
@@ -177,7 +187,8 @@ export function agentStatuses(s: State): AgentStatus[] {
     const top = [...byRule].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
     const silentFor = last ? Math.max(0, now - last.toTick) : null
     const state: AgentState = !logged ? 'none'
-      : silentFor == null || silentFor > SILENT_AFTER ? 'silent'
+      : silentFor == null || silentFor > SILENCE[agent].silent ? 'silent'
+      : silentFor > SILENCE[agent].quiet ? 'quiet'
       : last && last.verdict === 'denied' && last.rows.length >= STUCK_AFTER ? 'stuck'
       : 'ok'
     return {

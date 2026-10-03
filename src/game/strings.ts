@@ -7,10 +7,23 @@ import type { Route } from '../ui/route'
 import { useLang } from '../ui/lang'
 import type { GameStatus } from './store.ts'
 import type { Lane } from './views/agent.ts'
-import type { DecisionStatus } from '../../shared/decisions.ts'
+import type { AgentName, DecisionStatus } from '../../shared/decisions.ts'
+import type { HealthError } from '../../shared/health.ts'
+import type { ChipReason } from './views/health.ts'
 import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+type Silence = Readonly<Record<AgentName, { readonly quiet: number; readonly silent: number }>>
+
+/** A wait in seconds as a person says it: 45 s, 2 min, 1 h 5 min. */
+const span = (s: number): string => (s < 90 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`)
+
+/** An ISO time in the viewer's clock, hours and minutes. */
+export const hhmm = (iso: string | null): string | null => {
+  const at = iso ? new Date(iso) : null
+  return at && Number.isFinite(at.getTime()) ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : null
+}
 
 /** Our agents' tactic ids (bazaar's tactic bank, plus `plain`: our usual words), as the screens name them. */
 const TACTICS_EN: Readonly<Record<string, string>> = {
@@ -114,8 +127,8 @@ export interface GameStrings {
   /** The Agent screen at a glance: a status row per agent, the money, the folded timeline. Agent names, kinds and rule ids stay as written. */
   readonly agt: {
     readonly agents: string
-    readonly agentsSub: (silentAfter: number) => string
-    readonly state: Readonly<Record<'none' | 'silent' | 'stuck' | 'ok', string>>
+    readonly agentsSub: (silence: Silence) => string
+    readonly state: Readonly<Record<'none' | 'silent' | 'quiet' | 'stuck' | 'ok', string>>
     readonly ago: (n: number) => string
     readonly never: string
     readonly noLog: string
@@ -140,8 +153,44 @@ export interface GameStrings {
     readonly more: (n: number) => string
     readonly label: Readonly<Record<'good' | 'ok' | 'bad', string>>
     readonly alertSilent: (agent: string, ticks: number | null) => string
+    readonly alertQuiet: (agent: string, ticks: number) => string
     readonly alertStuck: (agent: string, n: number, rule: string) => string
     readonly allOk: string
+    /** What its /health says beside a silent or quiet agent: ": ledger down since 11:40". */
+    readonly because: (reason: string, since: string | null) => string
+    readonly healthFine: string
+  }
+  /** The header's health strip: one chip per agent, its one reason, and the panel a click opens. */
+  readonly health: {
+    readonly label: string
+    readonly reason: (r: ChipReason) => string
+    readonly since: (hhmm: string) => string
+    readonly ok: string
+    readonly title: (agent: string, reason: string) => string
+    readonly close: string
+    readonly problems: string
+    readonly row: {
+      readonly mode: string
+      readonly game: string
+      readonly ledger: string
+      readonly lastTick: string
+      readonly doors: string
+      readonly tickTime: string
+      readonly rateLimited: string
+      readonly jev: string
+      readonly decisions: string
+      readonly checked: string
+    }
+    readonly mode: { readonly live: string; readonly dry: string }
+    readonly target: { readonly real: string; readonly simulator: string }
+    readonly ledger: { readonly shared: string; readonly down: string; readonly local: string }
+    readonly doors: { readonly open: string; readonly closed: string; readonly paused: string }
+    readonly ago: (s: number) => string
+    readonly tickOf: (tick: number, server: number | null) => string
+    readonly undecided: (share: number) => string
+    readonly noHttp: string
+    readonly noReport: string
+    readonly error: Readonly<Record<HealthError, string>>
   }
   readonly badge: {
     readonly final: string
@@ -544,8 +593,8 @@ const EN: GameStrings = {
   },
   agt: {
     agents: 'Agents',
-    agentsSub: (n) => `silent after ${plural(n, 'tick', 'ticks')} without a decision`,
-    state: { none: 'NO LOG', silent: 'SILENT', stuck: 'BLOCKED', ok: 'OK' },
+    agentsSub: (x) => `silent after ${plural(x.taker.silent, 'tick', 'ticks')} without a decision · maker quiet first, silent after ${x.maker.silent} · duels after ${x.duels.silent}`,
+    state: { none: 'NO LOG', silent: 'SILENT', quiet: 'QUIET', stuck: 'BLOCKED', ok: 'OK' },
     ago: (n) => (n === 0 ? 'decided this tick' : `last decision ${plural(n, 'tick', 'ticks')} ago`),
     never: 'never decided',
     noLog: 'no decision log from this source',
@@ -570,8 +619,55 @@ const EN: GameStrings = {
     more: (n) => `+${n} more`,
     label: { good: 'good', ok: 'ok', bad: 'bad' },
     alertSilent: (agent, n) => (n == null ? `${agent} has never decided` : `${agent} silent for ${plural(n, 'tick', 'ticks')}`),
+    alertQuiet: (agent, n) => `${agent} quiet for ${plural(n, 'tick', 'ticks')}`,
     alertStuck: (agent, n, rule) => `${agent} blocked ×${n} in a row by ${rule}`,
     allOk: 'all three agents are deciding',
+    because: (reason, since) => `: ${reason}${since ? ` since ${since}` : ''}`,
+    healthFine: ' · /health fine',
+  },
+  health: {
+    label: 'Agents\' health',
+    reason: (r) => {
+      switch (r.kind) {
+        case 'unreachable': return { timeout: 'no answer', http: '/health error', bad_body: 'bad /health', unreachable: 'unreachable' }[r.error]
+        case 'ledger_down': return 'ledger down'
+        case 'no_tick': return `no tick for ${span(r.ageS)}`
+        case 'tick_over':
+        case 'tick_slow': return `tick ${r.usedS}/${r.budgetS} s`
+        case 'dry': return 'dry run'
+        case 'paused': return 'game paused'
+        case 'behind': return `${plural(r.ticks, 'tick', 'ticks')} behind`
+        case 'rate_limited': return `429 ×${r.count}`
+        case 'jev_slow': return `Jev slow ${r.s} s`
+        case 'jev_undecided': return `Jev undecided ${Math.round(r.share * 100)}%`
+        case 'simulator': return 'simulator'
+        case 'ledger_local': return 'ledger local'
+        case 'closed': return hhmm(r.opens) ? `closed · opens ${hhmm(r.opens)}` : 'doors closed'
+        case 'silent': return r.ticks == null ? 'never decided' : `silent ${plural(r.ticks, 'tick', 'ticks')}`
+        case 'quiet': return `quiet ${plural(r.ticks, 'tick', 'ticks')}`
+        case 'stuck': return `blocked ×${r.count}`
+        case 'stale': return `no /health for ${span(r.ageS)}`
+      }
+    },
+    since: (t) => `since ${t}`,
+    ok: 'ok',
+    title: (agent, reason) => `${agent}: ${reason} · click for details`,
+    close: 'Close',
+    problems: 'What is wrong',
+    row: {
+      mode: 'mode', game: 'game', ledger: 'ledger', lastTick: 'last tick', doors: 'doors', tickTime: 'tick time',
+      rateLimited: '429s', jev: 'Jev', decisions: 'decisions', checked: '/health read',
+    },
+    mode: { live: 'live', dry: 'dry run (sends nothing)' },
+    target: { real: 'real game', simulator: 'simulator' },
+    ledger: { shared: 'shared', down: 'down (a live agent sends nothing)', local: 'local file' },
+    doors: { open: 'open', closed: 'closed', paused: 'paused' },
+    ago: (s) => `${span(s)} ago`,
+    tickOf: (tick, server) => (server == null || server === tick ? `tick ${tick}` : `tick ${tick} · game at ${server}`),
+    undecided: (share) => `${Math.round(share * 100)}% undecided`,
+    noHttp: 'no /health: read from its decisions',
+    noReport: 'no /health relayed yet: read from its decisions',
+    error: { timeout: 'no answer in 4 s', http: '/health answered an error', bad_body: '/health answered something else', unreachable: 'could not connect' },
   },
   badge: {
     final: 'FINAL',
@@ -1027,8 +1123,8 @@ const ES: GameStrings = {
   },
   agt: {
     agents: 'Agentes',
-    agentsSub: (n) => `en silencio tras ${plural(n, 'turno', 'turnos')} sin decidir`,
-    state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', stuck: 'BLOQUEADO', ok: 'OK' },
+    agentsSub: (x) => `en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · el maker primero callado, en silencio tras ${x.maker.silent} · duelos tras ${x.duels.silent}`,
+    state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', quiet: 'CALLADO', stuck: 'BLOQUEADO', ok: 'OK' },
     ago: (n) => (n === 0 ? 'ha decidido este turno' : `última decisión hace ${plural(n, 'turno', 'turnos')}`),
     never: 'nunca ha decidido',
     noLog: 'esta fuente no trae registro de decisiones',
@@ -1053,8 +1149,55 @@ const ES: GameStrings = {
     more: (n) => `+${n} más`,
     label: { good: 'bueno', ok: 'justo', bad: 'malo' },
     alertSilent: (agent, n) => (n == null ? `${agent} nunca ha decidido` : `${agent} lleva ${plural(n, 'turno', 'turnos')} sin decidir`),
+    alertQuiet: (agent, n) => `${agent} lleva ${plural(n, 'turno', 'turnos')} callado`,
     alertStuck: (agent, n, rule) => `${agent} bloqueado ×${n} seguidas por ${rule}`,
     allOk: 'los tres agentes están decidiendo',
+    because: (reason, since) => `: ${reason}${since ? ` desde las ${since}` : ''}`,
+    healthFine: ' · /health bien',
+  },
+  health: {
+    label: 'Salud de los agentes',
+    reason: (r) => {
+      switch (r.kind) {
+        case 'unreachable': return { timeout: 'sin respuesta', http: 'error en /health', bad_body: '/health raro', unreachable: 'inalcanzable' }[r.error]
+        case 'ledger_down': return 'ledger caído'
+        case 'no_tick': return `sin turno hace ${span(r.ageS)}`
+        case 'tick_over':
+        case 'tick_slow': return `turno ${r.usedS}/${r.budgetS} s`
+        case 'dry': return 'ensayo'
+        case 'paused': return 'juego en pausa'
+        case 'behind': return `${plural(r.ticks, 'turno', 'turnos')} de retraso`
+        case 'rate_limited': return `429 ×${r.count}`
+        case 'jev_slow': return `Jev lento ${r.s} s`
+        case 'jev_undecided': return `Jev indeciso ${Math.round(r.share * 100)}%`
+        case 'simulator': return 'simulador'
+        case 'ledger_local': return 'ledger local'
+        case 'closed': return hhmm(r.opens) ? `cerrado · abre ${hhmm(r.opens)}` : 'puertas cerradas'
+        case 'silent': return r.ticks == null ? 'nunca ha decidido' : `${plural(r.ticks, 'turno', 'turnos')} en silencio`
+        case 'quiet': return `${plural(r.ticks, 'turno', 'turnos')} callado`
+        case 'stuck': return `bloqueado ×${r.count}`
+        case 'stale': return `sin /health hace ${span(r.ageS)}`
+      }
+    },
+    since: (t) => `desde las ${t}`,
+    ok: 'ok',
+    title: (agent, reason) => `${agent}: ${reason} · pulsa para ver el detalle`,
+    close: 'Cerrar',
+    problems: 'Qué falla',
+    row: {
+      mode: 'modo', game: 'juego', ledger: 'ledger', lastTick: 'último turno', doors: 'puertas', tickTime: 'duración del turno',
+      rateLimited: '429', jev: 'Jev', decisions: 'decisiones', checked: '/health leído',
+    },
+    mode: { live: 'en vivo', dry: 'ensayo (no envía nada)' },
+    target: { real: 'juego real', simulator: 'simulador' },
+    ledger: { shared: 'compartido', down: 'caído (un agente en vivo no envía nada)', local: 'fichero local' },
+    doors: { open: 'abiertas', closed: 'cerradas', paused: 'en pausa' },
+    ago: (s) => `hace ${span(s)}`,
+    tickOf: (tick, server) => (server == null || server === tick ? `turno ${tick}` : `turno ${tick} · el juego va por el ${server}`),
+    undecided: (share) => `${Math.round(share * 100)}% indeciso`,
+    noHttp: 'sin /health: se lee de sus decisiones',
+    noReport: 'aún no llega su /health: se lee de sus decisiones',
+    error: { timeout: 'no respondió en 4 s', http: '/health respondió un error', bad_body: '/health respondió otra cosa', unreachable: 'no se pudo conectar' },
   },
   badge: {
     final: 'FINAL',

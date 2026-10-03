@@ -4,7 +4,7 @@ import { apply, createState, KNOWN_TYPES, type GameEvent } from './state'
 import { albumSummary, bestMoves } from './views/album'
 
 const play = (steps: number, seed = 7): GameEvent[] => {
-  const game = new MockGame(seed)
+  const game = new MockGame(seed, undefined, undefined, () => Date.UTC(2026, 9, 3, 10))
   return Array.from({ length: steps }, () => game.step()).flat()
 }
 

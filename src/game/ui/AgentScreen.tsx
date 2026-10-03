@@ -1,17 +1,27 @@
 import { useMemo, useState } from 'react'
 import type { OutcomeRow } from '../decisions.ts'
 import { fmtP, setOf, signed } from '../game.ts'
-import { useGameStrings } from '../strings.ts'
-import { useGame } from '../store.ts'
+import { hhmm, useGameStrings, type GameStrings } from '../strings.ts'
+import { useGame, useWallNow } from '../store.ts'
 import { timeline, type Entry, type Filter } from '../views/agent.ts'
+import { healthChips, type HealthChip } from '../views/health.ts'
 import {
-  agentStatuses, blocksByRule, dealTally, deals as dealsOf, isWrite, ledger as ledgerOf, share, SILENT_AFTER, STATUS_TONE,
+  agentStatuses, blocksByRule, dealTally, deals as dealsOf, isWrite, ledger as ledgerOf, share, SILENCE, STATUS_TONE,
   type AgentState, type AgentStatus, type Blocks, type Deal, type DealTally, type Ledger, type Run,
 } from '../views/decisions.ts'
 import { Badge, Empty, EventLink, Panel, RefChip, Seg, type Tone } from './bits.tsx'
 import { toneOf } from './tone.ts'
 
-const STATE_TONE: Readonly<Record<AgentState, Tone>> = { none: 'neutral', silent: 'bad', stuck: 'warn', ok: 'good' }
+const STATE_TONE: Readonly<Record<AgentState, Tone>> = { none: 'neutral', silent: 'bad', quiet: 'warn', stuck: 'warn', ok: 'good' }
+
+/** Why a silent or quiet agent is quiet, from its /health: ": ledger down since 11:40", or " · /health fine" (null without one). */
+function because(t: GameStrings, st: AgentStatus, chip: HealthChip | undefined): string | null {
+  const h = chip?.health
+  if ((st.state !== 'silent' && st.state !== 'quiet') || !h) return null
+  // a fine /health is an answer too: the agent runs, its own logic is what decides nothing
+  if (!h.reason || h.tone === 'good') return t.agt.healthFine
+  return t.agt.because(t.health.reason(h.reason), hhmm(h.since))
+}
 
 /** An item: a card with its barrio's colour, or a pack, a name or a duel as plain mono text. */
 function Item({ item }: { item: string }) {
@@ -44,10 +54,10 @@ function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
   )
 }
 
-function AgentRow({ st }: { st: AgentStatus }) {
+function AgentRow({ st, why }: { st: AgentStatus; why: string | null }) {
   const t = useGameStrings()
   const a = t.agt
-  const alive = st.state === 'none' ? a.noLog : st.silentFor == null ? a.never : a.ago(st.silentFor)
+  const alive = (st.state === 'none' ? a.noLog : st.silentFor == null ? a.never : a.ago(st.silentFor)) + (why ?? '')
   return (
     <li className="agt-agent" data-state={st.state}>
       <div className="agt-who">
@@ -83,16 +93,24 @@ function AgentRow({ st }: { st: AgentStatus }) {
 }
 
 /** The answer in one line: which agent is silent or stuck, and why; worst first. */
-function Alert({ statuses }: { statuses: AgentStatus[] }) {
+function Alert({ statuses, why }: { statuses: AgentStatus[]; why: Partial<Record<string, string | null>> }) {
   const a = useGameStrings().agt
   if (statuses.every((st) => st.state === 'none')) return null
   const silent = statuses.filter((st) => st.state === 'silent')
+  const quiet = statuses.filter((st) => st.state === 'quiet')
   const stuck = statuses.filter((st) => st.state === 'stuck')
   return (
-    <p className="agt-alert" role="status" data-ok={!silent.length && !stuck.length ? true : undefined}>
+    <p className="agt-alert" role="status" data-ok={!silent.length && !quiet.length && !stuck.length ? true : undefined}>
       {silent.map((st) => (
         <span key={st.agent} className="gm-bad">
           ● {a.alertSilent(st.agent, st.silentFor)}
+          {why[st.agent]}
+        </span>
+      ))}
+      {quiet.map((st) => (
+        <span key={st.agent} className="gm-warn">
+          ● {a.alertQuiet(st.agent, st.silentFor ?? 0)}
+          {why[st.agent]}
         </span>
       ))}
       {stuck.map((st) => (
@@ -100,19 +118,20 @@ function Alert({ statuses }: { statuses: AgentStatus[] }) {
           ● {a.alertStuck(st.agent, st.last?.rows.length ?? 0, st.last?.rule ?? 'other')}
         </span>
       ))}
-      {!silent.length && !stuck.length && <span className="gm-good">● {a.allOk}</span>}
+      {!silent.length && !quiet.length && !stuck.length && <span className="gm-good">● {a.allOk}</span>}
     </p>
   )
 }
 
-function AgentsPanel({ statuses }: { statuses: AgentStatus[] }) {
+function AgentsPanel({ statuses, chips }: { statuses: AgentStatus[]; chips: HealthChip[] }) {
   const t = useGameStrings()
+  const why = Object.fromEntries(statuses.map((st) => [st.agent, because(t, st, chips.find((c) => c.agent === st.agent))]))
   return (
-    <Panel title={t.agt.agents} sub={t.agt.agentsSub(SILENT_AFTER)} className="agt-agents-panel">
-      <Alert statuses={statuses} />
+    <Panel title={t.agt.agents} sub={t.agt.agentsSub(SILENCE)} className="agt-agents-panel">
+      <Alert statuses={statuses} why={why} />
       <ul className="agt-agents">
         {statuses.map((st) => (
-          <AgentRow key={st.agent} st={st} />
+          <AgentRow key={st.agent} st={st} why={why[st.agent] ?? null} />
         ))}
       </ul>
     </Panel>
@@ -350,6 +369,7 @@ export function AgentScreen() {
   const store = useGame()
   const t = useGameStrings()
   const { state, version } = store
+  const nowMs = useWallNow(5000)
   const [filter, setFilter] = useState<Filter>('all')
   const [details, setDetails] = useState(false)
   const [frozenAt, setFrozenAt] = useState<number | null>(null)
@@ -357,9 +377,9 @@ export function AgentScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const entries = useMemo(() => timeline(state, { filter, upToTick: frozenAt }), [state, version, filter, frozenAt])
   const top = useMemo(
-    () => ({ statuses: agentStatuses(state), blocks: blocksByRule(state), ledger: ledgerOf(state), deals: dealsOf(state, 5), tally: dealTally(state) }),
+    () => ({ statuses: agentStatuses(state), chips: healthChips(state, nowMs), blocks: blocksByRule(state), ledger: ledgerOf(state), deals: dealsOf(state, 5), tally: dealTally(state) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state, version],
+    [state, version, nowMs],
   )
   const newer = frozenAt == null ? 0 : Math.max(0, state.tick - frozenAt)
   const controls = (
@@ -390,7 +410,7 @@ export function AgentScreen() {
   return (
     <>
       <div className="agt-top">
-        <AgentsPanel statuses={top.statuses} />
+        <AgentsPanel statuses={top.statuses} chips={top.chips} />
         <MoneyPanel ledger={top.ledger} />
       </div>
       <div className="agt-mid">

@@ -4,6 +4,7 @@
  * envelope the server relays. A port of bazaar's `tui/mock.py`, seeded so a replay looks the same.
  */
 import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../../shared/decisions.ts'
+import type { HealthReport } from '../../shared/health.ts'
 import { rng } from '../stage/rng.ts'
 import type { GameEvent, Payload } from './state.ts'
 
@@ -189,7 +190,14 @@ export class MockGame {
   /** The seeded live threads (seedThreads): played like the others, kept apart so the random game around them stays the same. */
   private readonly scripted = new Map<number, Neg>()
 
-  constructor(seed = 1, team = 't01', name = 'Team 1') {
+  /** The wall clock the agents' /health is stamped with (a test passes a fixed one: same seed, same game). */
+  private readonly wall: () => number
+  /** When the mock's ledger went down and the maker's ticks grew slow: a while before the page opened. */
+  private readonly troubleAt: number
+
+  constructor(seed = 1, team = 't01', name = 'Team 1', wall: () => number = Date.now) {
+    this.wall = wall
+    this.troubleAt = wall() - 7 * 60_000
     this.random = rng(seed)
     this.scenario = rng(seed + 7919)
     this.team = team
@@ -799,12 +807,35 @@ export class MockGame {
   }
 
   /**
+   * The taker's and the maker's /health as the server relays it (server/game/health.ts), every tick: the taker's
+   * ledger is down (red: a live agent sends nothing), the maker's ticks run close to their 15 s budget (amber).
+   * The duels have no /health: their decisions say they are fine.
+   */
+  private health(): GameEvent {
+    const now = this.wall()
+    const at = (ms: number) => new Date(ms).toISOString()
+    const tickSeconds = (STEPS_PER_TICK * MOCK_STEP_MS) / 1000
+    const report = (agent: 'taker' | 'maker', fields: Partial<HealthReport>): HealthReport => ({
+      agent, checkedAt: at(now), error: null, mode: 'live', target: 'real', ledger: 'shared', tick: this.tick, serverTick: this.tick,
+      lastTickAt: at(now - 2000), tickAgeS: 2, doors: 'open', paused: false, nextOpens: null, tickSeconds,
+      tickMs: 3100, tickBudgetS: 15, rateLimited: 0, jevMs: 2400, jevUndecided: 0.1, since: {}, ...fields,
+    })
+    return this.ev('agent.health', {
+      agents: [
+        report('taker', { ledger: 'down', since: { ledger_down: at(this.troubleAt) } }),
+        report('maker', { tickMs: 14_200, jevMs: null, jevUndecided: null, since: { tick_slow: at(this.troubleAt + 4 * 60_000) } }),
+      ],
+    })
+  }
+
+  /**
    * Our three agents' decisions this tick, as db/agent_decisions.sql would show them, on a 12-tick cycle that
    * plays what went wrong in the real game: the taker restarts, then asks for SAL-08 tick after tick and
    * max_price_uncommon refuses it every time (ticks 1–6 of the cycle); then it accepts (one goes through, the
    * per-tick cap refuses the second), a pack the hour's budget or quota refuses, a good and a bad deal, a rare
    * final above its cap and an accept that ran out of tick (7–9); then nobody decides at all (10–12). The maker
-   * posts three ticks in twelve and the duels agent goes silent after tick 4, for good.
+   * posts four ticks in twelve (quiet in between) and the duels agent answers its duel every other tick, one
+   * answer in five refused by duel_inside_limit.
    */
   private agents(): GameEvent[] {
     const out: GameEvent[] = []
@@ -854,10 +885,10 @@ export class MockGame {
         text: 'RET-04 is our only copy of a page card of a new page (protect_page_sets)',
       })
     }
-    // Duels: an id, a status, a rule id and Jev's verdict, never a price (the view keeps our limit out). Silent after tick 4.
+    // Duels: an id, a status, a rule id and Jev's verdict, never a price (the view keeps our limit out). Every other tick.
     const duel = `duel:${this.duel?.id ?? 3}`
-    if (this.tick === 2) say('duels', 'duel_offer', { item: duel, status: 'done', jev: 'counter', method: 'duel_say' })
-    if (this.tick === 4) say('duels', 'duel_offer', { item: duel, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
+    if (this.tick % 10 === 4) say('duels', 'duel_offer', { item: duel, status: 'rejected', verdict: 'denied', rule: 'duel_inside_limit', jev: 'counter' })
+    else if (this.tick % 2 === 0) say('duels', 'duel_offer', { item: duel, status: 'done', jev: 'counter', method: 'duel_say' })
     out.push(...this.negDecisions())
     out.push(this.ev('agent.ledger', { ticks: this.ledger.filter((r) => r.t > this.tick / 240 - 2), limits: MOCK_LIMITS }))
     return out
@@ -986,7 +1017,7 @@ export class MockGame {
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {
       this.tick += 1
-      out.push(this.ev('clock', { day: 'fri', tick_seconds: (STEPS_PER_TICK * MOCK_STEP_MS) / 1000 }), ...this.expire(), ...this.settle(), ...this.observe())
+      out.push(this.ev('clock', { day: 'fri', tick_seconds: (STEPS_PER_TICK * MOCK_STEP_MS) / 1000 }), this.health(), ...this.expire(), ...this.settle(), ...this.observe())
     } else if (at === 2) {
       out.push(this.ev('agent.phase', { phase: 'decide' }))
       if (this.negs.size < 3) out.push(...this.open())
