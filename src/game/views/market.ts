@@ -234,7 +234,7 @@ export type OurOffer = {
   worth: Worth | null
   venueName: string
   expiresIn: number | null
-  /** The best price another team shows on the same side of the same card, if any. */
+  /** The best price another team shows the market (not one addressed to a single other team) on the same side of the same card, if any. */
   best: number | null
   /** How far that best price beats ours (null: ours is the best, or alone). */
   beatenBy: number | null
@@ -387,7 +387,8 @@ export function ourOffers(s: State): OurOffer[] {
   for (const offers of s.book.values()) {
     for (const o of offers.values()) {
       if (!live(s, o) || o.side === 'swap' || o.price == null) continue
-      ;(o.maker === s.team ? mine : rivals).push(o)
+      if (o.maker === s.team) mine.push(o)
+      else if (o.to == null || o.to === s.team) rivals.push(o)
     }
   }
   if (!mine.length) return []

@@ -139,6 +139,7 @@ test('our offers: expiring first, with our value and whether another team shows 
   const s = real()
   apply(s, list('t01', 'SAL-01', 12, { expires: 30 }))
   apply(s, list('t09', 'SAL-01', 9))
+  apply(s, list('t08', 'SAL-01', 5, { to: 't03' }))
   apply(s, list('t01', 'LAV-08', 20, { side: 'bid', expires: 24, venue: 'v02' }))
   apply(s, list('t03', 'LAV-08', 18, { side: 'bid' }))
   apply(s, ev('venue.opened', { venue: 'v02', name: 'El Duende', owner: 't12' }, 20))
