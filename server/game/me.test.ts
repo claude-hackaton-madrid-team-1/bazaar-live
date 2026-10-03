@@ -22,13 +22,18 @@ describe('projectMe', () => {
   it('keeps exactly what the screens read', () => {
     expect(projectMe(ME)).toEqual({
       id: 't01', name: 'Team 1', cash: 392,
-      score: { score: 18.4, rank: 9, deals: 3, duel_points: 4, ladder_points: 6.5, neg_points: 7.9, mm_points: 0 },
+      score: { score: 18.4, rank: 9, deals: 3, duel_points: 4, ladder_points: 6.5, neg_points: 7.9, mm_points: 0, bench_points: null },
       album: { pages: [{ set: 'LAV', name: 'Lavapiés', have: 5, of: 10, complete: false, master: false }] },
       assets: [
         { id: 1, kind: 'card', ref: 'MAL-05', serial: 1, your_value: 11 },
         { id: 9, kind: 'pack', ref: 'sobre_barrio', your_value: 24 },
       ],
     })
+  })
+
+  it('carries bench_points for the Bench row, and no other bench field', () => {
+    const score = projectMe({ score: { ...ME.score, bench_points: 2.5, bench_efficiency: 0.8, bench_venue: 'v-t01' } }).score
+    expect(score).toEqual({ score: 18.4, rank: 9, deals: 3, duel_points: 4, ladder_points: 6.5, neg_points: 7.9, mm_points: 0, bench_points: 2.5 })
   })
 
   it('never carries a key, the affinity or what it prices our hand at', () => {

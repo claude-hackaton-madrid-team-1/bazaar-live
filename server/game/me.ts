@@ -17,8 +17,8 @@ function pick(from: Payload, keys: readonly string[]): Payload {
 
 const TOP = ['id', 'name', 'cash'] as const
 
-/** The header's score and rank, the album's bars and deal count. */
-const SCORE = ['score', 'rank', 'deals', 'duel_points', 'ladder_points', 'neg_points', 'mm_points'] as const
+/** The header's score and rank, the album's bars (Bench included: `bench_points`, null until a bench run) and deal count. */
+const SCORE = ['score', 'rank', 'deals', 'duel_points', 'ladder_points', 'neg_points', 'mm_points', 'bench_points'] as const
 
 const PAGE = ['set', 'name', 'have', 'of', 'complete', 'master'] as const
 
