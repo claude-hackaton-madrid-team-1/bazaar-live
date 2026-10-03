@@ -1,6 +1,7 @@
 import { LOG_ICON, PHASES, fmtP, isSuspicious, signed, topicText } from '../game.ts'
 import { priceOf, topicOf, type GameEvent, type Payload, type Phase, type State } from '../state.ts'
-import { decideSlots, decisionTicks, hasDecisions, type DecideSlot } from './decisions.ts'
+import type { DecisionRow } from '../decisions.ts'
+import { decideSlots, decisionTicks, hasDecisions, isWrite, latestDecision, openDealerThreads, refusalRuns, settledDeals, type DecideSlot } from './decisions.ts'
 
 export type Lane = 'observe' | 'decide' | 'act' | 'result'
 
@@ -255,10 +256,12 @@ export function timeline(s: State, { limitTicks = 40, filter = 'all', upToTick =
   const decided = hasDecisions(s)
   const all = new Set([...byTick.keys(), ...(decided ? [...decisionTicks(s), s.tick] : [])])
   const ticks = [...all].filter((t) => upToTick == null || t <= upToTick).sort((a, b) => b - a)
+  const runs = refusalRuns(s, upToTick)
   for (const tick of ticks) {
     const all = byTick.get(tick) ?? []
     const shown = all.filter((l) => keep(filter, l))
-    const decide = filter === 'deals' ? [] : decideSlots(s, tick).filter((d) => filter === 'all' || d.kind === 'row')
+    // "who did not decide" only on the current tick: on a past one it is noise.
+    const decide = filter === 'deals' ? [] : decideSlots(s, tick, runs).filter((d) => d.kind === 'row' || (filter === 'all' && tick === s.tick))
     if (!shown.length && !decide.some((d) => d.kind === 'row') && !(tick === s.tick && decide.length)) continue
     const lanes = LANES.map((lane) => ({ lane, lines: shown.filter((l) => l.lane === lane) })).filter((l) => l.lines.length || (l.lane === 'decide' && decide.length))
     const settled = all.filter((l) => l.type === 'settlement')
@@ -279,7 +282,14 @@ export type Now = {
   cash: number
   thought: { eventId: number; text: string } | null
   action: { eventId: number; text: string; icon: string } | null
+  /** The latest decision of our agents (a restart is not one): the goal and the why when no agent.thought says them. */
+  decision: DecisionRow | null
+  /** The latest decision whose request went out to the game: what the agents did, when no agent.action says it. */
+  executed: DecisionRow | null
 }
+
+/** An event id as the page shows it: feed ids are real (`#21888`); the server's own events count down from -1 and are not. */
+export const eventLabel = (id: number): string | null => (id > 0 ? `#${id}` : null)
 
 export function now(s: State): Now {
   let thought: Now['thought'] = null
@@ -293,16 +303,21 @@ export function now(s: State): Now {
       action = { eventId: e.id, text: e.payload.summary ?? kind, icon: LOG_ICON[kind] ?? '•' }
     }
   }
+  // The feed keeps only its last window, so our older settlements are gone from it; the scored outcomes are not.
+  const deals = settledDeals(s)
+  const fromOutcomes = deals.length >= s.ours.trades
   return {
     tick: s.tick,
     phase: s.phase,
     phaseIndex: PHASES.indexOf(s.phase),
     goal: s.goal,
-    openThreads: Object.values(s.threads).filter((t) => t.status === 'open').length,
-    trades: s.ours.trades,
-    gain: s.ours.gain,
+    openThreads: Math.max(Object.values(s.threads).filter((t) => t.status === 'open').length, openDealerThreads(s)),
+    trades: fromOutcomes ? deals.length : s.ours.trades,
+    gain: fromOutcomes ? deals.reduce((sum, d) => sum + (d.edge ?? 0), 0) : s.ours.gain,
     cash: s.cash,
     thought,
     action,
+    decision: latestDecision(s, (r) => r.kind !== 'process_started'),
+    executed: latestDecision(s, (r) => isWrite(r.kind) && r.method != null && r.status !== 'failed' && r.status !== 'rejected'),
   }
 }

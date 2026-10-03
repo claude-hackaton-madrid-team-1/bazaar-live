@@ -7,9 +7,19 @@ import { AGENTS, type AgentName, type DecisionStatus, type GuardrailLimits } fro
 import type { DecisionRow, OutcomeRow } from '../decisions.ts'
 import type { State } from '../state.ts'
 
+/** The same refusal repeated tick after tick, shown once: how many, over which ticks, at which prices. */
+export type Run = { readonly count: number; readonly from: number; readonly to: number; readonly low: number | null; readonly high: number | null }
+
+export type Idle = { readonly agent: AgentName; readonly last: number | null }
+
 export type DecideSlot =
-  | { readonly kind: 'row'; readonly row: DecisionRow }
-  | { readonly kind: 'idle'; readonly agent: AgentName; readonly last: number | null }
+  | { readonly kind: 'row'; readonly row: DecisionRow; readonly run: Run | null }
+  | { readonly kind: 'idle'; readonly agents: readonly Idle[] }
+
+/** Rows the agents log that send nothing to the game (a deploy restart, a thread's bookkeeping): no guardrail ran on them. */
+const NON_WRITE_KINDS: ReadonlySet<string> = new Set(['process_started', 'dealer_opened', 'dealer_closed'])
+
+export const isWrite = (kind: string): boolean => !NON_WRITE_KINDS.has(kind)
 
 export type StatusTone = 'good' | 'bad' | 'warn' | 'us' | 'neutral'
 
@@ -27,20 +37,63 @@ export function decisionTicks(s: State): number[] {
   return [...ticks].sort((a, b) => b - a)
 }
 
+const refusalKey = (r: DecisionRow): string | null => (r.verdict === 'denied' ? `${r.kind}|${r.item ?? ''}|${r.rule ?? ''}` : null)
+
 /**
- * The DECIDE lane of one tick: each agent's decisions of that tick in id order, or one idle slot saying
- * when it last decided. Nothing at all before the first decision ever seen (no claim about agents we never heard of).
+ * Identical refusals in a row (same agent, kind, item and rule; rows that write nothing do not break a run): the
+ * last row of each run of two or more carries the run, the earlier ones are folded into it. Decision id → run, or
+ * null for a folded row.
  */
-export function decideSlots(s: State, tick: number): DecideSlot[] {
+export function refusalRuns(s: State, upToTick: number | null = null): Map<number, Run | null> {
+  const out = new Map<number, Run | null>()
+  for (const agent of AGENTS) {
+    let run: DecisionRow[] = []
+    const close = () => {
+      const last = run.at(-1)
+      if (last && run.length > 1) {
+        const prices = run.map((r) => r.price).filter((p): p is number => p != null)
+        for (const r of run) out.set(r.decision, null)
+        out.set(last.decision, {
+          count: run.length, from: run[0]?.tick ?? last.tick, to: last.tick,
+          low: prices.length ? Math.min(...prices) : null, high: prices.length ? Math.max(...prices) : null,
+        })
+      }
+      run = []
+    }
+    for (const r of s.agents.decisions[agent]) {
+      if (upToTick != null && r.tick > upToTick) break
+      if (!isWrite(r.kind)) continue
+      const key = refusalKey(r)
+      const prev = run[0]
+      if (key == null || (prev && refusalKey(prev) !== key)) close()
+      if (key != null) run.push(r)
+    }
+    close()
+  }
+  return out
+}
+
+/**
+ * The DECIDE lane of one tick: each agent's decisions of that tick in id order (a run of identical refusals once,
+ * on its last tick), then one compact slot naming the agents that did not decide and when they last did. Nothing
+ * at all before the first decision ever seen (no claim about agents we never heard of).
+ */
+export function decideSlots(s: State, tick: number, runs: Map<number, Run | null> = refusalRuns(s)): DecideSlot[] {
   const first = Math.min(...AGENTS.flatMap((a) => s.agents.decisions[a].map((r) => r.tick)))
   if (!Number.isFinite(first) || tick < first) return []
-  return AGENTS.flatMap((agent): DecideSlot[] => {
+  const slots: DecideSlot[] = []
+  const idle: Idle[] = []
+  for (const agent of AGENTS) {
     const rows = s.agents.decisions[agent]
     const now = rows.filter((r) => r.tick === tick)
-    if (now.length) return now.map((row) => ({ kind: 'row', row }))
-    const before = rows.filter((r) => r.tick < tick).at(-1)
-    return [{ kind: 'idle', agent, last: before?.tick ?? null }]
-  })
+    if (!now.length) idle.push({ agent, last: rows.filter((r) => r.tick < tick).at(-1)?.tick ?? null })
+    for (const row of now) {
+      const run = runs.get(row.decision)
+      if (run !== null) slots.push({ kind: 'row', row, run: run ?? null })
+    }
+  }
+  if (idle.length) slots.push({ kind: 'idle', agents: idle })
+  return slots
 }
 
 /** Ticks in one game hour: `t_hours` grows by tick_seconds / 3600 a tick (60 s ticks: 60 a game hour). */
@@ -105,18 +158,75 @@ export const share = (used: number, cap: number): number => (cap > 0 ? Math.min(
 
 export type Deal = {
   readonly row: OutcomeRow
+  /** Our value of the item: the outcome's, else (a dealer fill) the one our decisions on that thread logged. */
+  readonly value: number | null
   /** Positive: the deal beat our value by this much. */
   readonly edge: number | null
   readonly verdict: 'beat' | 'even' | 'below' | null
+}
+
+/** A dealer thread that ended with no fill (we walked, she walked) scored as an outcome, but nothing changed hands. */
+const settled = (o: OutcomeRow): boolean => o.target !== 'dealer' || o.price != null
+
+/** Our value of a dealer fill: the latest value our agent logged for that card with that dealer up to the fill. */
+function dealerValue(s: State, o: OutcomeRow): number | null {
+  if (o.target !== 'dealer' || o.agent == null || o.item == null) return null
+  const rows = s.agents.decisions[o.agent]
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]
+    if (r && r.value != null && r.item === o.item && r.counterparty === o.counterparty && (o.tick == null || r.tick <= o.tick)) return r.value
+  }
+  return null
+}
+
+function dealOf(s: State, row: OutcomeRow): Deal {
+  const value = row.value ?? dealerValue(s, row)
+  const edge = row.surplus ?? (value != null && row.price != null ? (row.side === 'sell' ? row.price - value : value - row.price) : null)
+  return { row, value, edge, verdict: edge == null ? null : edge > 0 ? 'beat' : edge < 0 ? 'below' : 'even' }
+}
+
+/** Every settled deal we know of, newest first: trades and dealer fills (a duel is scored, not settled on the board). */
+export function settledDeals(s: State): Deal[] {
+  return [...s.agents.outcomes].reverse().filter((o) => o.target !== 'duel' && settled(o)).map((o) => dealOf(s, o))
 }
 
 /** The scored deals, newest first: did each beat our value, and was Jev right? */
 export function deals(s: State, limit = 6): Deal[] {
   return [...s.agents.outcomes]
     .reverse()
+    .filter(settled)
     .slice(0, limit)
-    .map((row) => {
-      const edge = row.surplus ?? (row.value != null && row.price != null ? (row.side === 'sell' ? row.price - row.value : row.value - row.price) : null)
-      return { row, edge, verdict: edge == null ? null : edge > 0 ? 'beat' : edge < 0 ? 'below' : 'even' }
-    })
+    .map((row) => dealOf(s, row))
+}
+
+/** Dealer threads our agents opened and have not closed, opened within the last game hour (older ones lapsed). */
+export function openDealerThreads(s: State): number {
+  const since = s.tick - ticksPerHour(s.tickSeconds)
+  let open = 0
+  for (const a of AGENTS) {
+    const live = new Map<string, number>()
+    for (const r of s.agents.decisions[a]) {
+      const key = `${r.item ?? ''}|${r.counterparty ?? ''}`
+      if (r.kind === 'dealer_opened') live.set(key, r.tick)
+      else if (r.kind === 'dealer_closed') live.delete(key)
+    }
+    for (const tick of live.values()) if (tick >= since) open += 1
+  }
+  return open
+}
+
+/** The latest decision across agents, by id, that the test says yes to. */
+export function latestDecision(s: State, keep: (r: DecisionRow) => boolean): DecisionRow | null {
+  let best: DecisionRow | null = null
+  for (const a of AGENTS) {
+    const rows = s.agents.decisions[a]
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const r = rows[i]
+      if (r && keep(r)) {
+        if (!best || r.decision > best.decision) best = r
+        break
+      }
+    }
+  }
+  return best
 }

@@ -55,7 +55,14 @@ export interface GameStrings {
   }
   /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agent names and rule ids stay as the agents write them. */
   readonly decide: {
-    readonly idle: (agent: string, last: number | null) => string
+    readonly idle: (agents: readonly { readonly agent: string; readonly last: number | null }[]) => string
+    /** A run of the same refusal, folded into one row. */
+    readonly run: (n: number, from: number, to: number) => string
+    /** A decision kind as the page names it: the agents' own id, except a deploy restart. */
+    readonly kind: (kind: string) => string
+    /** "Now" from the agents' decisions: what it went for, why, and what it sent. */
+    readonly goal: (agent: string, kind: string, item: string | null, counterparty: string | null) => string
+    readonly did: (agent: string, method: string, item: string | null, price: string | null) => string
     readonly status: Readonly<Record<DecisionStatus, string>>
     readonly allowed: string
     readonly noCheck: string
@@ -80,6 +87,7 @@ export interface GameStrings {
     readonly even: string
     readonly below: string
     readonly unscored: string
+    readonly noValue: string
     readonly jevRight: string
     readonly jevWrong: string
     readonly target: Readonly<Record<'trade' | 'dealer' | 'duel', string>>
@@ -311,7 +319,11 @@ const EN: GameStrings = {
     deals: (n) => plural(n, 'deal', 'deals'),
   },
   decide: {
-    idle: (agent, last) => `${agent}: no decision this tick${last != null ? ` (last at tick ${last})` : ''}`,
+    idle: (agents) => `no decision this tick: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (last at tick ${last})` : ''}`).join(', ')}`,
+    run: (n, from, to) => `×${n}, ticks ${from}–${to}`,
+    kind: (kind) => (kind === 'process_started' ? 'restart (deploy)' : kind),
+    goal: (agent, kind, item, counterparty) => `${agent}: ${kind}${item ? ` ${item}` : ''}${counterparty ? ` · ${counterparty}` : ''}`,
+    did: (agent, method, item, price) => `${agent}: ${method}${item ? ` ${item}` : ''}${price ? ` at ${price}` : ''}`,
     status: { proposed: 'proposed', approved: 'approved', rejected: 'rejected', claimed: 'claimed', done: 'done', failed: 'failed', expired: 'expired' },
     allowed: 'guardrails ok',
     noCheck: 'no guardrail check',
@@ -336,6 +348,7 @@ const EN: GameStrings = {
     even: 'at our value',
     below: 'below our value',
     unscored: 'not scored yet',
+    noValue: 'no value',
     jevRight: 'Jev right',
     jevWrong: 'Jev wrong',
     target: { trade: 'trade', dealer: 'dealer', duel: 'duel' },
@@ -581,7 +594,11 @@ const ES: GameStrings = {
     deals: (n) => plural(n, 'trato', 'tratos'),
   },
   decide: {
-    idle: (agent, last) => `${agent}: sin decisión este turno${last != null ? ` (la última en el turno ${last})` : ''}`,
+    idle: (agents) => `sin decisión este turno: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (la última en el turno ${last})` : ''}`).join(', ')}`,
+    run: (n, from, to) => `×${n}, turnos ${from}–${to}`,
+    kind: (kind) => (kind === 'process_started' ? 'reinicio (deploy)' : kind),
+    goal: (agent, kind, item, counterparty) => `${agent}: ${kind}${item ? ` ${item}` : ''}${counterparty ? ` · ${counterparty}` : ''}`,
+    did: (agent, method, item, price) => `${agent}: ${method}${item ? ` ${item}` : ''}${price ? ` a ${price}` : ''}`,
     status: { proposed: 'propuesta', approved: 'aprobada', rejected: 'rechazada', claimed: 'reservada', done: 'hecha', failed: 'fallida', expired: 'caducada' },
     allowed: 'límites ok',
     noCheck: 'sin control de límites',
@@ -606,6 +623,7 @@ const ES: GameStrings = {
     even: 'igual que nuestro valor',
     below: 'por debajo de nuestro valor',
     unscored: 'sin puntuar',
+    noValue: 'sin valor',
     jevRight: 'Jev acertó',
     jevWrong: 'Jev falló',
     target: { trade: 'compraventa', dealer: 'tratante', duel: 'duelo' },
