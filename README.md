@@ -51,7 +51,10 @@ npm run test:coverage  # with v8 coverage
 | `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) is ElevenLabs v4 when the server has its key, else captions only: no browser-voice or Gemini stand-in. `webspeech` and `gemini` are for development, by name. The header's picker offers ElevenLabs v4 or no voice. |
 
 Keyboard: **M** mutes and unmutes. Browsers only let a page speak after a click, so the show opens
-with a "Start the show with sound / Watch muted" gate.
+with a "Start the show with sound / Watch muted" gate. The tab remembers the answer (sessionStorage),
+and every later mute or unmute replaces it: a reload goes straight to the show with the same sound (with
+sound, the voices wait for the first tap or key anywhere), a new tab asks again. Blocked storage (a private
+window) only means the gate asks again after a reload.
 
 ## Data (public, read-only)
 
