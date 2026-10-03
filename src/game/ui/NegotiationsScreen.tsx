@@ -1,7 +1,9 @@
 import type { MouseEvent } from 'react'
 import { hrefOf, navigate, setParam, useParam } from '../../ui/route'
 import { useDuelStrings } from '../duelStrings.ts'
+import { nameOfRef } from '../cards.ts'
 import { fmtP } from '../game.ts'
+import { ruleName, whoName } from '../humanize.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
@@ -41,7 +43,7 @@ function NegCard({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSe
         <span className="neg-head">
           <Pill state={r.state} />
           <span className="neg-who" title={r.with}>
-            {r.with}
+            {whoName(t, r.with)}
           </span>
           <span className="neg-side">{r.side === 'buy' ? t.neg.buying : t.neg.selling}</span>
           <RefChip topic={r.topic} />
@@ -67,7 +69,7 @@ function NegCard({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSe
             </span>
           </span>
           <Fig label={t.neg.value} value={r.value} title={t.neg.valueTitle} />
-          {r.cap && <Fig label={t.neg.cap} value={r.cap.cap} title={t.neg.capTitle(r.cap.rule, r.cap.own)} warn={capWarn} />}
+          {r.cap && <Fig label={t.neg.cap} value={r.cap.cap} title={t.neg.capTitle(ruleName(t, r.cap.rule), r.cap.own)} warn={capWarn} />}
         </span>
         <span className="neg-verdict" data-state={r.state}>
           {t.neg.verdict(r.verdict, r.side)}
@@ -79,7 +81,7 @@ function NegCard({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSe
               {t.neg.action[n.action]}
               {n.price != null && ` ${fmtP(n.price)}`}
             </b>
-            <span>{blocked && n.rule ? t.neg.blockedBy(n.rule) : t.neg.decision[n.status]}</span>
+            <span>{blocked && n.rule ? t.neg.blockedBy(ruleName(t, n.rule)) : t.neg.decision[n.status]}</span>
             {blocked && n.text && <span className="neg-next-why">{n.text}</span>}
           </span>
         )}
@@ -111,7 +113,7 @@ function EndedLine({ g, selected, onSelect }: { g: EndedGroup; selected: number 
       <button type="button" className="neg-ended" aria-current={g.rows.some((x) => x.id === selected) ? 'true' : undefined} onClick={() => onSelect(r.id)}>
         <Pill state={r.state} />
         <span className="neg-who" title={r.with}>
-          {r.with}
+          {whoName(t, r.with)}
         </span>
         <RefChip topic={r.topic} />
         {many && (
@@ -194,7 +196,7 @@ function Worked({ rows }: { rows: DealerTactics[] }) {
         {rows.map((d) => (
           <li key={d.with} className="neg-worked-row">
             <span className="neg-who" title={d.with}>
-              {d.with}
+              {whoName(t, d.with)}
             </span>
             <span className="neg-ended-meta">{t.neg.workedDealer(d.threads, d.deals)}</span>
             {d.tactics.map((x) => (
@@ -252,7 +254,7 @@ export function NegotiationsScreen() {
         )}
       </Panel>
       <div className="gm-split neg-split">
-        <Panel title={t.neg.conversation} sub={convo ? t.neg.with(convo.thread.with, convo.thread.topic) : undefined}>
+        <Panel title={t.neg.conversation} sub={convo ? t.neg.with(whoName(t, convo.thread.with), nameOfRef(convo.thread.topic) ?? convo.thread.topic) : undefined}>
           <ConversationView convo={convo} />
         </Panel>
         {ended.length > 0 && (

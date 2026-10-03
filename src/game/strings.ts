@@ -367,7 +367,7 @@ export interface GameStrings {
     readonly forUs: string
     readonly forUsTitle: string
     readonly more: (n: number) => string
-    readonly expiresIn: (ticks: number, minutes: number | null) => string
+    readonly expiresIn: (ticks: number, seconds: number | null) => string
     readonly from: (maker: string, venue: string) => string
     readonly untaken: (age: number) => string
     readonly agentSaid: (agent: string, status: string, rule: string | null) => string
@@ -990,7 +990,7 @@ const EN: GameStrings = {
     forUs: 'for us',
     forUsTitle: 'Addressed to our team alone',
     more: (n) => `+${n} more`,
-    expiresIn: (ticks, minutes) => (ticks <= 0 ? 'expires now' : `expires in ${ticks}t${minutes == null ? '' : ` · ~${minutes} min`}`),
+    expiresIn: (ticks, seconds) => (ticks <= 0 ? 'expires now' : `expires ${HUM_EN.within(ticks, seconds)}`),
     from: (maker, venue) => `${maker} on ${venue}`,
     untaken: (age) => `Up for ${plural(age, 'tick', 'ticks')} and our agents have not taken it`,
     agentSaid: (agent, status, rule) => `${agent}: ${status}${rule ? ` · ${rule}` : ''}`,
@@ -1542,7 +1542,7 @@ const ES: GameStrings = {
     forUs: 'para nosotros',
     forUsTitle: 'Dirigida solo a nuestro equipo',
     more: (n) => `+${n} más`,
-    expiresIn: (ticks, minutes) => (ticks <= 0 ? 'caduca ya' : `caduca en ${ticks}t${minutes == null ? '' : ` · ~${minutes} min`}`),
+    expiresIn: (ticks, seconds) => (ticks <= 0 ? 'caduca ya' : `caduca ${HUM_ES.within(ticks, seconds)}`),
     from: (maker, venue) => `${maker} en ${venue}`,
     untaken: (age) => `Lleva ${plural(age, 'turno', 'turnos')} y nuestros agentes no la han cogido`,
     agentSaid: (agent, status, rule) => `${agent}: ${status}${rule ? ` · ${rule}` : ''}`,

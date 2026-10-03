@@ -1,4 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
+import { nameOfRef } from '../cards.ts'
 import { fmtP, RARITY_COLOR, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
@@ -87,7 +88,7 @@ function MovesPanel({ moves }: { moves: Moves }) {
             <li key={m.ref} className="alb-move">
               <span className="alb-what">
                 <Rar rarity={m.rarity} />
-                <b className="gm-mono">{m.ref}</b>
+                <b title={m.ref}>{nameOfRef(m.ref) ?? m.ref}</b>
                 <span className="gm-muted">{m.page}</span>
                 {m.completes && <Badge tone="good">{t.album.completes[m.completes]}</Badge>}
               </span>
@@ -101,7 +102,7 @@ function MovesPanel({ moves }: { moves: Moves }) {
             <li key={m.ref} className="alb-move">
               <span className="alb-what">
                 <Rar rarity={m.rarity} />
-                <b className="gm-mono">{m.ref}</b>
+                <b title={m.ref}>{nameOfRef(m.ref) ?? m.ref}</b>
                 <span className="gm-muted">{m.why === 'spare' ? t.album.spareOf(m.count) : t.album.lowSet}</span>
               </span>
               <Net v={m.net} estimate={m.estimate} />
@@ -124,7 +125,7 @@ function MovesPanel({ moves }: { moves: Moves }) {
                 <i style={{ width: `${(m.have / Math.max(1, m.of)) * 100}%` }} />
               </span>
               <span className="alb-how">
-                {t.album.needs(m.missing.map((x) => `${x.ref} ${where(x.quote, 'ask')}`).join(' + '))}
+                {t.album.needs(m.missing.map((x) => `${nameOfRef(x.ref) ?? x.ref} ${where(x.quote, 'ask')}`).join(' + '))}
                 <br />
                 {t.album.pays(fmtP(m.gain), fmtP(m.bonus), fmtP(m.cost))}
               </span>

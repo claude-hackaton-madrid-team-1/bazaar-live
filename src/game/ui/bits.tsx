@@ -121,11 +121,12 @@ export function RefChip({ topic }: { topic: string }) {
 
 export function Expiry({ left }: { left: number | null }) {
   const t = useGameStrings()
+  const { state } = useGame()
   if (left == null) return null
   if (left < 0) return <Badge tone="bad" title={t.badge.expiredTitle}>{t.badge.expired}</Badge>
   return (
     <Badge tone={left <= 1 ? 'warn' : 'neutral'} title={t.badge.expiresTitle}>
-      ⏱ {left}t
+      ⏱ {t.hum.span(left, left * state.tickSeconds)}
     </Badge>
   )
 }

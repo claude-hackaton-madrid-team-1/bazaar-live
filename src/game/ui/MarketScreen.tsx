@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import type { DecisionStatus } from '../../../shared/decisions.ts'
+import { agentName, ruleName, spanText, whoName } from '../humanize.ts'
 import { fmtP, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
@@ -30,11 +32,6 @@ function WorthText({ worth }: { worth: Worth | null }) {
   return <span title={worth.estimated ? t.market.estimated : undefined}>{worth.estimated ? `~${fmtP(worth.value)}` : fmtP(worth.value)}</span>
 }
 
-const minutesOf = (ticks: number | null, tickSeconds: number): number | null => {
-  if (ticks == null || ticks <= 0) return null
-  const m = Math.round((ticks * tickSeconds) / 60)
-  return m >= 1 ? m : null
-}
 
 // ---------------------------------------------------------------- right now for us
 
@@ -67,8 +64,8 @@ function Opp({ o, tickSeconds }: { o: Opportunity; tickSeconds: number }) {
         <span>
           {t.market.worth} <b><WorthText worth={{ value: o.value, estimated: o.estimated }} /></b>
         </span>
-        <span>{t.market.from(o.maker, o.venueName)}</span>
-        {o.expiresIn != null && <span data-soon={o.expiresIn <= 2 || undefined}>⏱ {t.market.expiresIn(o.expiresIn, minutesOf(o.expiresIn, tickSeconds))}</span>}
+        <span>{t.market.from(whoName(t, o.maker), o.venueName)}</span>
+        {o.expiresIn != null && <span data-soon={o.expiresIn <= 2 || undefined}>⏱ {t.market.expiresIn(o.expiresIn, o.expiresIn * tickSeconds)}</span>}
         {o.more > 0 && <span className="gm-muted">{t.market.more(o.more)}</span>}
         <EventLink id={o.eventId}>↗</EventLink>
       </div>
@@ -77,7 +74,7 @@ function Opp({ o, tickSeconds }: { o: Opportunity; tickSeconds: number }) {
           <span>
             <span aria-hidden="true">⚑</span> {t.market.untaken(o.age)}
           </span>
-          <span className="mkt-flag-why">{o.agent ? t.market.agentSaid(o.agent.agent, o.agent.status, o.agent.rule) : t.market.noAgent}</span>
+          <span className="mkt-flag-why">{o.agent ? t.market.agentSaid(agentName(t, o.agent.agent), t.decide.status[o.agent.status as DecisionStatus] ?? o.agent.status, o.agent.rule ? ruleName(t, o.agent.rule) : null) : t.market.noAgent}</span>
         </p>
       )}
     </li>
@@ -124,7 +121,7 @@ function OurOffers({ rows, tickSeconds }: { rows: OurOffer[]; tickSeconds: numbe
               {t.market.worth} <WorthText worth={o.worth} />
             </span>
             <span className="gm-muted">{o.venueName}</span>
-            {o.expiresIn != null && <span data-soon={o.expiresIn <= 2 || undefined}>⏱ {t.market.expiresIn(o.expiresIn, minutesOf(o.expiresIn, tickSeconds))}</span>}
+            {o.expiresIn != null && <span data-soon={o.expiresIn <= 2 || undefined}>⏱ {t.market.expiresIn(o.expiresIn, o.expiresIn * tickSeconds)}</span>}
             {o.beatenBy != null ? (
               <Badge tone="warn">{t.market.beatenBy(fmtP(o.beatenBy))}</Badge>
             ) : (
@@ -173,7 +170,7 @@ function Tape({ rows, team }: { rows: TapeRow[]; team: string }) {
   const venueName = (id: string) => store.state.venues.get(id)?.name ?? id
   const t = useGameStrings()
   if (!rows.length) return <Empty>{t.market.noTrades}</Empty>
-  const party = (p: string) => <span data-tone={p === team ? 'us' : undefined}>{p}</span>
+  const party = (p: string) => <span data-tone={p === team ? 'us' : undefined}>{whoName(t, p)}</span>
   return (
     <div className="gm-scroll gm-scroll-tall">
       <table className="gm-table">
@@ -208,12 +205,13 @@ function Tape({ rows, team }: { rows: TapeRow[]; team: string }) {
 /** The best offer on one side: price, maker and age, or a dash. */
 function QuoteCell({ q, team }: { q: Quote | null; team: string }) {
   const t = useGameStrings()
+  const { state } = useGame()
   if (!q) return <td className="gm-r gm-muted">—</td>
   return (
     <td className="gm-r gm-quote">
-      <b>{fmtP(q.price)}</b> <span data-tone={q.maker === team ? 'us' : undefined}>{q.maker}</span>{' '}
+      <b>{fmtP(q.price)}</b> <span data-tone={q.maker === team ? 'us' : undefined}>{whoName(t, q.maker)}</span>{' '}
       <span className="gm-muted" title={q.age == null ? undefined : t.market.age(q.age)}>
-        {q.age == null ? '' : `${q.age}t`}
+        {q.age == null ? '' : spanText(t, state, q.age)}
       </span>
     </td>
   )
@@ -231,7 +229,7 @@ function OrderBook({ books, team }: { books: VenueBook[]; team: string }) {
             <tr className="gm-group">
               <td colSpan={5}>
                 <b>{v.name}</b>
-                {v.owner && <span data-tone={v.owner === team ? 'us' : undefined}> · {v.owner}</span>}
+                {v.owner && <span data-tone={v.owner === team ? 'us' : undefined}> · {whoName(t, v.owner)}</span>}
                 <span className="gm-muted">
                   {' '}
                   · {t.market.offers(v.offers)}
@@ -269,7 +267,7 @@ function Venues({ venues, team }: { venues: VenueRow[]; team: string }) {
         <li key={v.id} data-ours={v.ours || undefined} title={v.announcement ? `“${v.announcement.text}”` : undefined}>
           <b>{v.name}</b>
           <span className="gm-muted">
-            {v.owner && <span data-tone={v.owner === team ? 'us' : undefined}>{v.owner} · </span>}
+            {v.owner && <span data-tone={v.owner === team ? 'us' : undefined}>{whoName(t, v.owner)} · </span>}
             {t.market.offers(v.offers)}
             {(v.feeBps != null || v.feePerCard != null) && ` · ${t.market.fee(v.feeBps, v.feePerCard)}`}
           </span>
