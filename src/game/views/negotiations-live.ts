@@ -6,7 +6,7 @@
 import { nameOfRef } from '../cards.ts'
 import { rarityOf, setOf, type Rarity } from '../game.ts'
 import type { BookOffer, State } from '../state.ts'
-import type { TeamSide, TeamThread } from '../teamThreads.ts'
+import { TEAM_ID, type TeamSide, type TeamThread } from '../teamThreads.ts'
 import { liveDuel } from './duels.ts'
 import { needs } from './market.ts'
 import { negRows, type NegRow } from './negotiations.ts'
@@ -68,7 +68,7 @@ const MARK_ORDER: Readonly<Record<Mark, number>> = { ours: 0, forUs: 1, missing:
 function kindOf(s: State, venue: string, owner: string | null): BoardKind {
   if (s.team && owner === s.team) return 'ours'
   if (venue === 'rastro') return 'rastro'
-  return owner != null && /^t\d{1,3}$/.test(owner) ? 'team' : 'other'
+  return owner != null && TEAM_ID.test(owner) ? 'team' : 'other'
 }
 
 const KIND_ORDER: Readonly<Record<BoardKind, number>> = { ours: 0, rastro: 1, team: 2, other: 3 }
