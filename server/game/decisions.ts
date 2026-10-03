@@ -12,24 +12,37 @@ import { cleanInt, cleanItem, cleanName } from '../../shared/clean.ts'
 import {
   AGENTS, DECISION_STATUSES, type AgentName, type DecisionPayload, type GuardrailLimits, type LedgerPayload, type LedgerTick, type OutcomeLabel, type OutcomePayload,
 } from '../../shared/decisions.ts'
+import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import { redact, type Db } from '../transcript/poller.ts'
 import type { GameEvent } from './relay.ts'
 
-/** GUARDRAILS.md on bazaar main, 3 Oct: `max_spend_per_game_hour` 150, `cash_floor` 50 (our venue is open, so no
- * bond reserve on top), `max_accepts_per_tick` 1. Not in the database: the GUARDRAIL_* variables follow an edit. */
-export const DEFAULT_LIMITS: GuardrailLimits = { spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 }
-
-const limit = (raw: string | undefined, fallback: number): number => {
-  const n = Number(raw)
-  return raw !== undefined && raw.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 10_000_000 ? n : fallback
+/** GUARDRAILS.md as shared/guardrails.ts copies it (bazaar#216: `cash_floor` 20, `max_spend_per_game_hour` 250). Not in
+ * the database: a GUARDRAIL_* variable overrides one until the docs follow an edit. */
+export const DEFAULT_LIMITS: GuardrailLimits = {
+  spendPerHour: GUARDRAILS_DOC.maxSpendPerHour,
+  cashFloor: GUARDRAILS_DOC.cashFloor,
+  acceptsPerTick: GUARDRAILS_DOC.acceptsPerTick,
+  bondReserve: GUARDRAILS_DOC.allowVenueOpen ? GUARDRAILS_DOC.venueBondReserve : 0,
 }
 
+const limit = (raw: string | undefined): number | null => {
+  const n = Number(raw)
+  return raw !== undefined && raw.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= 10_000_000 ? n : null
+}
+
+const ENV = { spendPerHour: 'GUARDRAIL_SPEND_PER_HOUR', cashFloor: 'GUARDRAIL_CASH_FLOOR', acceptsPerTick: 'GUARDRAIL_ACCEPTS_PER_TICK' } as const
+
+/** The docs' limits, each one a valid GUARDRAIL_* variable sets instead (named in `fromEnv`). */
 export function readLimits(env: Readonly<Record<string, string | undefined>>): GuardrailLimits {
-  return {
-    spendPerHour: limit(env.GUARDRAIL_SPEND_PER_HOUR, DEFAULT_LIMITS.spendPerHour),
-    cashFloor: limit(env.GUARDRAIL_CASH_FLOOR, DEFAULT_LIMITS.cashFloor),
-    acceptsPerTick: limit(env.GUARDRAIL_ACCEPTS_PER_TICK, DEFAULT_LIMITS.acceptsPerTick),
+  const out: { -readonly [K in keyof GuardrailLimits]: GuardrailLimits[K] } = { ...DEFAULT_LIMITS }
+  const fromEnv: (keyof typeof ENV)[] = []
+  for (const key of Object.keys(ENV) as (keyof typeof ENV)[]) {
+    const v = limit(env[ENV[key]])
+    if (v === null) continue
+    out[key] = v
+    fromEnv.push(key)
   }
+  return fromEnv.length ? { ...out, fromEnv } : out
 }
 
 const DECISION_COLUMNS = `id, tick, agent, kind, item, counterparty, price, our_value, status, verdict, rule, rule_text, jev_verdict, jev_value, exec_method, error_code, outcome_label, realized_surplus, jev_right`
@@ -145,7 +158,7 @@ export function outcomeOf(row: unknown): { tick: number | null; payload: Outcome
   }
 }
 
-export function ledgerOf(rows: readonly unknown[], limits: GuardrailLimits): LedgerPayload {
+export function ledgerOf(rows: readonly unknown[], limits: GuardrailLimits, venue: boolean | null = null): LedgerPayload {
   const ticks: LedgerTick[] = []
   for (const r of rows) {
     if (!isRow(r)) continue
@@ -154,7 +167,7 @@ export function ledgerOf(rows: readonly unknown[], limits: GuardrailLimits): Led
     if (tick === null || t === null) continue
     ticks.push({ tick, t, spent: numOf(r.spent) ?? 0, accepts: cleanInt(r.accepts) ?? 0, listings: cleanInt(r.listings) ?? 0 })
   }
-  return { ticks, limits }
+  return { ticks, limits, venue }
 }
 
 const STAMP_TEXT = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/
@@ -182,6 +195,8 @@ export interface DecisionsPollerDeps {
   readonly hub: Publisher
   readonly log: (entry: Record<string, unknown>) => void
   readonly limits?: GuardrailLimits
+  /** Whether we run our own venue now (the Strategy poller's last read), or null; asked at every ledger read. */
+  readonly venue?: () => boolean | null
   readonly intervalMs?: number
   /** Rows per poll and per view. */
   readonly cap?: number
@@ -225,7 +240,7 @@ export class DecisionsPoller {
   constructor(deps: DecisionsPollerDeps) {
     this.deps = deps
     this.o = {
-      limits: DEFAULT_LIMITS, intervalMs: 3000, cap: 200, backfill: 300, idWindow: 300, outcomeBackfill: 100, recheckMs: 60_000, maxDelayMs: 60_000,
+      limits: DEFAULT_LIMITS, venue: () => null, intervalMs: 3000, cap: 200, backfill: 300, idWindow: 300, outcomeBackfill: 100, recheckMs: 60_000, maxDelayMs: 60_000,
       secrets: [], random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
@@ -364,7 +379,7 @@ export class DecisionsPoller {
   }
 
   private async readLedger(): Promise<GameEvent[]> {
-    const ledger = ledgerOf((await this.deps.db.query(SQL.ledger, [1000])).rows, this.o.limits)
+    const ledger = ledgerOf((await this.deps.db.query(SQL.ledger, [1000])).rows, this.o.limits, this.o.venue())
     const sig = JSON.stringify(ledger)
     if (sig === this.ledgerSent) return []
     this.ledgerSent = sig
@@ -387,7 +402,13 @@ export interface Decisions {
 /** Off (and says why, once) without the show's database or without the game hub; else polling. */
 export function startDecisions(
   env: Readonly<Record<string, string | undefined>>,
-  deps: { readonly db: Db | null; readonly hub: Publisher | null; readonly log: (entry: Record<string, unknown>) => void; readonly secrets?: readonly string[] },
+  deps: {
+    readonly db: Db | null
+    readonly hub: Publisher | null
+    readonly log: (entry: Record<string, unknown>) => void
+    readonly secrets?: readonly string[]
+    readonly venue?: () => boolean | null
+  },
 ): Decisions {
   const off: Decisions = { stop: () => undefined, poke: () => false }
   if (deps.db === null) {
@@ -398,7 +419,7 @@ export function startDecisions(
     deps.log({ route: 'agent_decisions', event: 'off', reason: 'no_game' })
     return off
   }
-  const poller = new DecisionsPoller({ db: deps.db, hub: deps.hub, log: deps.log, limits: readLimits(env), secrets: deps.secrets ?? [] })
+  const poller = new DecisionsPoller({ db: deps.db, hub: deps.hub, log: deps.log, limits: readLimits(env), secrets: deps.secrets ?? [], ...(deps.venue ? { venue: deps.venue } : {}) })
   poller.start()
   deps.log({ route: 'agent_decisions', event: 'polling' })
   return { stop: () => poller.stop(), poke: () => poller.poke() }

@@ -4,21 +4,23 @@
  */
 import { useMemo, type MouseEvent } from 'react'
 import { hrefOf, navigate } from '../../ui/route'
-import { GUARDRAILS_DOC, GUARDRAILS_DOC_SOURCE } from '../guardrailsDoc.ts'
+import { GUARDRAILS_DOC, GUARDRAILS_DOC_SOURCE } from '../../../shared/guardrails.ts'
+import type { Release } from '../limits.ts'
 import { useGame } from '../store.ts'
 import { pagePush } from '../fresh.ts'
 import { useStrategy } from '../strategy.ts'
 import { p, useStrategyStrings } from '../strategyStrings.ts'
 import { liveDuels } from '../views/duels.ts'
 import {
-  bindingOf, blockedBuys, boardOf, holdingsOf, jevVetoOf, leversOf, nowTickOf, planOf, rulesOf, unblockOf, windowOf, WINDOW_TICKS,
-  type BlockedBuy, type Binding, type KeptPage, type Levers, type Plan, type RuleValue, type Spare, type SpareWhy,
+  bindingOf, blockedBuys, boardOf, currentLimit, holdingsOf, mainNow, jevVetoOf, leversOf, nowTickOf, planOf, rulesOf, unblockOf, windowOf, WINDOW_TICKS,
+  type BlockedBuy, type KeptPage, type Levers, type Plan, type RuleValue, type Spare, type SpareWhy,
 } from '../views/strategy.ts'
 import { nameOfRef } from '../cards.ts'
 import { agoText } from '../humanize.ts'
 import { useGameStrings } from '../strings.ts'
-import { nowTick } from '../views/decisions.ts'
+import { ledger, nowTick } from '../views/decisions.ts'
 import { Badge, CardRef, Empty, Fresh, Panel } from './bits.tsx'
+import { MoneyLevers } from './Money.tsx'
 import { Ago } from './words.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 
@@ -32,7 +34,7 @@ function Cap({ v }: { v: RuleValue }) {
   )
 }
 
-function Aim({ plan, levers, binding }: { plan: Plan; levers: Levers; binding: Binding['rule'] }) {
+function Aim({ plan, levers, release }: { plan: Plan; levers: Levers; release: Release | null }) {
   const t = useStrategyStrings()
   const spareSets = plan.spareSets.filter((s) => !s.protected).map((s) => `${s.name} ×${s.affinity}`)
   const protectedSets = plan.spareSets.filter((s) => s.protected).map((s) => s.name)
@@ -60,27 +62,8 @@ function Aim({ plan, levers, binding }: { plan: Plan; levers: Levers; binding: B
         <li>{t.sell(GUARDRAILS_DOC.sellMinSurplus, spareSets.join(', '), protectedSets.join(', '))}</li>
         {plan.venue && <li>{t.venue(plan.venue)}</li>}
       </ul>
+      <MoneyLevers money={levers} release={release} />
       <dl className="st-levers">
-        {binding !== 'cash_floor' && (
-        <div>
-          <dt>{t.room}</dt>
-          <dd>
-            <b className="st-big">{p(levers.cashRoom)}</b>
-            <span className="gm-muted">
-              {levers.cash !== null && t.roomSub(levers.cash, levers.floor.value)}
-            </span>
-          </dd>
-        </div>
-        )}
-        {binding !== 'max_spend_per_game_hour' && (
-        <div>
-          <dt>{t.spend}</dt>
-          <dd>
-            <b className="st-big">{p(levers.spent)}</b>
-            <span className="gm-muted">{t.spendSub(levers.maxSpend.value)}</span>
-          </dd>
-        </div>
-        )}
         <div>
           <dt>{t.caps}</dt>
           <dd className="st-caps">
@@ -96,8 +79,11 @@ function Aim({ plan, levers, binding }: { plan: Plan; levers: Levers; binding: B
   )
 }
 
-function BlockedRow({ b }: { b: BlockedBuy }) {
+/** A refused buy. A money rule keeps its number only while it is still the rule's value now (an old `cash_floor 50` is not). */
+function BlockedRow({ b, levers }: { b: BlockedBuy; levers: Levers }) {
   const t = useStrategyStrings()
+  const now = <R extends { rule: BlockedBuy['rules'][number]['rule']; limit: number | null }>(r: R): R => ({ ...r, limit: currentLimit(r, levers) })
+  const main = mainNow(b, levers)
   return (
     <li className="st-block" data-held={b.heldNow || undefined}>
       <span className="st-block-card">
@@ -110,9 +96,9 @@ function BlockedRow({ b }: { b: BlockedBuy }) {
         {b.surplus !== null && <b className={b.surplus > 0 && !b.heldNow ? 'gm-good' : 'gm-muted'}>{b.surplus >= 0 ? '+' : '−'}{Math.abs(b.surplus)}</b>}
       </span>
       <span className="st-block-rule">
-        {b.main && (
-          <Badge tone={b.heldNow ? 'neutral' : 'bad'} title={t.ruleTitle[b.main.rule]}>
-            {t.rule(b.main)}
+        {main && (
+          <Badge tone={b.heldNow ? 'neutral' : 'bad'} title={t.ruleTitle[main.rule]}>
+            {t.rule(now(main))}
           </Badge>
         )}
         <span className="gm-muted">
@@ -128,7 +114,7 @@ function BlockedRow({ b }: { b: BlockedBuy }) {
           <ul>
             {b.rules.map((r) => (
               <li key={`${r.rule}${r.rarity ?? ''}${r.text ?? ''}`} title={t.ruleTitle[r.rule]}>
-                {t.rule(r)} ×{r.count}
+                {t.rule(now(r))} ×{r.count}
               </li>
             ))}
           </ul>
@@ -241,7 +227,7 @@ export function StrategyScreen() {
   const v = useMemo(() => {
     const now = nowTickOf(snapshot)
     const win = windowOf(snapshot.decisions, now)
-    const rules = rulesOf(snapshot.decisions)
+    const rules = rulesOf(snapshot.decisions, now, snapshot.limits ?? null)
     const levers = leversOf(snapshot, rules)
     const blocked = blockedBuys(snapshot, win)
     const binding = bindingOf(blocked, levers)
@@ -252,6 +238,8 @@ export function StrategyScreen() {
   }, [snapshot])
   const onHold = liveDuels(store.state).filter((d) => d.state !== 'inside').length
   const { plan, levers, blocked, binding, unblock, board, jev, holdings } = v
+  // when the hour's rolling window next frees spend: the agents' ledger on the game stream (nothing to free at 0 spent)
+  const release = levers.spent ? (ledger(store.state)?.release ?? null) : null
   const albumCopies = holdings.pages.reduce((sum, pg) => sum + pg.cards.length, 0)
   const listed = holdings.onSale.reduce((sum, s) => sum + s.onSale, 0)
   const spareNotListed = holdings.notListed.reduce((sum, s) => sum + s.copies, 0)
@@ -262,7 +250,7 @@ export function StrategyScreen() {
     <>
       {status !== 'live' && status !== 'mock' && <NoticeBar>{t.notice[status]}</NoticeBar>}
       {status === 'live' && missingParts.length > 0 && <NoticeBar>{`${missingParts.join(', ')}: ${t.missingView}`}</NoticeBar>}
-      <Aim plan={plan} levers={levers} binding={binding.rule} />
+      <Aim plan={plan} levers={levers} release={release} />
       <Panel
         title={t.why}
         sub={
@@ -301,7 +289,7 @@ export function StrategyScreen() {
           {blocked.length ? (
             <ul className="st-blocks">
               {blocked.map((b) => (
-                <BlockedRow key={b.card} b={b} />
+                <BlockedRow key={b.card} b={b} levers={levers} />
               ))}
             </ul>
           ) : (

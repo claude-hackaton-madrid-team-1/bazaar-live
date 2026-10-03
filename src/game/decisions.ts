@@ -63,5 +63,5 @@ export function applyOutcome(s: DecisionLog, e: GameEvent): void {
 export function applyLedger(s: DecisionLog, e: GameEvent): void {
   const p = e.payload as Partial<LedgerPayload>
   if (!Array.isArray(p.ticks) || typeof p.limits !== 'object' || p.limits === null) return
-  s.ledger = { ticks: p.ticks, limits: p.limits }
+  s.ledger = { ticks: p.ticks, limits: p.limits, venue: typeof p.venue === 'boolean' ? p.venue : null }
 }

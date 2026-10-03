@@ -4,6 +4,8 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { pollEvery, type PagePush } from './fresh.ts'
+import type { GuardrailLimits } from '../../shared/decisions.ts'
+import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import { EMPTY_STRATEGY, type CatalogCard, type HeldCard, type OpenAsk, type StrategyDecision, type StrategySnapshot } from '../../shared/strategy.ts'
 import { SETS } from './game.ts'
 
@@ -33,6 +35,7 @@ export function strategyStateOf(httpStatus: number, body: unknown, prev: Strateg
       decisions: list(body.decisions),
       asks: list(body.asks),
       cards: list(body.cards),
+      limits: isObject(body.limits) && typeof body.limits.cashFloor === 'number' && typeof body.limits.spendPerHour === 'number' ? (body.limits as unknown as GuardrailLimits) : null,
     },
   }
 }
@@ -112,7 +115,7 @@ export function mockStrategy(tick: number): StrategySnapshot {
   const decisions: StrategyDecision[] = []
   const push = (d: Omit<StrategyDecision, 'id' | keyof Defaults> & Partial<Defaults>) => decisions.push({ ...base, ...d, id: id-- })
   for (let k = 0; k < 9; k++) {
-    push({ tick: t - 4 - k * 5, agent: 'taker', kind: 'accept_ask', status: 'rejected', guardrail: `denied: cash 81 - ${k % 2 ? 83 : 79} < cash_floor 50`, card: 'MAL-10', rarity: 'rare', price: k % 2 ? 78 : 74, total: k % 2 ? 83 : 79, value: 113.4, surplus: 34.4, reason: 'worth 70×1.1 + bonus share 36.4 = 113.4; ask 74 + fee 5 on rastro = 79; 5/30 minted, 4 for sale, chased by t17' })
+    push({ tick: t - 4 - k * 5, agent: 'taker', kind: 'accept_ask', status: 'rejected', guardrail: `denied: cash 81 - ${k % 2 ? 83 : 79} < cash_floor ${GUARDRAILS_DOC.cashFloor}`, card: 'MAL-10', rarity: 'rare', price: k % 2 ? 78 : 74, total: k % 2 ? 83 : 79, value: 113.4, surplus: 34.4, reason: 'worth 70×1.1 + bonus share 36.4 = 113.4; ask 74 + fee 5 on rastro = 79; 5/30 minted, 4 for sale, chased by t17' })
   }
   for (let k = 0; k < 6; k++) {
     push({ tick: t - 2 - k * 3, agent: 'taker', kind: 'team_open', status: 'rejected', guardrail: null, allowed: true, card: 'LAT-07', giveCard: 'SAL-10', rarity: null, price: null, total: null, value: null, surplus: null, jevValue: 0.29 + k * 0.02, jevVerdict: 'undecided', jevReason: 'below_threshold', reason: `jev undecided (${(0.29 + k * 0.02).toFixed(2)} < 0.75 or not yes, below_threshold)` })
@@ -121,7 +124,7 @@ export function mockStrategy(tick: number): StrategySnapshot {
   push({ tick: t - 3, agent: 'maker', kind: 'post_ask', status: 'done', guardrail: null, allowed: true, card: 'LAT-03', rarity: 'common', price: 12, total: null, value: 6.8, surplus: null, reason: 'ours 5 + page bonus 1.8 (LAT ×0.5); nobody seen chasing LAT; tape LAT-03 ×2 9; spare: ours + 5' })
   push({ tick: t - 50, agent: 'maker', kind: 'cancel_ask', status: 'done', guardrail: null, allowed: true, card: 'LAT-02', rarity: null, price: 10, total: null, value: null, surplus: null, reason: 'LAT-02 is no longer a sell target' })
   for (let k = 0; k < 12; k++) {
-    push({ tick: t - 200 - k * 4, agent: 'taker', kind: 'accept_ask', status: 'rejected', guardrail: k % 3 ? 'denied: price 31 > max_price_uncommon 26' : 'denied: price 31 > max_price_uncommon 26; cash 57 - 31 < cash_floor 50', card: 'SAL-08', rarity: 'uncommon', price: 29, total: 31, value: 55.2, surplus: 24.2, reason: 'worth 25×1.3 + bonus share 22.7 = 55.2; ask 29 + fee 2 on rastro = 31' })
+    push({ tick: t - 200 - k * 4, agent: 'taker', kind: 'accept_ask', status: 'rejected', guardrail: k % 3 ? 'denied: price 31 > max_price_uncommon 26' : `denied: price 31 > max_price_uncommon 26; cash 45 - 31 < cash_floor ${GUARDRAILS_DOC.cashFloor}`, card: 'SAL-08', rarity: 'uncommon', price: 29, total: 31, value: 55.2, surplus: 24.2, reason: 'worth 25×1.3 + bonus share 22.7 = 55.2; ask 29 + fee 2 on rastro = 31' })
   }
   decisions.sort((a, b) => b.id - a.id)
   const ask = (offer: number, card: string, price: number, ours = false, to: string | null = null): OpenAsk => ({

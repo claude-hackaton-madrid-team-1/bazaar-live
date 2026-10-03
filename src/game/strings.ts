@@ -9,6 +9,7 @@ import type { GameStatus } from './store.ts'
 import type { Lane } from './views/agent.ts'
 import type { AgentName, DecisionStatus } from '../../shared/decisions.ts'
 import type { HealthError } from '../../shared/health.ts'
+import type { LimitSource } from './limits.ts'
 import type { ChipReason } from './views/health.ts'
 import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
 import { labelOf, rarityOfRule, type Denial, type ItemOf, type Who } from './humanize.ts'
@@ -112,6 +113,26 @@ export interface GameStrings {
     readonly nothingKind: string
     readonly now_: string
     readonly deals: (n: number) => string
+  }
+  /** Our money against its limits (../limits.ts): the header, the Agent screen and the Strategy screen say it alike. */
+  readonly money: {
+    readonly title: string
+    /** "Cash 190 · floor 20 · 170 available to buy". */
+    readonly cashLine: (cash: string, floor: string, available: string) => string
+    /** The header's chip beside our cash, before what we can buy with: "floor 20 · to buy". */
+    readonly chip: (floor: string) => string
+    /** The floor holds the venue's bond while our planned venue is not open. */
+    readonly reserve: (cashFloor: number, reserve: number) => string
+    readonly cashLabel: string
+    readonly spentLabel: string
+    /** The hour rolls: what leaves it next, and when ("frees 67 in ~12 min"). */
+    readonly release: (amount: string, when: string) => string
+    readonly rolling: string
+    /** The limit that stops a buy first. */
+    readonly binds: string
+    readonly available: string
+    /** Where a limit's value comes from, for its tooltip. */
+    readonly source: (source: LimitSource, tick: number | null) => string
   }
   /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agents, kinds and rules get their words from `hum` (via `../humanize.ts`). */
   readonly decide: {
@@ -586,8 +607,8 @@ const HUM_EN: GameStrings['hum'] = {
         const r = rarityOfRule(d.rule)
         return `costs ${d.price} P; our cap${r ? ` for ${RARITY_PL_EN[r] ?? r}` : ''} is ${d.cap} P`
       }
-      case 'cash': return `would leave us ${Math.round((d.cash - d.cost) * 10) / 10} P, under the ${d.floor} P floor`
-      case 'spend': return `we would spend ${Math.round((d.spent + d.cost) * 10) / 10} P this game hour; the cap is ${d.cap} P`
+      case 'cash': return `would leave us ${Math.round((d.cash - d.cost) * 10) / 10} P, under ${d.then ? `the floor of the time (${d.floor} P)` : `the ${d.floor} P floor`}`
+      case 'spend': return `we would spend ${Math.round((d.spent + d.cost) * 10) / 10} P this game hour; the cap ${d.then ? 'was' : 'is'} ${d.cap} P`
     }
   },
   ago: (ticks, seconds) => (ticks <= 0 ? 'now' : seconds == null ? `${plural(ticks, 'tick', 'ticks')} ago` : `${roughly(seconds)} ago`),
@@ -628,8 +649,8 @@ const HUM_ES: GameStrings['hum'] = {
         const r = rarityOfRule(d.rule)
         return `cuesta ${d.price} P; nuestro tope${r ? ` para ${RARITY_PL_ES[r] ?? r}` : ''} es ${d.cap} P`
       }
-      case 'cash': return `nos dejaría con ${Math.round((d.cash - d.cost) * 10) / 10} P, por debajo del suelo de ${d.floor} P`
-      case 'spend': return `gastaríamos ${Math.round((d.spent + d.cost) * 10) / 10} P esta hora de juego; el tope es ${d.cap} P`
+      case 'cash': return `nos dejaría con ${Math.round((d.cash - d.cost) * 10) / 10} P, por debajo del suelo de ${d.then ? `entonces (${d.floor} P)` : `${d.floor} P`}`
+      case 'spend': return `gastaríamos ${Math.round((d.spent + d.cost) * 10) / 10} P esta hora de juego; el tope ${d.then ? 'era' : 'es'} ${d.cap} P`
     }
   },
   ago: (ticks, seconds) => (ticks <= 0 ? 'ahora' : seconds == null ? `hace ${plural(ticks, 'turno', 'turnos')}` : `hace ${roughly(seconds)}`),
@@ -713,6 +734,19 @@ const EN: GameStrings = {
     nothingKind: 'Nothing of this kind yet',
     now_: 'now',
     deals: (n) => plural(n, 'deal', 'deals'),
+  },
+  money: {
+    title: 'Money',
+    cashLine: (cash, floor, available) => `Cash ${cash} · floor ${floor} · ${available} available to buy`,
+    chip: (floor) => `floor ${floor} · to buy`,
+    reserve: (cashFloor, reserve) => `floor ${cashFloor} + venue bond ${reserve} until our venue opens`,
+    cashLabel: 'Cash against the floor',
+    spentLabel: 'Spent this hour',
+    release: (amount, when) => `${amount} frees up ${when}`,
+    rolling: 'a rolling game hour: each buy leaves it one game hour after it was made',
+    binds: 'limits us',
+    available: 'Can buy now',
+    source: (source, tick) => (source === 'denial' ? `as our agents applied it at tick ${tick ?? '—'}` : source === 'env' ? 'from the server (GUARDRAIL_* variable)' : 'from GUARDRAILS.md (bazaar#216)'),
   },
   decide: {
     idle: (agents) => `no decision this tick: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (last at tick ${last})` : ''}`).join(', ')}`,
@@ -1277,6 +1311,19 @@ const ES: GameStrings = {
     nothingKind: 'Aún nada de este tipo',
     now_: 'ahora',
     deals: (n) => plural(n, 'trato', 'tratos'),
+  },
+  money: {
+    title: 'Dinero',
+    cashLine: (cash, floor, available) => `Caja ${cash} · suelo ${floor} · ${available} disponibles para comprar`,
+    chip: (floor) => `suelo ${floor} · para comprar`,
+    reserve: (cashFloor, reserve) => `suelo ${cashFloor} + fianza del puesto ${reserve} hasta que abra nuestro puesto`,
+    cashLabel: 'Caja frente al suelo',
+    spentLabel: 'Gastado esta hora',
+    release: (amount, when) => `se liberan ${amount} ${when}`,
+    rolling: 'hora de juego móvil: cada compra sale de ella una hora de juego después de hacerse',
+    binds: 'nos frena',
+    available: 'Para comprar ahora',
+    source: (source, tick) => (source === 'denial' ? `como lo aplicaron nuestros agentes en el turno ${tick ?? '—'}` : source === 'env' ? 'del servidor (variable GUARDRAIL_*)' : 'de GUARDRAILS.md (bazaar#216)'),
   },
   decide: {
     idle: (agents) => `sin decisión este turno: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (la última en el turno ${last})` : ''}`).join(', ')}`,

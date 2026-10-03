@@ -29,10 +29,6 @@ export interface StrategyStrings {
   readonly complete: (names: string) => string
   readonly sell: (surplus: number, sets: string, protectedSets: string) => string
   readonly venue: (v: string) => string
-  readonly room: string
-  readonly roomSub: (cash: number, floor: number) => string
-  readonly spend: string
-  readonly spendSub: (max: number) => string
   readonly caps: string
   readonly docValue: (source: string) => string
   // 2. why we do not buy
@@ -106,10 +102,6 @@ const EN: StrategyStrings = {
   complete: (names) => `${names} complete`,
   sell: (surplus, sets, prot) => `Sell spares at our value + ${surplus}: duplicates${sets ? ` and ${sets}` : ''}${prot ? `; ${prot} keep their only copy` : ''}`,
   venue: (v) => `Our own market: ${v}`,
-  room: 'Can spend now',
-  roomSub: (cash, floor) => `cash ${cash} − floor ${floor}`,
-  spend: 'Spent this game hour',
-  spendSub: (max) => `of ${max}`,
   caps: 'Price caps',
   docValue: (source) => `not hit by any buy yet: from ${source}`,
   why: 'Why we do not buy',
@@ -117,9 +109,9 @@ const EN: StrategyStrings = {
   headline: (b, cash, room, spent) => {
     switch (b.rule) {
       case 'cash_floor':
-        return `Cash ${cash ?? '—'}, floor ${b.limit ?? '—'}: only ${room ?? '—'} to buy with`
+        return `Cash ${cash ?? '—'} · floor ${b.limit ?? '—'} · only ${room ?? '—'} available to buy`
       case 'max_spend_per_game_hour':
-        return `Spent ${spent ?? '—'} of ${b.limit ?? '—'} this game hour: only ${room ?? '—'} left`
+        return `Spent ${spent ?? '—'} / ${b.limit ?? '—'} this hour · only ${room ?? '—'} left to buy`
       case 'max_price':
         return `${RARITY_EN[b.rarity ?? ''] ?? b.rarity ?? ''} cap ${b.limit ?? '—'}: the cards we want cost more`
       case 'block_buying_held_cards':
@@ -213,10 +205,6 @@ const ES: StrategyStrings = {
   complete: (names) => `${names} completa`,
   sell: (surplus, sets, prot) => `Vender sobrantes a nuestro valor + ${surplus}: repetidas${sets ? ` y ${sets}` : ''}${prot ? `; de ${prot} no se vende la única copia` : ''}`,
   venue: (v) => `Mercado propio: ${v}`,
-  room: 'Para comprar ahora',
-  roomSub: (cash, floor) => `caja ${cash} − suelo ${floor}`,
-  spend: 'Gastado esta hora de juego',
-  spendSub: (max) => `de ${max}`,
   caps: 'Topes de precio',
   docValue: (source) => `ninguna compra lo ha tocado aún: de ${source}`,
   why: 'Por qué no compramos',
@@ -224,9 +212,9 @@ const ES: StrategyStrings = {
   headline: (b, cash, room, spent) => {
     switch (b.rule) {
       case 'cash_floor':
-        return `Caja ${cash ?? '—'}, suelo ${b.limit ?? '—'}: solo ${room ?? '—'} para comprar`
+        return `Caja ${cash ?? '—'} · suelo ${b.limit ?? '—'} · solo ${room ?? '—'} disponibles para comprar`
       case 'max_spend_per_game_hour':
-        return `Gastado ${spent ?? '—'} de ${b.limit ?? '—'} esta hora: solo quedan ${room ?? '—'}`
+        return `Gastado ${spent ?? '—'} / ${b.limit ?? '—'} esta hora · solo quedan ${room ?? '—'} para comprar`
       case 'max_price':
         return `Tope ${RARITY_ES[b.rarity ?? ''] ?? b.rarity ?? ''} ${b.limit ?? '—'}: lo que queremos cuesta más`
       case 'block_buying_held_cards':

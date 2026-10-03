@@ -143,18 +143,44 @@ test('blocks by rule over the last game hour, most frequent first', () => {
   ])
 })
 
-test('the ledger: spend over the last game hour by t_hours, cash against the floor, accepts this tick', () => {
+test('the ledger: spend over the last game hour by t_hours, cash against the floor, accepts this tick, the next spend to leave', () => {
   const ticks: LedgerTick[] = [
     { tick: 30, t: 0.5, spent: 80, accepts: 1, listings: 0 }, // more than an hour before t 1.6667
     { tick: 70, t: 1.1667, spent: 60, accepts: 1, listings: 0 },
     { tick: 99, t: 1.65, spent: 30, accepts: 0, listings: 2 },
     { tick: 100, t: 1.6667, spent: -10, accepts: 1, listings: 0 }, // a refund
   ]
-  const s = feed(fresh(100), [ev('agent.me', { cash: 120 }, 100), ev('agent.ledger', { ticks, limits: LIMITS }, 100)])
-  assert.deepEqual(ledger(s), { spent: 80, cash: 120, accepts: 1, limits: LIMITS, headroom: 70, tick: 100 })
+  const s = feed(fresh(100), [ev('agent.me', { cash: 120 }, 100), ev('agent.ledger', { ticks, limits: LIMITS, venue: true }, 100)])
+  const l = ledger(s)
+  assert.deepInclude(l?.money, { cash: 120, floor: 50, reserve: null, cashRoom: 70, spent: 80, spendRoom: 70, available: 70, binds: 'cash_floor' })
+  assert.deepInclude(l, { accepts: 1, acceptsPerTick: 1, tick: 100 })
+  assert.deepEqual(l?.release, { amount: 60, ticks: 30, seconds: 1800 })
   apply(s, ev('agent.me', { cash: 60 }, 100))
-  assert.equal(ledger(s)?.headroom, 10)
+  assert.equal(ledger(s)?.money.available, 10)
   assert.isNull(ledger(fresh()))
+})
+
+test('the ledger: with no clock hour, now is its last row moved on by the ticks since, so old spend leaves the hour', () => {
+  // a clock without t (our database's): tick 160 at 60 s a tick is 1 game hour after the row at tick 100
+  const s = createState()
+  apply(s, ev('agent.hello', { team: 't01' }, 0))
+  apply(s, { ...ev('clock', { day: 'fri', tick_seconds: 60 }, 160), t: undefined })
+  apply(s, ev('agent.me', { cash: 120 }, 160))
+  apply(s, ev('agent.ledger', { ticks: [{ tick: 100, t: 1.6667, spent: 40, accepts: 1, listings: 0 }, { tick: 130, t: 2.1667, spent: 15, accepts: 1, listings: 0 }], limits: LIMITS }, 160))
+  assert.deepInclude(ledger(s)?.money, { spent: 15 })
+  assert.deepEqual(ledger(s)?.release, { amount: 15, ticks: 30, seconds: 1800 })
+})
+
+test('the ledger: an agent’s fresh denial names the limits it runs, and the bond reserve counts only while our venue is not open', () => {
+  const s = feed(fresh(100), [
+    ev('agent.me', { cash: 400 }, 100),
+    ev('agent.ledger', { ticks: [{ tick: 99, t: 1.65, spent: 30, accepts: 0, listings: 0 }], limits: { ...LIMITS, bondReserve: 200 }, venue: false }, 100),
+  ])
+  assert.deepInclude(ledger(s)?.money, { floor: 250, reserve: 200, cashRoom: 150, spendRoom: 120, binds: 'max_spend_per_game_hour' })
+  // the clock is below the docs' first tick: a new run, so this denial is newer than the docs
+  apply(s, decision(9, 'taker', 99, { status: 'rejected', verdict: 'denied', rule: 'max_spend_per_game_hour', text: 'spend 30 + 99 > max_spend_per_game_hour 111' }))
+  assert.deepInclude(ledger(s)?.money, { spendRoom: 81, binds: 'max_spend_per_game_hour' })
+  assert.equal(ledger(s)?.money.maxSpend.source, 'denial')
 })
 
 test('share is a 0..1 meter, and a zero cap is full once anything is used', () => {

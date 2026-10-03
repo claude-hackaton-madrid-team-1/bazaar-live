@@ -3,12 +3,15 @@
  * affinity rewards and the money levers), why the taker does not buy what is on sale (the one rule that binds now,
  * then every blocked buy by the surplus it gave up), why we hold every card we hold, and how often Jev said no.
  *
- * The caps are read live from the guardrail texts (`cash 81 - 79 < cash_floor 50` names the floor and its value); a
- * cap no denial has named yet comes from ../guardrailsDoc.ts. Facts only: the screen never advises changing a rule.
+ * The caps are read live from the guardrail texts (`cash 73 - 67 < cash_floor 20` names the floor and its value) when
+ * they are newer than the docs (../limits.ts); else from the server's GUARDRAIL_* variables, else from
+ * shared/guardrails.ts. Facts only: the screen never advises changing a rule.
  */
+import type { GuardrailLimits } from '../../../shared/decisions.ts'
+import { GUARDRAILS_DOC } from '../../../shared/guardrails.ts'
 import type { CatalogCard, OpenAsk, StrategyDecision, StrategySnapshot } from '../../../shared/strategy.ts'
 import { SETS } from '../game.ts'
-import { GUARDRAILS_DOC } from '../guardrailsDoc.ts'
+import { moneyOf, moneyRulesOf, newerThanDocs, type Limit, type Money, type MoneyRules } from '../limits.ts'
 
 /** The window the screen reads: the last game ticks of the current run. */
 export const WINDOW_TICKS = 300
@@ -25,7 +28,7 @@ export interface Broken {
   readonly rule: RuleId
   /** max_price: the rarity it caps. */
   readonly rarity: string | null
-  /** The rule's value in the text (50 for `cash_floor 50`), or null. */
+  /** The rule's value in the text (20 for `cash_floor 20`), or null. */
   readonly limit: number | null
   /** A rule we do not name: its words, cut short. */
   readonly text: string | null
@@ -42,7 +45,8 @@ export function brokenRules(d: StrategyDecision): Broken[] {
   if (d.guardrail) {
     for (const part of d.guardrail.replace(/^denied:\s*/, '').split(/;\s*/)) {
       let m: RegExpMatchArray | null
-      if ((m = part.match(/cash_floor (\d+)/))) out.push({ rule: 'cash_floor', rarity: null, limit: n(m[1]), text: null })
+      // `cash_floor 20 + venue_bond_reserve 270` while the reserve applies: the floor that refused is their sum
+      if ((m = part.match(/cash_floor (\d+)(?: \+ venue_bond_reserve (\d+))?/))) out.push({ rule: 'cash_floor', rarity: null, limit: (n(m[1]) ?? 0) + (n(m[2]) ?? 0), text: null })
       else if ((m = part.match(/max_spend_per_game_hour (\d+)/))) out.push({ rule: 'max_spend_per_game_hour', rarity: null, limit: n(m[1]), text: null })
       else if ((m = part.match(/max_price_([a-z]+) (\d+)/))) out.push({ rule: 'max_price', rarity: m[1] ?? null, limit: n(m[2]), text: null })
       else if (part.includes('block_buying_held_cards')) out.push({ rule: 'block_buying_held_cards', rarity: null, limit: null, text: null })
@@ -57,7 +61,7 @@ export function brokenRules(d: StrategyDecision): Broken[] {
 
 export interface RuleValue {
   readonly value: number
-  /** Read from a guardrail text in our database (true) or from GUARDRAILS.md (false). */
+  /** Read from a denial text newer than the docs (true), or from the server's variables or GUARDRAILS.md (false). */
   readonly live: boolean
 }
 
@@ -66,31 +70,36 @@ export interface Rules {
   readonly maxSpend: RuleValue
   readonly maxPrice: Readonly<Record<string, RuleValue>>
   readonly jevBar: RuleValue
+  /** The money limits with where each came from (../limits.ts). */
+  readonly money: MoneyRules
 }
 
-/** The caps now: the newest guardrail text that names each one wins, else GUARDRAILS.md. `decisions`: newest first. */
-export function rulesOf(decisions: readonly StrategyDecision[]): Rules {
+const ruleValue = (l: Limit): RuleValue => ({ value: l.value, live: l.source === 'denial' })
+
+/**
+ * The caps now. `decisions`: newest first; `now`: the clock's tick (else the newest decision's); `server`: the limits
+ * the server sent. The newest denial newer than the docs names each cap; else the server's, else GUARDRAILS.md.
+ */
+export function rulesOf(decisions: readonly StrategyDecision[], now: number | null = null, server: GuardrailLimits | null = null): Rules {
   const doc = (value: number): RuleValue => ({ value, live: false })
-  let cashFloor: RuleValue | null = null
-  let maxSpend: RuleValue | null = null
+  const tick = now ?? decisions[0]?.tick ?? 0
   let jevBar: RuleValue | null = null
   const maxPrice: Record<string, RuleValue> = {}
   for (const d of decisions) {
-    for (const b of brokenRules(d)) {
-      if (b.limit === null) continue
-      if (b.rule === 'cash_floor') cashFloor ??= { value: b.limit, live: true }
-      if (b.rule === 'max_spend_per_game_hour') maxSpend ??= { value: b.limit, live: true }
-      if (b.rule === 'max_price' && b.rarity && !maxPrice[b.rarity]) maxPrice[b.rarity] = { value: b.limit, live: true }
+    if (newerThanDocs(d.tick, tick)) {
+      for (const b of brokenRules(d)) if (b.rule === 'max_price' && b.limit !== null && b.rarity && !maxPrice[b.rarity]) maxPrice[b.rarity] = { value: b.limit, live: true }
     }
     const bar = d.reason?.match(/^jev \w+ \([\d.]+ < ([\d.]+)/)
     if (bar && !jevBar) jevBar = { value: Number(bar[1]), live: true }
   }
   for (const [rarity, cap] of Object.entries(GUARDRAILS_DOC.maxPrice)) maxPrice[rarity] ??= doc(cap)
+  const money = moneyRulesOf(decisions.map((d) => ({ tick: d.tick, text: d.guardrail })), tick, server)
   return {
-    cashFloor: cashFloor ?? doc(GUARDRAILS_DOC.cashFloor),
-    maxSpend: maxSpend ?? doc(GUARDRAILS_DOC.maxSpendPerHour),
+    cashFloor: ruleValue(money.cashFloor),
+    maxSpend: ruleValue(money.maxSpend),
     maxPrice,
     jevBar: jevBar ?? doc(GUARDRAILS_DOC.jevBar),
+    money,
   }
 }
 
@@ -198,31 +207,28 @@ export function planOf(s: StrategySnapshot): Plan {
   return { targets, complete: pages.filter((p) => p.complete), spareSets, venue: s.me?.venue ?? null }
 }
 
-export interface Levers {
-  readonly cash: number | null
-  readonly floor: RuleValue
-  /** Cash above the floor: what a buy may spend before the floor refuses it. */
-  readonly cashRoom: number | null
-  readonly spent: number | null
-  readonly maxSpend: RuleValue
-  readonly spendRoom: number | null
-  /** The smaller of the two: what we can still buy with now. */
+export interface Levers extends Money {
+  /** The smaller room: what we can still buy with now (`Money.available`). */
   readonly room: number | null
   readonly caps: readonly { readonly rarity: string; readonly cap: RuleValue }[]
 }
 
 const RARITIES = ['common', 'uncommon', 'rare', 'pack']
 
+/** Cash against the floor (the bond reserve only while our venue is not open), the hour's spend, the price caps. */
 export function leversOf(s: StrategySnapshot, rules: Rules): Levers {
-  const cash = s.me?.cash ?? null
-  const spent = s.spend?.spent ?? null
-  const cashRoom = cash === null ? null : cash - rules.cashFloor.value
-  const spendRoom = spent === null ? null : rules.maxSpend.value - spent
-  const rooms = [cashRoom, spendRoom].filter((v): v is number => v !== null)
+  const money = moneyOf(s.me?.cash ?? null, s.spend?.spent ?? null, rules.money, s.me ? s.me.venue !== null : null)
   const caps = Object.entries(rules.maxPrice)
     .sort((a, b) => (RARITIES.indexOf(a[0]) + 1 || 99) - (RARITIES.indexOf(b[0]) + 1 || 99))
     .map(([rarity, cap]) => ({ rarity, cap }))
-  return { cash, floor: rules.cashFloor, cashRoom, spent, maxSpend: rules.maxSpend, spendRoom, room: rooms.length ? Math.max(0, Math.min(...rooms)) : null, caps }
+  return { ...money, room: money.available, caps }
+}
+
+/** A money rule's value as a refusal printed it, kept only while it is still the rule's value now (else null). */
+export function currentLimit(r: { readonly rule: RuleId; readonly limit: number | null }, levers: Levers): number | null {
+  if (r.rule === 'cash_floor') return r.limit === levers.floor ? r.limit : null
+  if (r.rule === 'max_spend_per_game_hour') return r.limit === levers.maxSpend.value ? r.limit : null
+  return r.limit
 }
 
 // ── 2. why we do not buy ─────────────────────────────────────────────────────────────────────────────────────────
@@ -315,6 +321,17 @@ export interface Binding {
   readonly latest: BlockedBuy | null
 }
 
+const isMoney = (r: { readonly rule: RuleId }): boolean => r.rule === 'cash_floor' || r.rule === 'max_spend_per_game_hour'
+
+/**
+ * The rule that refuses this buy now: its newest refusal's, unless that was a money rule the money now covers (the
+ * price fits what we can spend), then the first other rule that refused it; null when none is left.
+ */
+export function mainNow(b: BlockedBuy, levers: Levers): Broken | null {
+  if (!b.main || !isMoney(b.main) || b.price === null || levers.room === null || b.price > levers.room) return b.main
+  return [...b.rules].filter((r) => !isMoney(r)).sort((x, y) => PRIORITY.indexOf(x.rule) - PRIORITY.indexOf(y.rule))[0] ?? null
+}
+
 /**
  * The ONE rule that binds now. A money rule wins while the newest refusal's price is still above what we can spend
  * (cash and the hour's spend move, so it is re-checked against the levers now); else the rule that refused the
@@ -324,12 +341,10 @@ export function bindingOf(blocked: readonly BlockedBuy[], levers: Levers): Bindi
   const open = blocked.filter((b) => !b.heldNow)
   const latest = [...open].sort((a, b) => b.lastTick - a.lastTick)[0] ?? null
   if (!latest) return { rule: 'none', rarity: null, limit: null, text: null, latest: null }
-  const isMoney = (r: { rule: RuleId }) => r.rule === 'cash_floor' || r.rule === 'max_spend_per_game_hour'
   const money = latest.rules.filter(isMoney)
   if (money.length && latest.price !== null && levers.room !== null && latest.price > levers.room) {
-    const cashBinds = levers.cashRoom !== null && (levers.spendRoom === null || levers.cashRoom <= levers.spendRoom)
-    const rule = cashBinds ? 'cash_floor' : 'max_spend_per_game_hour'
-    return { rule, rarity: null, limit: (rule === 'cash_floor' ? levers.floor : levers.maxSpend).value, text: null, latest }
+    const rule = levers.binds ?? 'cash_floor'
+    return { rule, rarity: null, limit: rule === 'cash_floor' ? levers.floor : levers.maxSpend.value, text: null, latest }
   }
   // the money is there now: only a rule that does not move with cash still stops this buy
   const rest = money.length ? [...latest.rules.filter((r) => !isMoney(r))].sort((a, b) => PRIORITY.indexOf(a.rule) - PRIORITY.indexOf(b.rule)) : null
@@ -346,7 +361,7 @@ export interface Unblock {
   readonly cards: number
   readonly surplus: number
   readonly cheapest: BlockedBuy | null
-  /** cash_floor: the cash the cheapest one needs (its price + the floor). */
+  /** cash_floor: the cash the cheapest one needs (its price + the floor now). */
   readonly cashNeeded: number | null
 }
 
@@ -363,7 +378,7 @@ export function unblockOf(binding: Binding, blocked: readonly BlockedBuy[], leve
     cards: hit.length,
     surplus: round1(hit.reduce((sum, b) => sum + Math.max(0, b.surplus ?? 0), 0)),
     cheapest,
-    cashNeeded: rule === 'cash_floor' && cheapest?.price != null ? cheapest.price + levers.floor.value : null,
+    cashNeeded: rule === 'cash_floor' && cheapest?.price != null ? cheapest.price + levers.floor : null,
   }
 }
 
