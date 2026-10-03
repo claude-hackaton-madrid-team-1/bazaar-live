@@ -23,16 +23,54 @@ const HOODS = 'Lavapiés|Malasaña|La Latina|Salamanca|El Retiro|Chamberí'
 const CARD = `(?:(?:${HOODS}) number \\d{1,3}|[A-Z]{3}-\\d{1,3}|this card)`
 const PRIMAS = '\\d{1,8}(?:\\.\\d)? primas?'
 
-/** What each slot may contain: exactly the words src/show/words.ts produces. */
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const oneOf = (words: readonly string[]): string => `(?:${words.map(escape).join('|')})`
+const asWords = (label: string): string => label.replace(/_/g, ' ')
+
+/** The game's refusal codes (vendor/bazaar-kit README, "Errors you will meet") as words. */
+export const ERROR_WORDS: Readonly<Record<string, string>> = {
+  insufficient_cash: 'not enough cash',
+  wait_for_tick: 'wait for the next tick',
+  rate_limited: 'slow down',
+  persona_quota: 'quota is full this hour',
+  cooloff: 'cool off for a while',
+  sold_out: 'sold out',
+  asset_locked: 'that card is locked',
+  not_owner: 'not ours to sell',
+  venue_not_live: 'that market is not open',
+  locked: 'that dealer is locked',
+  self_venue: 'not on our own market',
+  bad_key: 'a bad key',
+  missing_days: 'say the days too',
+}
+export const UNKNOWN_ERROR = 'an unknown error'
+
+/** Decision kinds docs/services.md lists; any other kind is `something new`. */
+export const KINDS: readonly string[] = [
+  'accept_ask', 'dealer_open', 'dealer_bid', 'dealer_accept', 'dealer_walk', 'post_ask', 'post_bid',
+  'cancel_ask', 'cancel_bid', 'hold_ask', 'hold_bid', 'reprice_ask', 'reprice_bid', 'duel_accept',
+  'duel_offer', 'duel_hold',
+]
+export const UNKNOWN_KIND = 'something new'
+
+/** Jev's verdict labels (docs/services.md: a noul's yes/no, a choice's option, undecided). */
+export const VERDICTS: readonly string[] = [
+  'aggressive', 'fair', 'quick_sale', 'hold', 'reprice', 'yes', 'no', 'accept', 'reject', 'walk', 'bid', 'undecided',
+]
+
+/** What each slot may contain: exactly the words src/show/words.ts produces, closed lists for labels. */
 export const SLOT_PATTERNS: Readonly<Record<Slot, string>> = {
   card: CARD,
   price: PRIMAS,
   ask: PRIMAS,
   item: `(?:a neighbourhood pack|a silver pack|a common|an uncommon|a rare|an epic|a legendary|a little something|${CARD})`,
   dealerName: '(?:Abuela Carmen|El Chato|the dealer)',
-  verdict: '[a-z][a-z ]{0,23}',
-  error: '[a-z0-9][a-z0-9 ]{0,39}',
-  kind: '[a-z0-9][a-z0-9 ]{0,29}',
+  verdict: oneOf(VERDICTS.map(asWords)),
+  error: oneOf([...Object.values(ERROR_WORDS), UNKNOWN_ERROR]),
+  kind: oneOf([...KINDS.map(asWords), UNKNOWN_KIND]),
   count: '\\d{1,3}',
 }
 
@@ -229,10 +267,6 @@ const ROLES_FOR: Readonly<Record<Speaker, readonly Role[]>> = {
   abuela: ['dealer'],
   chato: ['dealer'],
   narrator: ['narrator', 'dealer'],
-}
-
-function escape(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function compile(text: string): RegExp {

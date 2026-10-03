@@ -65,7 +65,7 @@ describe('board and pacing helpers', () => {
   it('posts, reprices and cancels cards', () => {
     let board = applyToBoard([], { kind: 'post', side: 'ask', ref: 'LAT-09', price: 68 }, 1)
     board = applyToBoard(board, { kind: 'reprice', side: 'ask', ref: 'LAT-09', price: 62 }, 2)
-    expect(board).toEqual([{ key: 'ask:LAT-09', ref: 'LAT-09', side: 'ask', price: 62, version: 1, at: 2 }])
+    expect(board).toEqual([{ key: 'ask:LAT-09', ref: 'LAT-09', side: 'ask', price: 62, version: 1, at: 2, tick: null }])
     expect(applyToBoard(board, { kind: 'cancel', side: 'ask', ref: 'LAT-09' })).toEqual([])
   })
 
@@ -99,9 +99,9 @@ describe('after a beat', () => {
 describe('board sync and stale events', () => {
   it('follows /state: a sold card leaves, a repriced one flashes, a just-posted one stays', () => {
     const now = 100_000
-    const old = { key: 'ask:LAT-09', ref: 'LAT-09', side: 'ask' as const, price: 68, version: 0, at: 0 }
-    const sold = { key: 'ask:MAL-03', ref: 'MAL-03', side: 'ask' as const, price: 24, version: 0, at: 0 }
-    const fresh = { key: 'ask:SAL-02', ref: 'SAL-02', side: 'ask' as const, price: 31, version: 0, at: now - 5000 }
+    const old = { key: 'ask:LAT-09', ref: 'LAT-09', side: 'ask' as const, price: 68, version: 0, at: 0, tick: null }
+    const sold = { key: 'ask:MAL-03', ref: 'MAL-03', side: 'ask' as const, price: 24, version: 0, at: 0, tick: null }
+    const fresh = { key: 'ask:SAL-02', ref: 'SAL-02', side: 'ask' as const, price: 31, version: 0, at: now - 5000, tick: null }
     const next = syncBoard([old, sold, fresh], [{ id: 1, side: 'ask', ref: 'LAT-09', price: 62, venue: 'rastro' }], now)
     expect(next.map((c) => [c.ref, c.price, c.version])).toEqual([
       ['LAT-09', 62, 1],
@@ -119,5 +119,49 @@ describe('board sync and stale events', () => {
     expect(spoken).toEqual([])
     expect(show.getSnapshot().transcript.every((t) => t.kind === 'history')).toBe(true)
     show.stop()
+  })
+})
+
+describe('a /state snapshot older than our own events (review P2 #1)', () => {
+  const offer = (price: number) => [{ id: 1, side: 'ask', ref: 'LAT-09', price, venue: 'rastro' }]
+  const board = (show: ShowEngine) => show.getSnapshot().board.map((c) => [c.ref, c.price, c.version])
+  const live = (id: number, tick: number, payload: Record<string, unknown>) =>
+    parseEnvelope({ id, tick, t: tick, type: 'agent.decision', agent: 'maker', payload: { status: 'approved', dry_run: false, tick, ...payload } })!
+
+  it('keeps a cancelled card gone until a newer snapshot', () => {
+    const { show } = engine()
+    show.syncBoard(offer(68), 9)
+    show.ingest(live(-1, 10, { kind: 'cancel_ask', inputs: { ref: 'LAT-09', side: 'ask' } }), true)
+    expect(board(show)).toEqual([])
+    show.syncBoard(offer(68), 10) // read at the start of tick 10, before the cancel
+    expect(board(show)).toEqual([])
+    show.syncBoard(offer(68), 11) // stamped 11 while tick 11 runs: its offers are still tick 10's
+    expect(board(show)).toEqual([])
+    show.syncBoard(offer(68), 12) // two ticks later it still lists it: the cancel did not happen
+    expect(board(show)).toEqual([['LAT-09', 68, 0]])
+  })
+
+  it('keeps a card posted this tick through a snapshot from the same tick', () => {
+    const { show } = engine()
+    show.ingest(live(-2, 10, { kind: 'post_ask', inputs: { ref: 'LAT-09', side: 'ask', price: 68 } }), true)
+    show.syncBoard([], 10)
+    expect(board(show)).toEqual([['LAT-09', 68, 0]])
+    show.syncBoard([], 11)
+    expect(board(show)).toEqual([['LAT-09', 68, 0]])
+    show.syncBoard([], 12)
+    expect(board(show)).toEqual([])
+  })
+
+  it('keeps our new price, and flashes once, when an older snapshot still has the old one', () => {
+    const { show } = engine()
+    show.syncBoard(offer(68), 9)
+    show.ingest(live(-3, 10, { kind: 'reprice_ask', inputs: { ref: 'LAT-09', side: 'ask', price: 59 }, move: { price: 59 } }), true)
+    expect(board(show)).toEqual([['LAT-09', 59, 1]])
+    show.syncBoard(offer(68), 10)
+    expect(board(show)).toEqual([['LAT-09', 59, 1]])
+    show.syncBoard(offer(68), 11)
+    expect(board(show)).toEqual([['LAT-09', 59, 1]])
+    show.syncBoard(offer(59), 12)
+    expect(board(show)).toEqual([['LAT-09', 59, 1]])
   })
 })

@@ -19,7 +19,15 @@ export interface BoardCard {
   readonly price: number | null
   /** Bumps on every reprice, so the tag can flash. */
   readonly version: number
-  /** When an event put it there (ms), so a slightly older /state snapshot does not remove it. */
+  /** When an event put it there (ms): the fallback when a snapshot carries no tick. */
+  readonly at: number
+  /** The game tick of the event that last set it, or null when it came from a /state snapshot. */
+  readonly tick: number | null
+}
+
+/** A cancel the board already shows, so an older /state snapshot cannot bring the card back. */
+export interface Tombstone {
+  readonly tick: number | null
   readonly at: number
 }
 
@@ -100,32 +108,54 @@ function cardKey(ref: string, side: Side): string {
 }
 
 /** The board after one cue: post adds, reprice updates, cancel removes. */
-export function applyToBoard(board: readonly BoardCard[], cue: Cue, now = Date.now()): readonly BoardCard[] {
+export function applyToBoard(board: readonly BoardCard[], cue: Cue, now = Date.now(), tick: number | null = null): readonly BoardCard[] {
   if (cue.kind !== 'post' && cue.kind !== 'reprice' && cue.kind !== 'cancel') return board
   const key = cardKey(cue.ref, cue.side)
   const existing = board.find((c) => c.key === key)
   if (cue.kind === 'cancel') return board.filter((c) => c.key !== key)
   if (existing) {
-    return board.map((c) => (c.key === key ? { ...c, price: cue.price ?? c.price, version: c.version + 1, at: now } : c))
+    return board.map((c) => (c.key === key ? { ...c, price: cue.price ?? c.price, version: c.version + 1, at: now, tick } : c))
   }
-  const added: BoardCard = { key, ref: cue.ref, side: cue.side, price: cue.price, version: 0, at: now }
+  const added: BoardCard = { key, ref: cue.ref, side: cue.side, price: cue.price, version: 0, at: now, tick }
   return [...board, added].slice(-MAX_BOARD)
 }
 
-/** A card an event placed in the last SYNC_GRACE_MS survives a snapshot that predates it. */
+/** Without a snapshot tick, a card or cancel an event made in the last SYNC_GRACE_MS still wins. */
 const SYNC_GRACE_MS = 20_000
+/** How many ticks the maker's /state open offers can lag behind its /state tick (bazaar maker.py). */
+const SNAPSHOT_LAG_TICKS = 1
 
-/** The board as /state lists it, keeping each card's flash version and very recent event cards. */
-export function syncBoard(board: readonly BoardCard[], offers: readonly OpenOffer[], now: number): readonly BoardCard[] {
+/**
+ * The board as /state lists it. The maker's /state offers trail its own posts and cancels (they are
+ * read at the start of a tick and published at its end, under the next tick's stamp), so an event wins
+ * over any snapshot less than two ticks newer: a card it posted stays, a price it set stays (no second
+ * flash), a card it cancelled stays gone. A card sold right after it was posted stays one tick longer.
+ */
+export function syncBoard(
+  board: readonly BoardCard[],
+  offers: readonly OpenOffer[],
+  now: number,
+  stateTick: number | null = null,
+  tombstones: ReadonlyMap<string, Tombstone> = new Map(),
+): readonly BoardCard[] {
+  // The maker stamps /state with tick T when tick T starts but swaps its open offers only when T ends:
+  // until then a snapshot at T still lists the offers read at the start of T-1.
+  const eventWins = (tick: number | null, at: number) =>
+    tick !== null && stateTick !== null ? tick >= stateTick - SNAPSHOT_LAG_TICKS : now - at < SYNC_GRACE_MS
   const listed = offers
     .filter((o) => o.side === 'ask' || o.side === 'bid')
+    .filter((o) => {
+      const tomb = tombstones.get(cardKey(o.ref, o.side as Side))
+      return !tomb || !eventWins(tomb.tick, tomb.at)
+    })
     .map((o): BoardCard => {
       const key = cardKey(o.ref, o.side as Side)
       const old = board.find((c) => c.key === key)
-      const repriced = old && o.price !== null && old.price !== o.price
-      return { key, ref: o.ref, side: o.side as Side, price: o.price ?? old?.price ?? null, version: (old?.version ?? 0) + (repriced ? 1 : 0), at: old?.at ?? 0 }
+      if (old && eventWins(old.tick, old.at)) return old
+      const repriced = old !== undefined && o.price !== null && old.price !== o.price
+      return { key, ref: o.ref, side: o.side as Side, price: o.price ?? old?.price ?? null, version: (old?.version ?? 0) + (repriced ? 1 : 0), at: old?.at ?? 0, tick: null }
     })
-  const recent = board.filter((c) => now - c.at < SYNC_GRACE_MS && !listed.some((l) => l.key === c.key))
+  const recent = board.filter((c) => !listed.some((l) => l.key === c.key) && eventWins(c.tick, c.at))
   const unique = [...listed, ...recent].filter((c, i, all) => all.findIndex((x) => x.key === c.key) === i)
   return unique.slice(-MAX_BOARD)
 }
@@ -144,6 +174,7 @@ export class ShowEngine {
   private idleCount = 0
   private counter = 0
   private notifyTimer: ReturnType<typeof setTimeout> | null = null
+  private tombstones: ReadonlyMap<string, Tombstone> = new Map()
 
   constructor(options: EngineOptions) {
     this.speech = options.speech
@@ -182,9 +213,26 @@ export class ShowEngine {
     this.set({ feeds: { ...this.state.feeds, [agent]: status } })
   }
 
-  /** Align the board with the maker's GET /state: sold, expired or failed offers leave it. */
-  syncBoard(offers: readonly OpenOffer[], now = Date.now()): void {
-    this.set({ board: syncBoard(this.state.board, offers, now) })
+  /** Align the board with the maker's GET /state (taken at tick `stateTick`): sold or expired offers leave. */
+  syncBoard(offers: readonly OpenOffer[], stateTick: number | null = null, now = Date.now()): void {
+    this.set({ board: syncBoard(this.state.board, offers, now, stateTick, this.tombstones) })
+    if (stateTick !== null) {
+      // A snapshot taken after a cancel already reflects it: that tombstone is no longer needed.
+      this.tombstones = new Map([...this.tombstones].filter(([, t]) => t.tick === null || t.tick >= stateTick - SNAPSHOT_LAG_TICKS))
+    }
+  }
+
+  /** The board after a cue, remembering cancels so an older snapshot cannot undo them. */
+  private boardAfter(beat: Beat): readonly BoardCard[] {
+    const cue = beat.cue
+    const now = Date.now()
+    if (cue.kind === 'cancel') {
+      this.tombstones = new Map([...this.tombstones, [cardKey(cue.ref, cue.side), { tick: beat.tick, at: now }]])
+    } else if (cue.kind === 'post' || cue.kind === 'reprice') {
+      const key = cardKey(cue.ref, cue.side)
+      this.tombstones = new Map([...this.tombstones].filter(([k]) => k !== key))
+    }
+    return applyToBoard(this.state.board, cue, now, beat.tick)
   }
 
   ingest(event: ShowEvent, replay: boolean): void {
@@ -200,7 +248,7 @@ export class ShowEngine {
     const agentTick = this.state.health[event.agent]?.tick ?? null
     const stale = event.tick !== null && agentTick !== null && event.tick < agentTick - STALE_TICKS
     if (replay || stale) {
-      this.set({ board: applyToBoard(this.state.board, beat.cue), transcript: this.appendLines(beat, 'history') })
+      this.set({ board: this.boardAfter(beat), transcript: this.appendLines(beat, 'history') })
       return
     }
     const dropped = this.director.push(beat)
@@ -258,7 +306,7 @@ export class ShowEngine {
 
   private cuePatch(beat: Beat): Partial<ShowState> {
     const cue = beat.cue
-    const patch: Partial<ShowState> = { beat, board: applyToBoard(this.state.board, cue) }
+    const patch: Partial<ShowState> = { beat, board: this.boardAfter(beat) }
     const jev = beat.jev ? { ...this.flash(), verdict: beat.jev, agent: beat.agent } : null
     // A dealer stays on stage for the game's answer to its conversation (the execution right after).
     const dealer = cue.kind === 'dealer' ? { id: cue.dealer, move: cue.move } : cue.kind === 'deal' || cue.kind === 'fail' ? this.state.dealer : null
