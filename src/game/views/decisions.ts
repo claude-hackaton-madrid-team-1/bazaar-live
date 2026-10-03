@@ -1,25 +1,11 @@
 /**
  * What the Agent screen answers from our agents' decisions (db/agent_decisions.sql, or the mock):
- * did each agent decide this tick and what stopped it, which guardrail blocks most in the last game hour,
- * where the money stands against its caps, and whether the settled deals beat our value.
+ * is each agent alive or silent, what it last did and what blocks it most, which guardrail blocks most in the
+ * last game hour, where the money stands against its caps, and whether the settled deals beat our value.
  */
 import { AGENTS, type AgentName, type DecisionStatus, type GuardrailLimits } from '../../../shared/decisions.ts'
 import type { DecisionRow, OutcomeRow } from '../decisions.ts'
 import type { State } from '../state.ts'
-
-/** The same refusal repeated tick after tick, shown once: how many, over which ticks, at which prices. */
-export type Run = { readonly count: number; readonly from: number; readonly to: number; readonly low: number | null; readonly high: number | null }
-
-export type Idle = { readonly agent: AgentName; readonly last: number | null }
-
-export type DecideSlot =
-  | { readonly kind: 'row'; readonly row: DecisionRow; readonly run: Run | null }
-  | { readonly kind: 'idle'; readonly agents: readonly Idle[] }
-
-/** Rows the agents log that send nothing to the game (a deploy restart, a thread's bookkeeping): no guardrail ran on them. */
-const NON_WRITE_KINDS: ReadonlySet<string> = new Set(['process_started', 'dealer_opened', 'dealer_closed'])
-
-export const isWrite = (kind: string): boolean => !NON_WRITE_KINDS.has(kind)
 
 export type StatusTone = 'good' | 'bad' | 'warn' | 'us' | 'neutral'
 
@@ -30,82 +16,104 @@ export const STATUS_TONE: Readonly<Record<DecisionStatus, StatusTone>> = {
 /** True once any decision reached the page: before that the screen says nothing about idle agents. */
 export const hasDecisions = (s: State): boolean => AGENTS.some((a) => s.agents.decisions[a].length > 0)
 
-/** The ticks that have a decision, newest first. */
-export function decisionTicks(s: State): number[] {
-  const ticks = new Set<number>()
-  for (const a of AGENTS) for (const r of s.agents.decisions[a]) ticks.add(r.tick)
-  return [...ticks].sort((a, b) => b - a)
+/** An agent that has not decided for more than this many ticks is silent: the first thing a watcher must see. */
+export const SILENT_AFTER = 3
+
+/** An agent whose last run is this many identical blocks in a row is stuck behind a guardrail. */
+export const STUCK_AFTER = 3
+
+/** A `process_started` row is the agent coming back up, not a decision: never a block, never proof of life. */
+export const isRestart = (r: DecisionRow): boolean => r.kind === 'process_started'
+
+/** Rows the agents log that send nothing to the game (a deploy restart, a thread's bookkeeping): no guardrail ran on them. */
+const NON_WRITE_KINDS: ReadonlySet<string> = new Set(['process_started', 'dealer_opened', 'dealer_closed'])
+
+export const isWrite = (kind: string): boolean => !NON_WRITE_KINDS.has(kind)
+
+/** The newest tick we know of: the clock's, or a decision or ledger row ahead of it. */
+export function nowTick(s: State): number {
+  let tick = s.tick
+  for (const a of AGENTS) tick = Math.max(tick, s.agents.decisions[a].at(-1)?.tick ?? 0)
+  for (const t of s.agents.ledger?.ticks ?? []) tick = Math.max(tick, t.tick)
+  return tick
 }
 
-const refusalKey = (r: DecisionRow): string | null => (r.verdict === 'denied' ? `${r.kind}|${r.item ?? ''}|${r.rule ?? ''}` : null)
-
 /**
- * The same refusal repeated (same agent, kind, item and rule): the last row of each run of two or more carries the
- * run, the earlier ones are folded into it. Other rows in between do not break a run (the taker refuses several asks
- * each tick); a row of the same kind and item that was not refused does. Decision id → run, or null for a folded row.
+ * One agent's identical decisions folded into one run: the taker asking for SAL-08 every tick and the same rule
+ * refusing it twelve times is one line, ×12. Identical means the same kind, item, verdict, rule and status (never
+ * the denial text or the price: those drift from tick to tick). Other rows in between do not break a run (the
+ * taker refuses several asks each tick, and a restart or a thread's bookkeeping is no decision); a tick the run
+ * skips does (twelve blocks over a hundred ticks are not one stuck stretch), and so does another verdict on the
+ * same kind and item. A scored decision stays on its own.
  */
-export function refusalRuns(s: State, upToTick: number | null = null): Map<number, Run | null> {
-  const out = new Map<number, Run | null>()
-  const close = (run: DecisionRow[] | undefined) => {
+export type Run = {
+  readonly agent: AgentName
+  readonly kind: string
+  readonly item: string | null
+  /** The counterparty when every row of the run names the same one. */
+  readonly counterparty: string | null
+  readonly status: DecisionStatus
+  readonly verdict: DecisionRow['verdict']
+  readonly rule: string | null
+  /** Oldest first. */
+  readonly rows: readonly DecisionRow[]
+  readonly fromTick: number
+  readonly toTick: number
+  readonly minPrice: number | null
+  readonly maxPrice: number | null
+  readonly last: DecisionRow
+}
+
+const itemKey = (r: DecisionRow): string => `${r.kind}|${r.item ?? ''}`
+
+const runKey = (r: DecisionRow): string => `${itemKey(r)}|${r.verdict ?? ''}|${r.rule ?? ''}|${r.status}`
+
+function runOf(rows: DecisionRow[]): Run {
+  const first = rows[0] as DecisionRow
+  const last = rows.at(-1) as DecisionRow
+  const prices = rows.map((r) => r.price).filter((p): p is number => p != null)
+  const who = new Set(rows.map((r) => r.counterparty))
+  return {
+    agent: last.agent, kind: last.kind, item: last.item, counterparty: who.size === 1 ? last.counterparty : null,
+    status: last.status, verdict: last.verdict, rule: last.rule, rows, fromTick: first.tick, toTick: last.tick,
+    minPrice: prices.length ? Math.min(...prices) : null, maxPrice: prices.length ? Math.max(...prices) : null, last,
+  }
+}
+
+/** An agent's rows (oldest first) as runs, oldest first by their last decision; a restart or a bookkeeping row is a run of its own. */
+export function runsOf(rows: readonly DecisionRow[]): Run[] {
+  const runs: Run[] = []
+  const open = new Map<string, DecisionRow[]>()
+  const close = (key: string) => {
+    const run = open.get(key)
+    if (run?.length) runs.push(runOf(run))
+    open.delete(key)
+  }
+  for (const r of rows) {
+    if (!isWrite(r.kind)) {
+      runs.push(runOf([r]))
+      continue
+    }
+    const key = runKey(r)
+    // another verdict on the same kind and item ends that item's run
+    for (const k of [...open.keys()]) if (k !== key && k.startsWith(`${itemKey(r)}|`)) close(k)
+    const run = open.get(key)
     const last = run?.at(-1)
-    if (!run || !last || run.length < 2) return
-    const prices = run.map((r) => r.price).filter((p): p is number => p != null)
-    for (const r of run) out.set(r.decision, null)
-    out.set(last.decision, {
-      count: run.length, from: run[0]?.tick ?? last.tick, to: last.tick,
-      low: prices.length ? Math.min(...prices) : null, high: prices.length ? Math.max(...prices) : null,
-    })
-  }
-  for (const agent of AGENTS) {
-    const runs = new Map<string, DecisionRow[]>()
-    for (const r of s.agents.decisions[agent]) {
-      if (upToTick != null && r.tick > upToTick) break
-      if (!isWrite(r.kind)) continue
-      const key = refusalKey(r)
-      if (key == null) {
-        // an accepted move on the same kind and item ends that item's refusals
-        for (const [k, run] of runs) {
-          if (k.startsWith(`${r.kind}|${r.item ?? ''}|`)) {
-            close(run)
-            runs.delete(k)
-          }
-        }
-        continue
-      }
-      const run = runs.get(key)
-      if (run) run.push(r)
-      else runs.set(key, [r])
-    }
-    for (const run of runs.values()) close(run)
-  }
-  return out
-}
-
-/**
- * The DECIDE lane of one tick: each agent's decisions of that tick in id order (a run of identical refusals once,
- * on its last tick), then one compact slot naming the agents that did not decide and when they last did. Nothing
- * at all before the first decision ever seen (no claim about agents we never heard of).
- */
-export function decideSlots(s: State, tick: number, runs: Map<number, Run | null> = refusalRuns(s)): DecideSlot[] {
-  const first = Math.min(...AGENTS.flatMap((a) => s.agents.decisions[a].map((r) => r.tick)))
-  if (!Number.isFinite(first) || tick < first) return []
-  const slots: DecideSlot[] = []
-  const idle: Idle[] = []
-  for (const agent of AGENTS) {
-    const rows = s.agents.decisions[agent]
-    const now = rows.filter((r) => r.tick === tick)
-    if (!now.length) idle.push({ agent, last: rows.filter((r) => r.tick < tick).at(-1)?.tick ?? null })
-    for (const row of now) {
-      const run = runs.get(row.decision)
-      if (run !== null) slots.push({ kind: 'row', row, run: run ?? null })
+    if (run && last && r.outcome == null && last.outcome == null && r.tick - last.tick <= 1) run.push(r)
+    else {
+      close(key)
+      open.set(key, [r])
     }
   }
-  if (idle.length) slots.push({ kind: 'idle', agents: idle })
-  return slots
+  for (const k of [...open.keys()]) close(k)
+  return runs.sort((a, b) => a.last.decision - b.last.decision)
 }
 
 /** Ticks in one game hour: `t_hours` grows by tick_seconds / 3600 a tick (60 s ticks: 60 a game hour). */
 export const ticksPerHour = (tickSeconds: number): number => Math.max(1, Math.round(3600 / (tickSeconds > 0 ? tickSeconds : 60)))
+
+/** The first tick of the last game hour. */
+export const hourStart = (s: State): number => Math.max(0, nowTick(s) - ticksPerHour(s.tickSeconds) + 1)
 
 export type RuleCount = { readonly rule: string; readonly count: number; readonly lastTick: number; readonly agents: AgentName[] }
 
@@ -113,7 +121,7 @@ export type Blocks = { readonly fromTick: number; readonly total: number; readon
 
 /** Denials by rule id over the last game hour, most frequent first. */
 export function blocksByRule(s: State): Blocks {
-  const fromTick = Math.max(0, s.tick - ticksPerHour(s.tickSeconds) + 1)
+  const fromTick = hourStart(s)
   const by = new Map<string, { count: number; lastTick: number; agents: Set<AgentName> }>()
   for (const a of AGENTS) {
     for (const r of s.agents.decisions[a]) {
@@ -129,6 +137,56 @@ export function blocksByRule(s: State): Blocks {
   const rules = [...by].map(([rule, c]) => ({ rule, count: c.count, lastTick: c.lastTick, agents: AGENTS.filter((a) => c.agents.has(a)) }))
   rules.sort((x, y) => y.count - x.count || y.lastTick - x.lastTick || x.rule.localeCompare(y.rule))
   return { fromTick, total: rules.reduce((n, r) => n + r.count, 0), rules }
+}
+
+export type AgentState = 'none' | 'silent' | 'stuck' | 'ok'
+
+/** One agent at a glance: alive or silent, what it last did, and what blocks it most this game hour. */
+export type AgentStatus = {
+  readonly agent: AgentName
+  /**
+   * `none`: no decision log from this source at all; `silent`: no decision for more than SILENT_AFTER ticks (or
+   * never); `stuck`: deciding, but its last run is STUCK_AFTER or more identical blocks; `ok` otherwise.
+   */
+  readonly state: AgentState
+  /** Its last run of decisions (restarts left out), or null if it never decided. */
+  readonly last: Run | null
+  /** Ticks since its last decision. */
+  readonly silentFor: number | null
+  /** Its restarts this game hour, and the newest one's tick. */
+  readonly restarts: number
+  readonly restartedAt: number | null
+  /** The rule that blocked it most this game hour. */
+  readonly topBlock: { readonly rule: string; readonly count: number } | null
+  /** Its blocks and decisions this game hour. */
+  readonly blocks: number
+  readonly decisions: number
+}
+
+export function agentStatuses(s: State): AgentStatus[] {
+  const logged = hasDecisions(s)
+  const now = nowTick(s)
+  const from = hourStart(s)
+  return AGENTS.map((agent): AgentStatus => {
+    const rows = s.agents.decisions[agent]
+    const last = runsOf(rows.filter((r) => isWrite(r.kind))).at(-1) ?? null
+    const restarts = rows.filter(isRestart)
+    const hour = rows.filter((r) => r.tick >= from && isWrite(r.kind))
+    const byRule = new Map<string, number>()
+    for (const r of hour) if (r.verdict === 'denied') byRule.set(r.rule ?? 'other', (byRule.get(r.rule ?? 'other') ?? 0) + 1)
+    const top = [...byRule].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
+    const silentFor = last ? Math.max(0, now - last.toTick) : null
+    const state: AgentState = !logged ? 'none'
+      : silentFor == null || silentFor > SILENT_AFTER ? 'silent'
+      : last && last.verdict === 'denied' && last.rows.length >= STUCK_AFTER ? 'stuck'
+      : 'ok'
+    return {
+      agent, state, last, silentFor,
+      restarts: restarts.filter((r) => r.tick >= from).length, restartedAt: restarts.at(-1)?.tick ?? null,
+      topBlock: top ? { rule: top[0], count: top[1] } : null,
+      blocks: [...byRule.values()].reduce((n, c) => n + c, 0), decisions: hour.length,
+    }
+  })
 }
 
 export type Ledger = {
@@ -174,7 +232,7 @@ export type Deal = {
 }
 
 /** A dealer thread that ended with no fill (we walked, she walked) scored as an outcome, but nothing changed hands. */
-const settled = (o: OutcomeRow): boolean => o.target !== 'dealer' || o.price != null
+export const settled = (o: OutcomeRow): boolean => o.target !== 'dealer' || o.price != null
 
 /**
  * Our value of a dealer fill: the latest value our agent logged for that card with that dealer up to the fill,
@@ -201,15 +259,11 @@ function dealerValue(s: State, o: OutcomeRow): number | null {
   return null
 }
 
-function dealOf(s: State, row: OutcomeRow): Deal {
+/** A scored deal against our value, from our side: positive when it beat our value. */
+export function dealOf(s: State, row: OutcomeRow): Deal {
   const value = row.value ?? dealerValue(s, row)
   const edge = row.surplus ?? (value != null && row.price != null ? (row.side === 'sell' ? row.price - value : value - row.price) : null)
   return { row, value, edge, verdict: edge == null ? null : edge > 0 ? 'beat' : edge < 0 ? 'below' : 'even' }
-}
-
-/** Every settled deal we know of, newest first: trades and dealer fills (a duel is scored, not settled on the board). */
-export function settledDeals(s: State): Deal[] {
-  return [...s.agents.outcomes].reverse().filter((o) => o.target !== 'duel' && settled(o)).map((o) => dealOf(s, o))
 }
 
 /** The scored deals, newest first: did each beat our value, and was Jev right? */
@@ -221,34 +275,25 @@ export function deals(s: State, limit = 6): Deal[] {
     .map((row) => dealOf(s, row))
 }
 
-/** Dealer threads our agents opened and have not closed, opened within the last game hour (older ones lapsed). */
-export function openDealerThreads(s: State): number {
-  const since = s.tick - ticksPerHour(s.tickSeconds)
-  let open = 0
-  for (const a of AGENTS) {
-    const live = new Map<string, number>()
-    for (const r of s.agents.decisions[a]) {
-      const key = `${r.item ?? ''}|${r.counterparty ?? ''}`
-      if (r.kind === 'dealer_opened') live.set(key, r.tick)
-      else if (r.kind === 'dealer_closed') live.delete(key)
-    }
-    for (const tick of live.values()) if (tick >= since) open += 1
-  }
-  return open
+export type DealTally = {
+  readonly good: number
+  readonly ok: number
+  readonly bad: number
+  readonly unscored: number
+  readonly jevRight: number
+  readonly jevJudged: number
 }
 
-/** The latest decision across agents, by id, that the test says yes to. */
-export function latestDecision(s: State, keep: (r: DecisionRow) => boolean): DecisionRow | null {
-  let best: DecisionRow | null = null
-  for (const a of AGENTS) {
-    const rows = s.agents.decisions[a]
-    for (let i = rows.length - 1; i >= 0; i--) {
-      const r = rows[i]
-      if (r && keep(r)) {
-        if (!best || r.decision > best.decision) best = r
-        break
-      }
+/** The scored deals we hold, by label, and how often Jev called them right. */
+export function dealTally(s: State): DealTally {
+  const t = { good: 0, ok: 0, bad: 0, unscored: 0, jevRight: 0, jevJudged: 0 }
+  for (const o of s.agents.outcomes.filter(settled)) {
+    if (o.label) t[o.label] += 1
+    else t.unscored += 1
+    if (o.jevRight != null) {
+      t.jevJudged += 1
+      if (o.jevRight) t.jevRight += 1
     }
   }
-  return best
+  return t
 }

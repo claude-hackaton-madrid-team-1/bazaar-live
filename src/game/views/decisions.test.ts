@@ -2,8 +2,7 @@ import { assert, test } from 'vitest'
 import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../../../shared/decisions.ts'
 import { DECISION_LIMITS } from '../decisions.ts'
 import { apply, createState, KNOWN_TYPES, type GameEvent, type State } from '../state.ts'
-import { timeline } from './agent.ts'
-import { blocksByRule, decideSlots, deals, ledger, share, ticksPerHour } from './decisions.ts'
+import { agentStatuses, blocksByRule, dealTally, deals, ledger, share, SILENT_AFTER, ticksPerHour } from './decisions.ts'
 
 let nextId = -(2 ** 50)
 const ev = (type: string, payload: object, tick: number | undefined = 10, t = 0.1): GameEvent => ({ id: nextId--, tick, t, type, scope: 'team', actor: '', payload: { ...payload } })
@@ -54,30 +53,56 @@ test('an unknown agent or a decision without an id is dropped', () => {
   assert.deepEqual(s.agents.decisions, { taker: [], maker: [], duels: [] })
 })
 
-test('the Decide lane: one row per decision, then one compact line naming who did not decide and when they last did', () => {
-  const s = feed(fresh(12), [decision(1, 'taker', 10), decision(2, 'maker', 11), decision(3, 'taker', 12), decision(4, 'taker', 12, { kind: 'dealer_bid' })])
-  const slots = decideSlots(s, 12)
-  assert.deepEqual(slots.map((x) => (x.kind === 'row' ? [x.row.agent, x.row.decision] : ['idle', x.agents.map((i) => [i.agent, i.last])])), [
-    ['taker', 3], ['taker', 4], ['idle', [['maker', 11], ['duels', null]]],
+const statusOf = (s: State) => agentStatuses(s).map((a) => [a.agent, a.state, a.silentFor])
+
+test('silence: an agent with no decision for more than SILENT_AFTER ticks, or never, is silent', () => {
+  assert.equal(SILENT_AFTER, 3)
+  const s = feed(fresh(20), [decision(1, 'taker', 19), decision(2, 'maker', 16), decision(3, 'maker', 17)])
+  assert.deepEqual(statusOf(s), [['taker', 'ok', 1], ['maker', 'ok', 3], ['duels', 'silent', null]])
+  apply(s, ev('clock', {}, 21, 0.35))
+  assert.deepEqual(statusOf(s), [['taker', 'ok', 2], ['maker', 'silent', 4], ['duels', 'silent', null]])
+})
+
+test('before any decision log arrives (the game API alone) no agent is called silent', () => {
+  assert.deepEqual(statusOf(fresh(20)), [['taker', 'none', null], ['maker', 'none', null], ['duels', 'none', null]])
+})
+
+test('a restart is not a sign of life: the silence counts from the last real decision, the restarts are counted apart', () => {
+  const s = feed(fresh(20), [
+    decision(1, 'taker', 10),
+    decision(2, 'taker', 12, { kind: 'process_started', item: null, verdict: null }),
+    decision(3, 'taker', 19, { kind: 'process_started', item: null, verdict: null }),
   ])
+  const [taker] = agentStatuses(s)
+  assert.deepEqual([taker?.state, taker?.silentFor, taker?.restarts, taker?.restartedAt, taker?.decisions], ['silent', 10, 2, 19, 1])
+  assert.equal(taker?.last?.kind, 'accept_ask')
 })
 
-test('no idle slots before the first decision ever arrives, nor for ticks before it', () => {
-  assert.deepEqual(decideSlots(fresh(), 10), [])
-  assert.deepEqual(decideSlots(feed(fresh(), [decision(1, 'maker', 10)]), 9), [])
+test('stuck: alive, but its last run is STUCK_AFTER identical blocks; the rule that blocks it most this game hour', () => {
+  const s = feed(fresh(20), [
+    denied(1, 'taker', 15, 'cash_floor'),
+    decision(2, 'taker', 16),
+    denied(3, 'taker', 17, 'max_price_uncommon'),
+    denied(4, 'taker', 18, 'max_price_uncommon'),
+    denied(5, 'maker', 19, 'protect_page_sets'),
+    denied(6, 'maker', 20, 'protect_page_sets'),
+  ])
+  const [taker, maker, duels] = agentStatuses(s)
+  assert.deepEqual([taker?.state, taker?.last?.rows.length, maker?.state], ['ok', 2, 'ok'], 'two in a row is not stuck yet')
+  apply(s, denied(7, 'taker', 19, 'max_price_uncommon'))
+  const [stuck] = agentStatuses(s)
+  assert.deepEqual([stuck?.state, stuck?.last?.rows.length, stuck?.last?.fromTick, stuck?.last?.toTick], ['stuck', 3, 17, 19])
+  assert.deepEqual([stuck?.topBlock, stuck?.blocks, stuck?.decisions], [{ rule: 'max_price_uncommon', count: 3 }, 4, 5])
+  assert.deepEqual([duels?.topBlock, duels?.blocks], [null, 0])
 })
 
-test('the timeline gives the current tick a card once decisions arrive, and puts them in Decide', () => {
-  const s = feed(fresh(12), [decision(1, 'taker', 10)])
-  const cards = timeline(s)
-  assert.deepEqual(cards.map((c) => c.tick), [12, 10])
-  assert.deepEqual(cards[0]?.lanes.map((l) => l.lane), ['decide'])
-  assert.deepEqual(cards[0]?.decide.map((d) => d.kind), ['idle'])
-  // a past tick shows its rows only: "no decision" is said once, on the current tick
-  assert.deepEqual(cards[1]?.decide.map((d) => d.kind), ['row'])
-  // "actions" keeps the rows, not the idle lines; "deals" keeps neither
-  assert.deepEqual(timeline(s, { filter: 'actions' }).map((c) => [c.tick, c.decide.length]), [[10, 1]])
-  assert.deepEqual(timeline(s, { filter: 'deals' }), [])
+test('the deal tally: good, ok and bad, and how often Jev was right', () => {
+  const outcome = (subject: string, label: 'good' | 'ok' | 'bad' | null, jevRight: boolean | null) => ev('agent.outcome', {
+    target: 'trade', subject, decision: null, agent: 'taker', item: 'LAV-08', counterparty: 't05', side: 'buy', price: 24, value: 31.5,
+    label, score: null, surplus: null, jev: 'yes', jevRight,
+  }, 11)
+  const s = feed(fresh(), [outcome('a', 'good', true), outcome('b', 'good', false), outcome('c', 'bad', true), outcome('d', 'ok', null), outcome('e', null, null)])
+  assert.deepEqual(dealTally(s), { good: 2, ok: 1, bad: 1, unscored: 1, jevRight: 2, jevJudged: 3 })
 })
 
 test('ticks in a game hour follow the tick length', () => {
