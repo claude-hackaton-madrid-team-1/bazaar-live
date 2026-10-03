@@ -90,11 +90,16 @@ interface Neg {
 interface MockDuel {
   id: number
   role: 'seller' | 'buyer'
+  /** The other side's alias, as the game names it (duels never name a team). */
+  rival: string
   ours: number | null
   theirs: number | null
   round: number
   limit: number
 }
+
+/** The aliases the game gives our duel rivals; a duel's rival is `RIVALS[id % 3]`. */
+const RIVALS = ['Rival Oro', 'Rival Noche', 'Rival Azul'] as const
 
 /** GUARDRAILS.md's caps, as the server sends them with the ledger (server/game/decisions.ts). */
 const MOCK_LIMITS = { spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 }
@@ -535,8 +540,26 @@ export class MockGame {
     })]
   }
 
+  /** Two duels already over when we start (one deal, one no deal), so the duel screens open with history. */
+  private pastDuels(): GameEvent[] {
+    const msg = (duel: number, role: string, ours: boolean, price: number, days: number) => {
+      const rival = RIVALS[duel % RIVALS.length]
+      return this.ev('duel.message', { duel, role, rival, sender: ours ? this.team : rival, price, days }, ours ? '' : rival)
+    }
+    this.score.duel_points = Math.round((this.score.duel_points + 1.3) * 10) / 10
+    return [
+      msg(1, 'buyer', false, 58, 6), msg(1, 'buyer', true, 40, 3), msg(1, 'buyer', false, 49, 5), msg(1, 'buyer', true, 46, 4),
+      this.ev('duel.result', { duel: 1, rival: RIVALS[1], deal: true, price: 47, points: 1.3 }),
+      msg(2, 'seller', true, 66, 2), msg(2, 'seller', false, 38, 8), msg(2, 'seller', true, 61, 3),
+      this.ev('duel.result', { duel: 2, rival: RIVALS[2], deal: false, price: null, points: 0 }),
+    ]
+  }
+
   private duelStep(): GameEvent[] {
-    this.duel ??= { id: this.duelIds(), role: this.choice(['seller', 'buyer'] as const), ours: null, theirs: null, round: 0, limit: this.int(35, 55) }
+    if (!this.duel) {
+      const id = this.duelIds()
+      this.duel = { id, role: this.choice(['seller', 'buyer'] as const), rival: RIVALS[id % RIVALS.length] ?? 'rival', ours: null, theirs: null, round: 0, limit: this.int(35, 55) }
+    }
     const d = this.duel
     const seller = d.role === 'seller'
     d.round += 1
@@ -550,15 +573,15 @@ export class MockGame {
         target: 'duel', subject: `duel:${d.id}`, decision: null, agent: 'duels', item: null, counterparty: null, side: null, price: null, value: null,
         label: close ? 'good' : 'bad', score: null, surplus: null, jev: 'accept', jevRight: close,
       }
-      return [this.ev('duel.result', { duel: d.id, deal: close, price: close ? d.theirs : null, points }), this.ev('agent.outcome', outcome, 'duels')]
+      return [this.ev('duel.result', { duel: d.id, rival: d.rival, deal: close, price: close ? d.theirs : null, points }), this.ev('agent.outcome', outcome, 'duels')]
     }
     if (d.round % 2) {
       const gap = d.ours && d.theirs ? d.theirs - d.ours : null
       d.ours = d.ours === null ? (seller ? d.limit + 25 : d.limit - 20) : d.ours + (seller ? -1 : 1) * Math.max(1, Math.round(Math.abs(gap ?? 6) * 0.5))
-      return [this.ev('duel.message', { duel: d.id, role: d.role, sender: this.team, price: d.ours, days: this.int(2, 6) })]
+      return [this.ev('duel.message', { duel: d.id, role: d.role, rival: d.rival, sender: this.team, price: d.ours, days: this.int(2, 6) })]
     }
     d.theirs = d.theirs === null ? (seller ? d.limit - 15 : d.limit + 18) : d.theirs + (seller ? 1 : -1) * Math.max(1, Math.round(Math.abs((d.ours ?? 0) - d.theirs) * 0.45))
-    return [this.ev('duel.message', { duel: d.id, role: d.role, sender: 'rival', price: d.theirs, days: this.int(3, 9) }, 'rival')]
+    return [this.ev('duel.message', { duel: d.id, role: d.role, rival: d.rival, sender: d.rival, price: d.theirs, days: this.int(3, 9) }, d.rival)]
   }
 
   private book(spent: number, accepts = 0, listings = 0): void {
@@ -653,7 +676,10 @@ export class MockGame {
   /** One step of the game: a tick is STEPS_PER_TICK steps (observe, decide, act, a duel move, their answers). */
   step(): GameEvent[] {
     const out: GameEvent[] = []
-    if (this.n === 0) out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me())
+    if (this.n === 0) {
+      const past = this.pastDuels()
+      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.duelStep())
+    }
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {
       this.tick += 1

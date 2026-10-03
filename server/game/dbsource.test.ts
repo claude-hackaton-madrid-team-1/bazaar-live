@@ -66,10 +66,10 @@ describe('row translation', () => {
       [duelEventId(274, 0), 'duel.message'], [duelEventId(274, 1), 'duel.message'], [duelEventId(274, 2), 'duel.message'], [duelEventId(274, 999), 'duel.result'],
       [duelEventId(280, 0), 'duel.message'], [duelEventId(280, 999), 'duel.result'],
     ])
-    expect(events[0]?.payload).toEqual({ duel: 274, role: 'buyer', sender: 't01', price: 59, days: null })
+    expect(events[0]?.payload).toEqual({ duel: 274, role: 'buyer', rival: 'Rival Rojo', sender: 't01', price: 59, days: null })
     expect(events[1]?.payload.sender).toBe('Rival Rojo')
-    expect(events[3]).toMatchObject({ tick: 153, scope: 'team', payload: { duel: 274, deal: true, price: 103, points: null } })
-    expect(events[5]?.payload).toEqual({ duel: 280, deal: false, price: null, points: null })
+    expect(events[3]).toMatchObject({ tick: 153, scope: 'team', payload: { duel: 274, rival: 'Rival Rojo', deal: true, price: 103, points: null } })
+    expect(events[5]?.payload).toEqual({ duel: 280, rival: 'Rival Noche', deal: false, price: null, points: null })
   })
 })
 

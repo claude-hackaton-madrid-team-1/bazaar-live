@@ -125,6 +125,12 @@ export interface GameStrings {
     readonly noDuels: string
     readonly duelHead: readonly string[]
     readonly duelStatus: Readonly<Record<'open' | 'deal' | 'no deal', string>>
+    readonly against: string
+    readonly unknownRival: string
+    readonly rivalDuels: (duels: number, finished: number) => string
+    readonly rivalDeals: (deals: number, noDeals: number) => string
+    readonly rivalPoints: (points: number | null) => string
+    readonly rivalPointsNone: string
   }
   readonly album: {
     readonly album: string
@@ -380,8 +386,14 @@ const EN: GameStrings = {
     duels: 'Duels',
     duelsSub: (live) => `${live} live`,
     noDuels: 'No duels yet.',
-    duelHead: ['duel', 'role', 'us', 'them', 'gap', 'rounds', 'status', 'deal', 'points', 'event'],
+    duelHead: ['duel', 'rival', 'role', 'us', 'them', 'gap', 'rounds', 'status', 'deal', 'points', 'event'],
     duelStatus: { open: 'open', deal: 'deal', 'no deal': 'no deal' },
+    against: 'Dueling against',
+    unknownRival: 'unknown rival',
+    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duel' : 'duels'} · ${done} finished`,
+    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'deal' : 'deals'} · ${none} no deal`,
+    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
+    rivalPointsNone: 'No points recorded for these duels (our database does not keep them)',
   },
   album: {
     album: 'Album',
@@ -651,8 +663,14 @@ const ES: GameStrings = {
     duels: 'Duelos',
     duelsSub: (live) => `${live} en curso`,
     noDuels: 'Aún no hay duelos.',
-    duelHead: ['duelo', 'papel', 'nosotros', 'ellos', 'distancia', 'rondas', 'estado', 'trato', 'puntos', 'evento'],
+    duelHead: ['duelo', 'rival', 'papel', 'nosotros', 'ellos', 'distancia', 'rondas', 'estado', 'trato', 'puntos', 'evento'],
     duelStatus: { open: 'abierto', deal: 'trato', 'no deal': 'sin trato' },
+    against: 'En duelo contra',
+    unknownRival: 'rival desconocido',
+    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duelo' : 'duelos'} · ${done} ${done === 1 ? 'terminado' : 'terminados'}`,
+    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'trato' : 'tratos'} · ${none} sin trato`,
+    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
+    rivalPointsNone: 'Sin puntos registrados para estos duelos (nuestra base de datos no los guarda)',
   },
   album: {
     album: 'Álbum',

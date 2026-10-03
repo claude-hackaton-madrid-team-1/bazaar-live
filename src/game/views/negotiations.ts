@@ -131,3 +131,32 @@ export function duelRows(s: State): DuelRow[] {
   return [...all.filter((d) => d.status === 'open').sort(order), ...all.filter((d) => d.status !== 'open').sort(order)]
     .map((d) => ({ ...d, gap: gapOf(d.ourPrice, d.theirPrice), tone: toneOf(d) }))
 }
+
+export type RivalRow = {
+  /** The rival's alias; null groups the duels whose rival we never heard. */
+  rival: string | null
+  duels: number
+  open: number
+  finished: number
+  deals: number
+  noDeals: number
+  /** Points won against it, summed over the results that carry them; null when none does (our database never has them). */
+  points: number | null
+}
+
+/** Who we duel: one row per rival, the ones with a live duel first, then the most duelled, then by name (unknown last). */
+export function rivalSummary(s: State): RivalRow[] {
+  const by = new Map<string | null, RivalRow>()
+  for (const d of Object.values(s.duels)) {
+    const r = by.get(d.rival) ?? { rival: d.rival, duels: 0, open: 0, finished: 0, deals: 0, noDeals: 0, points: null }
+    r.duels += 1
+    if (d.status === 'open') r.open += 1
+    else r.finished += 1
+    if (d.status === 'deal') r.deals += 1
+    if (d.status === 'no deal') r.noDeals += 1
+    if (d.points != null) r.points = Math.round(((r.points ?? 0) + d.points) * 100) / 100
+    by.set(d.rival, r)
+  }
+  const byName = (a: RivalRow, b: RivalRow) => (a.rival === null ? 1 : b.rival === null ? -1 : a.rival.localeCompare(b.rival))
+  return [...by.values()].sort((a, b) => b.open - a.open || b.duels - a.duels || byName(a, b))
+}

@@ -66,6 +66,16 @@ describe('MockGame', () => {
     expect(s.agents.ledger?.limits).toEqual({ spendPerHour: 150, cashFloor: 50, acceptsPerTick: 1 })
   })
 
+  it('duels three rivals by alias from the first step: two finished duels and a live one, each event naming its rival', () => {
+    const first = createState()
+    play(1).forEach((e) => apply(first, e))
+    const duels = Object.values(first.duels)
+    expect(duels.map((d) => [d.id, d.rival, d.status])).toEqual([[1, 'Rival Noche', 'deal'], [2, 'Rival Azul', 'no deal'], [3, 'Rival Oro', 'open']])
+    const events = play(400).filter((e) => e.type.startsWith('duel.'))
+    expect(events.every((e) => typeof e.payload.rival === 'string' && e.payload.rival.startsWith('Rival '))).toBe(true)
+    expect(events.filter((e) => e.type === 'duel.message' && e.payload.sender !== 't01').every((e) => e.payload.sender === e.payload.rival)).toBe(true)
+  })
+
   it('is the same game for the same seed', () => {
     expect(play(120, 3)).toEqual(play(120, 3))
     expect(play(120, 3)).not.toEqual(play(120, 4))
