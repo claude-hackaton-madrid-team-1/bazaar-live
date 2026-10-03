@@ -1,0 +1,285 @@
+/* ── Rivals (/rivals): who has the cards we need, the standings, one rival's album as far as the public feed shows ── */
+.rv-needs {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-need {
+  display: grid;
+  gap: var(--s-2);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.rv-need:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.rv-need-what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 0.9375rem;
+}
+
+.rv-holders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-holder {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--gm-well);
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rv-holder:hover {
+  background: var(--gm-well-hover);
+}
+
+.rv-holder:focus-visible,
+.rv-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.rv-copies {
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--seller-ink);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--bg);
+}
+
+.rv-how {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.rv-more {
+  align-self: center;
+  font-size: 0.8125rem;
+}
+
+.rv-nobody,
+.rv-chase {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.rv-chase b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.rv-chase-head {
+  color: var(--gm-warn);
+  font-weight: 600;
+}
+
+.rv-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-4);
+}
+
+.rv-grid > .gm-panel,
+.rv-album-wrap > .gm-panel {
+  margin: 0;
+}
+
+.rv-album-wrap {
+  scroll-margin-top: var(--s-4);
+}
+
+/* the standings: rank, team, score, pages, how many of our needs, the set it chases */
+.rv-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-row {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(5.5rem, 1fr) 2.75rem 2.5rem 4.5rem minmax(0, 7.5rem);
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 2px var(--s-2);
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  color: var(--text);
+}
+
+button.rv-row {
+  cursor: pointer;
+}
+
+button.rv-row:hover {
+  background: var(--gm-row-hover);
+}
+
+.rv-row[aria-pressed='true'] {
+  background: var(--gm-well-hover);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.rv-row[data-us] {
+  background: color-mix(in srgb, var(--gm-us) 10%, transparent);
+}
+
+.rv-row[data-us] .rv-team {
+  color: var(--gm-us);
+}
+
+.rv-row-head {
+  min-height: 0;
+  padding-bottom: var(--s-1);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.rv-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rv-ours {
+  color: var(--text-2);
+}
+
+.rv-ours[data-some] {
+  color: var(--gm-good);
+  font-weight: 700;
+}
+
+.rv-col-chase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rv-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* one rival's album: our album's grid, a seen card ticked, an unseen one dashed and unknown */
+.rv-album .alb-page {
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 30rem);
+}
+
+.rv-album-head {
+  margin: 0 0 var(--s-3);
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+
+.rv-page-meta {
+  grid-template-columns: 3.5rem auto;
+}
+
+.rv-cell {
+  color: var(--text-3);
+}
+
+.rv-cell[data-known] {
+  border: 0;
+  background: color-mix(in srgb, var(--gm-us) 22%, transparent);
+  box-shadow: inset 0 -3px 0 var(--r);
+  color: var(--text);
+}
+
+.rv-cell[data-need] {
+  outline: 2px solid var(--gm-good);
+  outline-offset: -1px;
+}
+
+.rv-cell[data-known][data-need] {
+  background: color-mix(in srgb, var(--ok) 26%, transparent);
+  color: var(--gm-good);
+}
+
+.rv-swatch[data-known] {
+  background: color-mix(in srgb, var(--gm-us) 22%, transparent);
+}
+
+.rv-swatch[data-need] {
+  border: 2px solid var(--gm-good);
+  background: none;
+}
+
+@media (max-width: 1100px) {
+  .rv-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .rv-album .alb-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  /* the chased set as its swatch only (its name on hover), the badge in the row's tint */
+  .rv-row {
+    grid-template-columns: 1.25rem minmax(0, 1fr) 2.5rem 2.25rem 4.25rem 1.5rem;
+    gap: 6px;
+  }
+
+  .rv-set-name,
+  .rv-col-chase .gm-badge {
+    display: none;
+  }
+
+  .rv-row-head .rv-col-chase {
+    visibility: hidden;
+    overflow: hidden;
+  }
+}
+
+@media (forced-colors: active) {
+  .rv-cell[data-known],
+  .rv-swatch {
+    forced-color-adjust: none;
+  }
+}

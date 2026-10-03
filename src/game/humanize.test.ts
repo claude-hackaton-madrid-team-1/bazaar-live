@@ -24,6 +24,7 @@ describe('whoOf', () => {
   it('names dealers, rivals, teams and venues', () => {
     expect(whoOf('abuela')).toEqual({ kind: 'dealer', name: 'Abuela Carmen' })
     expect(whoOf('chato')).toEqual({ kind: 'dealer', name: 'El Chato' })
+    expect(whoOf('picaros')).toEqual({ kind: 'dealer', name: 'Los Pícaros' })
     expect(whoOf('pilar')).toEqual({ kind: 'dealer', name: 'Doña Pilar' })
     expect(whoOf('rival_sol')).toEqual({ kind: 'rival', name: 'Rival Sol' })
     expect(whoOf('Rival Verde')).toEqual({ kind: 'rival', name: 'Rival Verde' })
