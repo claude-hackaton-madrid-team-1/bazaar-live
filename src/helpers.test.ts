@@ -11,9 +11,9 @@ import { modeOf } from './ui/mode'
 
 describe('readConfig', () => {
   it('reads ?mock, ?speed, ?tts and ?mode with safe defaults', () => {
-    expect(readConfig('')).toEqual({ mock: false, speed: 1, tts: 'auto', mockMode: 'live' })
-    expect(readConfig('?mock=1&speed=20&tts=Gemini&mode=dry')).toEqual({ mock: true, speed: 8, tts: 'gemini', mockMode: 'dry' })
-    expect(readConfig('?mock&speed=abc&tts=shout')).toEqual({ mock: true, speed: 1, tts: 'auto', mockMode: 'live' })
+    expect(readConfig('')).toEqual({ mock: false, speed: 1, tts: 'auto', mockMode: 'live', lang: 'es', speakQuotes: false })
+    expect(readConfig('?mock=1&speed=20&tts=Gemini&mode=dry&lang=EN&quotes=speak')).toEqual({ mock: true, speed: 8, tts: 'gemini', mockMode: 'dry', lang: 'en', speakQuotes: true })
+    expect(readConfig('?mock&speed=abc&tts=shout&lang=fr&quotes=yes')).toEqual({ mock: true, speed: 1, tts: 'auto', mockMode: 'live', lang: 'es', speakQuotes: false })
     expect(readConfig('?mock=0').mock).toBe(false)
   })
 })

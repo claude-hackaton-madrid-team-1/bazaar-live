@@ -33,9 +33,14 @@ function voicesFor(lang: 'en' | 'es'): SpeechSynthesisVoice[] {
   return [...matching.filter((v) => v.localService), ...matching.filter((v) => !v.localService)]
 }
 
-function pickVoice(voicing: Voicing): SpeechSynthesisVoice | null {
-  const own = voicesFor(voicing.lang)
-  const pool = own.length > 0 ? own : voicesFor('en')
+/**
+ * A voice for the line's language. A line that names its language (a real conversation's) is never read
+ * by a voice of another one: with no voice for it, null, and the caller stays quiet. Show templates
+ * name none and keep their characters' own languages, with the English fallback.
+ */
+function pickVoice(voicing: Voicing, lineLang: 'en' | 'es' | undefined): SpeechSynthesisVoice | null {
+  const own = voicesFor(lineLang ?? voicing.lang)
+  const pool = own.length > 0 || lineLang ? own : voicesFor('en')
   return pool.length > 0 ? (pool[voicing.slot % pool.length] ?? null) : null
 }
 
@@ -58,7 +63,8 @@ export function createWebSpeech(): SpeechProvider {
       return new Promise<void>((resolve, reject) => {
         const voicing = VOICING[u.speaker]
         const utter = new SpeechSynthesisUtterance(words)
-        const voice = pickVoice(voicing)
+        const voice = pickVoice(voicing, u.lang)
+        if (u.lang && !voice) return resolve()
         if (voice) {
           utter.voice = voice
           utter.lang = voice.lang

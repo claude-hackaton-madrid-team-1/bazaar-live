@@ -73,6 +73,33 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
   probabilities: the probabilities are private.
 - **Read-only.** The page never sends anything to the agents or the game.
 
+## Real conversations (LIVE-T1)
+
+The show can narrate our real dealer threads and closed duels, read from Postgres through a read-only role.
+Spec: [`docs/specs/LIVE-T1.md`](docs/specs/LIVE-T1.md).
+
+- `db/show.sql` (applied by whoever holds the admin url, never by this repo): schema `show`, views
+  `show.thread_lines` and `show.duel_lines`, role `bazaar_live_reader` (NOLOGIN in the file; add LOGIN and a
+  password outside it). The role has no grant on `feed_events` or `duels`. A duel's words are exposed only
+  after it closes, and ONLY once an admin opens the gate after the last session
+  (`update show.gate set open_all = true`; until then `show.duel_lines` is empty, in every session). A live
+  duel shows nothing. The server keeps duels off the page entirely unless `SHOW_DUELS=on` (our duel prices
+  reveal our limits while rivals still play). The role also gets `temp_file_limit`, no TEMP and no CONNECT
+  to the other databases (on Railway the only login role is the `postgres` superuser, so the revokes touch no
+  one else). Lines read while catching up (a restart, SHOW_DUELS or the gate just opening) are captions, not scenes.
+- `SHOW_DATABASE_URL` (a Railway service variable, that role's url on the private network,
+  `postgres.railway.internal`, which carries no TLS; any other host, a public proxy included, is refused and
+  the feature stays off; query parameters like `host=` or `port=` are refused too): absent → the feature is off and the show is unchanged. `TRANSCRIPT_STREAMS_PER_ADDRESS` (default 12; 200 in all) caps open streams per address; a stream lasts 30 min and the page reconnects. Pool of 2, 2 s statement timeout, a poll every 3 s with backoff; `GET /api/transcript` and the
+  SSE stream `/api/transcript/stream`.
+- One language (`?lang=es|en`) for every generated line and voice. A dealer's or rival's real words are
+  captions only; the line built from the structured offer is what is spoken. `?quotes=speak` with
+  `TRANSCRIPT_SPEAK_QUOTES=1` voices a hosted dealer's quote (bound to that dealer, never a rival's), and only when its
+  detected language is the selected one. A
+  line that names its language is never read by a voice of another one. The TTS proxy voices only show
+  templates and generated real lines (plus those quotes when enabled).
+- `?mock=1` plays a synthetic transcript with no database.
+- Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` (needs docker).
+
 ## What it shows
 
 - **Stage** (`src/stage/`): the SELLER behind the stall, the BUYER in front, a cork board with our

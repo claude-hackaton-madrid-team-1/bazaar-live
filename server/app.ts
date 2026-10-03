@@ -4,6 +4,8 @@
  *   GET  /health               {ok, service, tts: [...]}  (Railway's healthcheck)
  *   GET  /api/tts/providers    {providers: ["elevenlabs", "gemini"]}: the ones with a key
  *   POST /api/tts              {provider, speaker, text} → audio (MP3 or WAV)
+ *   GET  /api/transcript       the real conversations, JSON (LIVE-T1; `enabled: false` without a database)
+ *   GET  /api/transcript/stream  the same as server-sent events
  *   GET  /*                    dist/ (SPA)
  *
  * The proxy is public, so it only speaks the show's own short lines: same-origin requests, one of
@@ -14,10 +16,13 @@ import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isShowLine } from '../shared/lines.ts'
-import { isSpeaker } from '../shared/tags.ts'
+import { isRealLine } from '../shared/real-lines.ts'
+import { isSpeaker, type Speaker } from '../shared/tags.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
 import { createStatic } from './static.ts'
+import { createTranscriptRoutes, type TranscriptRouteDeps } from './transcript/routes.ts'
+import { TranscriptStore } from './transcript/store.ts'
 
 export const MAX_TEXT = 300
 const MAX_BODY = 2048
@@ -32,6 +37,11 @@ export interface AppDeps {
   readonly cache?: LruCache<Audio>
   readonly budget?: DailyBudget
   readonly log?: (entry: Record<string, unknown>) => void
+  /** The real conversations (LIVE-T1); absent → /api/transcript answers `enabled: false`. */
+  readonly transcript?: Pick<TranscriptRouteDeps, 'store' | 'enabled' | 'limiter' | 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter'> & {
+    /** Voice real quotes the server read from the database. Off by default: they are captions only. */
+    readonly vouchQuotes?: boolean
+  }
 }
 
 const CSP = [
@@ -120,7 +130,12 @@ interface TtsRequest {
   readonly text: string
 }
 
-export function parseTtsRequest(raw: string, available: readonly ProviderId[]): TtsRequest | string {
+/**
+ * A body for the proxy, or why not. The text must be a line the show can vouch for: one of its own
+ * templates, a line generated from a real conversation's structure, or a quote the server itself read
+ * from the database (`vouches`). Nothing a caller invents is ever voiced.
+ */
+export function parseTtsRequest(raw: string, available: readonly ProviderId[], vouches: (text: string, speaker: Speaker) => boolean = () => false): TtsRequest | string {
   let body: unknown
   try {
     body = JSON.parse(raw)
@@ -135,7 +150,7 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[]): 
   // eslint-disable-next-line no-control-regex
   const clean = typeof text === 'string' ? text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : ''
   if (!clean || clean.length > MAX_TEXT) return `text must be 1 to ${MAX_TEXT} characters`
-  if (!isShowLine(speaker, clean)) return 'only the show\'s own lines are spoken here'
+  if (!isShowLine(speaker, clean) && !isRealLine(clean) && !vouches(clean, speaker)) return 'only the show\'s own lines are spoken here'
   return { provider, speaker, text: clean }
 }
 
@@ -151,6 +166,14 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
   const inFlight = new Map<string, Promise<Audio>>()
   const available = availableProviders(deps.config)
   const serveStatic = createStatic(deps.distDir)
+  const transcriptStore = deps.transcript?.store ?? new TranscriptStore()
+  const transcript = createTranscriptRoutes({
+    enabled: () => false,
+    ...deps.transcript,
+    store: transcriptStore,
+    headers: SECURITY_HEADERS,
+    address: (req) => clientAddress(req, limits.clientIpHeader),
+  })
 
   async function synthesize(req: TtsRequest): Promise<Audio> {
     if (req.provider === 'elevenlabs' && deps.config.elevenlabs) return elevenLabs(deps.config.elevenlabs, req.speaker, req.text, fetchImpl)
@@ -168,7 +191,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       res.on('finish', () => req.socket.destroy())
       return json(res, 413, { error: 'too_large' }, { Connection: 'close' })
     }
-    const parsed = parseTtsRequest(raw, available)
+    const parsed = parseTtsRequest(raw, available, (text, speaker) => deps.transcript?.vouchQuotes === true && transcriptStore.quote(text)?.speaker === speaker)
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
     const key = `${parsed.provider}|${parsed.speaker}|${parsed.text}`
     const started = Date.now()
@@ -219,6 +242,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       if (path === '/health') return json(res, 200, { ok: true, service: 'bazaar-live', tts: available })
       if (path === '/api/tts/providers') return json(res, 200, { providers: available })
       if (path === '/api/tts') return await tts(req, res)
+      if (transcript(req, res, path)) return
       if (path.startsWith('/api/')) return json(res, 404, { error: 'not_found' })
       if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' })
       await serveStatic(req, res, SECURITY_HEADERS)

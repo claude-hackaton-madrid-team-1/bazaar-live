@@ -1,3 +1,4 @@
+import type { Lang } from '../../shared/lang.ts'
 import type { Speaker } from '../../shared/tags.ts'
 import type { AgentId } from '../model/events'
 
@@ -7,6 +8,10 @@ export interface Line {
   readonly speaker: Speaker
   /** With expressive tags (`[laughs]`), stripped or converted by each TTS provider. */
   readonly text: string
+  /** Shown in the captions but never voiced (a real quote: captions only, or in the other language). */
+  readonly silent?: boolean
+  /** The language this line is spoken in; a voice that has none for it stays quiet rather than read it in another. */
+  readonly lang?: Lang
 }
 
 export type DealerId = 'abuela' | 'chato' | 'other'

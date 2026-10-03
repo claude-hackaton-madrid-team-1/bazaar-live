@@ -242,11 +242,15 @@ export class ShowEngine {
       return
     }
     const beat = toBeat(event)
-    if (!beat) return
-    // A late replay on slow Wi-Fi can arrive after the feed's replay window: an event several ticks
-    // behind what the agent's /health reports is history, not a scene.
-    const agentTick = this.state.health[event.agent]?.tick ?? null
-    const stale = event.tick !== null && agentTick !== null && event.tick < agentTick - STALE_TICKS
+    if (beat) this.ingestBeat(beat, replay)
+  }
+
+  /** A beat from any source (an agent's event, a real conversation): history to the captions, or a scene. */
+  ingestBeat(beat: Beat, replay: boolean): void {
+    // A late replay on slow Wi-Fi can arrive after the feed's replay window: a beat several ticks
+    // behind what its agent's /health reports is history, not a scene.
+    const agentTick = this.state.health[beat.agent]?.tick ?? null
+    const stale = beat.tick !== null && agentTick !== null && beat.tick < agentTick - STALE_TICKS
     if (replay || stale) {
       this.set({ board: this.boardAfter(beat), transcript: this.appendLines(beat, 'history') })
       return
@@ -322,7 +326,7 @@ export class ShowEngine {
   }
 
   private prefetch(beat: Beat | null): void {
-    beat?.lines.forEach((line, i) => this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }))
+    beat?.lines.forEach((line, i) => !line.silent && this.speech.prefetch({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text, lang: line.lang }))
   }
 
   private async play(beat: Beat, generation: number): Promise<void> {
@@ -333,7 +337,7 @@ export class ShowEngine {
       if (!this.running || this.generation !== generation) return
       this.set({ line, transcript: this.appendLines(beat, 'played', line) })
       const backlog = this.director.size + this.speech.backlog
-      await Promise.all([this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text }), this.sleep(readingMs(line.text, backlog))])
+      await Promise.all([line.silent ? Promise.resolve() : this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, text: line.text, lang: line.lang }), this.sleep(readingMs(line.text, backlog))])
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)
     this.set(this.clearPatch())

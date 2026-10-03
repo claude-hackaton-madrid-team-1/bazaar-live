@@ -4,7 +4,9 @@ import { parseEnvelope } from '../model/sanitize'
 import { SpeechQueue } from '../tts/queue'
 import { resolveChoice } from '../tts/select'
 import type { SpeechProvider, Utterance } from '../tts/types'
+import { EMPTY_ITEM, type TranscriptItem } from '../../shared/transcript.ts'
 import { applyToBoard, readingMs, ShowEngine, syncBoard } from './engine'
+import { realBeat } from './real'
 
 function event(id: number, payload: Record<string, unknown>, agent: 'taker' | 'maker' = 'maker', type = 'agent.decision'): ShowEvent {
   const e = parseEnvelope({ id, tick: 300, t: 6, type, agent, payload: { status: 'approved', dry_run: false, ...payload } })
@@ -163,5 +165,38 @@ describe('a /state snapshot older than our own events (review P2 #1)', () => {
     expect(board(show)).toEqual([['LAT-09', 59, 1]])
     show.syncBoard(offer(59), 12)
     expect(board(show)).toEqual([['LAT-09', 59, 1]])
+  })
+})
+
+describe('ShowEngine with real conversations', () => {
+  const dealerItem = (text: string): TranscriptItem => ({
+    ...EMPTY_ITEM, id: 'f1', seq: 1, kind: 'thread_line', tick: null, who: 'them', counterpart: 'chato', thread: 187, item: 'LAV-08', text,
+    offer: { by: 'them', verb: 'ask', price: 31, item: 'LAV-08', final: false },
+  })
+  const quote = "Your abuela would've moved more than one. 31 P. I match what you move, nothing extra."
+
+  it('speaks the real English line, and puts a replayed one in the captions only', async () => {
+    const { show, spoken } = engine()
+    show.start()
+    const beat = realBeat(dealerItem(quote), 'en', { speakQuotes: true })
+    if (!beat) throw new Error('no beat')
+    show.ingestBeat({ ...beat, id: 'real:history' }, true)
+    show.ingestBeat(beat, false)
+    await settle()
+    expect(spoken.map((u) => [u.speaker, u.text, u.lang])).toEqual([['chato', quote, 'en']])
+    expect(show.getSnapshot().transcript.map((t) => t.kind)).toEqual(['history', 'played'])
+    show.stop()
+  })
+
+  it('shows a quote of the other language in the captions but never gives it to a voice', async () => {
+    const { show, spoken } = engine()
+    show.start()
+    const beat = realBeat(dealerItem(quote), 'es', { speakQuotes: true })
+    if (!beat) throw new Error('no beat')
+    show.ingestBeat(beat, false)
+    await settle()
+    expect(spoken.map((u) => [u.text, u.lang])).toEqual([['Lavapiés número 8 te sale por 31 primas.', 'es']])
+    expect(show.getSnapshot().transcript.map((t) => t.text)).toEqual([quote, 'Lavapiés número 8 te sale por 31 primas.'])
+    show.stop()
   })
 })
