@@ -8,6 +8,7 @@ import { useLang } from '../ui/lang'
 import type { GameStatus } from './store.ts'
 import type { Lane } from './views/agent.ts'
 import type { DecisionStatus } from '../../shared/decisions.ts'
+import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -144,29 +145,47 @@ export interface GameStrings {
     readonly market: string
   }
   readonly neg: {
-    readonly threads: string
-    readonly threadsSub: (open: number, closed: number) => string
+    readonly live: string
+    readonly liveSub: (n: number) => string
+    readonly ended: string
+    readonly endedSub: (won: number, lost: number) => string
     readonly ourThreads: string
     readonly conversation: string
-    readonly with: (id: number, who: string) => string
+    readonly with: (who: string, topic: string) => string
     readonly noThreads: string
+    readonly noLive: string
     readonly noThread: string
     readonly noOffers: string
-    readonly their: (label: string) => string
-    readonly our: (label: string) => string
+    readonly status: Readonly<Record<NegStatus, string>>
+    readonly statusTitle: Readonly<Record<NegStatus, string>>
+    readonly buying: string
+    readonly selling: string
     readonly ask: string
     readonly bid: string
+    readonly their: (label: string) => string
+    readonly our: (label: string) => string
     readonly gap: string
-    readonly rounds: string
-    readonly roundsAxis: string
-    readonly last: (id: number) => string
+    readonly value: string
+    readonly valueTitle: string
+    readonly cap: string
+    readonly capTitle: (rule: string, own: boolean) => string
+    readonly left: (ticks: number) => string
+    readonly leftTitle: string
+    readonly verdict: (v: Verdict, side: 'buy' | 'sell') => string
+    readonly agent: string
+    readonly action: Readonly<Record<Next['action'], string>>
+    readonly decision: Readonly<Record<DecisionStatus, string>>
+    readonly blockedBy: (rule: string) => string
+    readonly opened: (price: number) => string
+    readonly rounds: (n: number) => string
+    readonly details: string
+    readonly detailsLine: (b: { round: number; tick: number | null; offerId: number | null; messageId: number | null; expiresTick: number | null }) => string
     readonly we: string
-    readonly railLabel: (id: number) => string
     readonly convoLabel: (id: number) => string
     readonly duels: string
     readonly duelsSub: (live: number) => string
     readonly noDuels: string
-    readonly duelHead: readonly string[]
+    readonly duelCol: Readonly<Record<'duel' | 'rival' | 'role' | 'us' | 'them' | 'gap' | 'rounds' | 'status' | 'deal' | 'points', string>>
     readonly duelStatus: Readonly<Record<'open' | 'deal' | 'no deal', string>>
     readonly against: string
     readonly unknownRival: string
@@ -549,29 +568,77 @@ const EN: GameStrings = {
     market: 'MARKET',
   },
   neg: {
-    threads: 'Threads',
-    threadsSub: (open, closed) => `${open} open · ${closed} closed`,
+    live: 'Live negotiations',
+    liveSub: (n) => `${n} live`,
+    ended: 'Ended',
+    endedSub: (won, lost) => `${won} won · ${lost} no deal`,
     ourThreads: 'Our threads',
     conversation: 'Conversation',
-    with: (id, who) => `#${id} with ${who}`,
-    noThreads: 'No threads yet.',
-    noThread: 'No thread selected. Our threads show up here as soon as the agent opens one.',
+    with: (who, topic) => `${who} · ${topic}`,
+    noThreads: 'No threads yet. They show up here as soon as our agent opens one.',
+    noLive: 'Nothing live right now.',
+    noThread: 'Pick a thread to read it.',
     noOffers: 'No offers yet.',
-    their: (label) => `their ${label}`,
-    our: (label) => `our ${label}`,
+    status: { won: 'won', lost: 'no deal', stuck: 'stuck at cap', closing: 'closing', expiring: 'expiring', haggling: 'haggling' },
+    statusTitle: {
+      won: 'It settled',
+      lost: 'It ended without a deal',
+      stuck: 'Their price is past our guardrail cap: it cannot close unless they move',
+      closing: 'The gap is small, or closes within two rounds at this pace',
+      expiring: 'Nobody moved for two ticks and the last offer lapses next tick',
+      haggling: 'Both sides still moving',
+    },
+    buying: 'buying',
+    selling: 'selling',
     ask: 'ask',
     bid: 'bid',
+    their: (label) => `their ${label}`,
+    our: (label) => `our ${label}`,
     gap: 'gap',
-    rounds: 'rounds',
-    roundsAxis: 'rounds →',
-    last: (id) => `last #${id}`,
+    value: 'our value',
+    valueTitle: 'What the card is worth to us: the latest value our agent decided with',
+    cap: 'our cap',
+    capTitle: (rule, own) => (own ? `${rule}: a guardrail denial in this thread` : `${rule}: read off a denial for another card of the same rarity`),
+    left: (n) => `${n}t left`,
+    leftTitle: 'Ticks until the last offer lapses',
+    verdict: (v, side) => {
+      switch (v.kind) {
+        case 'capBelow':
+          return `${v.own ? 'Our cap' : 'The cap for this rarity'} ${v.cap} P < their ask ${v.ask} P: this won't close unless they come down${v.roundsToCap != null ? ` (~${v.roundsToCap} rounds at their pace)` : ''}.`
+        case 'overValue':
+          return `Their ask ${v.ask} P is above what it's worth to us (${v.value} P).`
+        case 'closing':
+          return v.gap === 0 ? 'Prices meet: it should close now.' : `Only ${v.gap} P apart: likely to close in a move or two.`
+        case 'pace':
+          return `They ${side === 'buy' ? 'come down' : 'come up'} ${v.step} P a round; ${v.gap} P apart${v.rounds != null ? `, ~${v.rounds} rounds to meet` : ''}.`
+        case 'holding':
+          return `They are not moving; ${v.gap} P apart.`
+        case 'apart':
+          return `${v.gap} P apart.`
+        case 'waiting':
+          return 'Waiting for both sides to put a price.'
+        case 'won':
+          return v.value == null || v.edge == null
+            ? `${side === 'buy' ? 'Bought' : 'Sold'} at ${v.price} P.`
+            : `${side === 'buy' ? 'Bought' : 'Sold'} at ${v.price} P vs our value ${v.value} P = ${v.edge >= 0 ? '+' : '−'}${Math.abs(v.edge)} P.`
+        case 'lost':
+          return { walked: 'We walked away.', idle: 'It went idle.', expired: 'The last offer lapsed.', closed: 'Closed without a deal.', deal: 'Closed.' }[v.how]
+      }
+    },
+    agent: 'Agent',
+    action: { bid: 'bid', ask: 'ask', accept: 'accept', walk: 'walk away', open: 'open', other: 'act' },
+    decision: { proposed: 'proposed', approved: 'approved', claimed: 'sending', done: 'done', rejected: 'blocked', failed: 'failed', expired: 'expired' },
+    blockedBy: (rule) => `blocked by ${rule}`,
+    opened: (p) => `opened at ${p} P`,
+    rounds: (n) => `${n} ${n === 1 ? 'round' : 'rounds'}`,
+    details: 'details',
+    detailsLine: (b) => `round ${b.round} · tick ${b.tick ?? '—'} · offer ${b.offerId ?? '—'} · message ${b.messageId ?? '—'} · expires t${b.expiresTick ?? '—'}`,
     we: 'we',
-    railLabel: (id) => `Price rail of thread ${id}`,
     convoLabel: (id) => `Conversation in thread ${id}`,
     duels: 'Duels',
     duelsSub: (live) => `${live} live`,
     noDuels: 'No duels yet.',
-    duelHead: ['duel', 'rival', 'role', 'us', 'them', 'gap', 'rounds', 'status', 'deal', 'points', 'event'],
+    duelCol: { duel: 'duel', rival: 'rival', role: 'role', us: 'us', them: 'them', gap: 'gap', rounds: 'rounds', status: 'status', deal: 'deal', points: 'points' },
     duelStatus: { open: 'open', deal: 'deal', 'no deal': 'no deal' },
     against: 'Dueling against',
     unknownRival: 'unknown rival',
@@ -977,29 +1044,77 @@ const ES: GameStrings = {
     market: 'MERCADO',
   },
   neg: {
-    threads: 'Hilos',
-    threadsSub: (open, closed) => `${open} abiertos · ${closed} cerrados`,
+    live: 'Negociaciones en curso',
+    liveSub: (n) => `${n} en curso`,
+    ended: 'Terminadas',
+    endedSub: (won, lost) => `${won} ${won === 1 ? 'cerrada' : 'cerradas'} · ${lost} sin trato`,
     ourThreads: 'Nuestros hilos',
     conversation: 'Conversación',
-    with: (id, who) => `#${id} con ${who}`,
-    noThreads: 'Aún no hay hilos.',
-    noThread: 'Ningún hilo elegido. Nuestros hilos aparecen aquí en cuanto el agente abre uno.',
+    with: (who, topic) => `${who} · ${topic}`,
+    noThreads: 'Aún no hay hilos. Aparecen aquí en cuanto el agente abre uno.',
+    noLive: 'Nada en curso ahora mismo.',
+    noThread: 'Elige un hilo para leerlo.',
     noOffers: 'Aún no hay ofertas.',
-    their: (label) => `su ${label}`,
-    our: (label) => `nuestra ${label}`,
+    status: { won: 'cerrada', lost: 'sin trato', stuck: 'atascada en el tope', closing: 'a punto', expiring: 'caduca', haggling: 'regateando' },
+    statusTitle: {
+      won: 'Se liquidó',
+      lost: 'Terminó sin trato',
+      stuck: 'Su precio pasa nuestro tope de seguridad: no cierra si no se mueven',
+      closing: 'La distancia es pequeña, o se cierra en dos rondas a este ritmo',
+      expiring: 'Nadie se movió en dos turnos y la última oferta caduca el próximo',
+      haggling: 'Los dos lados siguen moviéndose',
+    },
+    buying: 'compramos',
+    selling: 'vendemos',
     ask: 'oferta',
     bid: 'puja',
+    their: (label) => `su ${label}`,
+    our: (label) => `nuestra ${label}`,
     gap: 'distancia',
-    rounds: 'rondas',
-    roundsAxis: 'rondas →',
-    last: (id) => `último #${id}`,
+    value: 'nuestro valor',
+    valueTitle: 'Lo que vale la carta para nosotros: el último valor con el que decidió el agente',
+    cap: 'nuestro tope',
+    capTitle: (rule, own) => (own ? `${rule}: una denegación de seguridad en este hilo` : `${rule}: leído de una denegación de otra carta de la misma rareza`),
+    left: (n) => `quedan ${n}t`,
+    leftTitle: 'Turnos hasta que caduque la última oferta',
+    verdict: (v, side) => {
+      switch (v.kind) {
+        case 'capBelow':
+          return `${v.own ? 'Nuestro tope' : 'El tope de esta rareza'} ${v.cap} P < su oferta ${v.ask} P: no se cerrará si no bajan${v.roundsToCap != null ? ` (~${v.roundsToCap} rondas a su ritmo)` : ''}.`
+        case 'overValue':
+          return `Su oferta ${v.ask} P pasa lo que vale para nosotros (${v.value} P).`
+        case 'closing':
+          return v.gap === 0 ? 'Los precios se tocan: debería cerrarse ya.' : `Solo ${v.gap} P de distancia: se cierra en una o dos jugadas.`
+        case 'pace':
+          return `${side === 'buy' ? 'Bajan' : 'Suben'} ${v.step} P por ronda; ${v.gap} P de distancia${v.rounds != null ? `, ~${v.rounds} rondas para encontrarse` : ''}.`
+        case 'holding':
+          return `No se mueven; ${v.gap} P de distancia.`
+        case 'apart':
+          return `${v.gap} P de distancia.`
+        case 'waiting':
+          return 'Esperando a que los dos lados pongan precio.'
+        case 'won':
+          return v.value == null || v.edge == null
+            ? `${side === 'buy' ? 'Comprada' : 'Vendida'} a ${v.price} P.`
+            : `${side === 'buy' ? 'Comprada' : 'Vendida'} a ${v.price} P frente a nuestro valor ${v.value} P = ${v.edge >= 0 ? '+' : '−'}${Math.abs(v.edge)} P.`
+        case 'lost':
+          return { walked: 'Nos fuimos.', idle: 'Se quedó parado.', expired: 'La última oferta caducó.', closed: 'Cerrado sin trato.', deal: 'Cerrado.' }[v.how]
+      }
+    },
+    agent: 'Agente',
+    action: { bid: 'pujar', ask: 'pedir', accept: 'aceptar', walk: 'irse', open: 'abrir', other: 'actuar' },
+    decision: { proposed: 'propuesta', approved: 'aprobada', claimed: 'enviando', done: 'hecha', rejected: 'bloqueada', failed: 'falló', expired: 'caducó' },
+    blockedBy: (rule) => `bloqueada por ${rule}`,
+    opened: (p) => `abrió en ${p} P`,
+    rounds: (n) => `${n} ${n === 1 ? 'ronda' : 'rondas'}`,
+    details: 'detalles',
+    detailsLine: (b) => `ronda ${b.round} · turno ${b.tick ?? '—'} · oferta ${b.offerId ?? '—'} · mensaje ${b.messageId ?? '—'} · caduca t${b.expiresTick ?? '—'}`,
     we: 'nosotros',
-    railLabel: (id) => `Precios del hilo ${id}`,
     convoLabel: (id) => `Conversación del hilo ${id}`,
     duels: 'Duelos',
     duelsSub: (live) => `${live} en curso`,
     noDuels: 'Aún no hay duelos.',
-    duelHead: ['duelo', 'rival', 'papel', 'nosotros', 'ellos', 'distancia', 'rondas', 'estado', 'trato', 'puntos', 'evento'],
+    duelCol: { duel: 'duelo', rival: 'rival', role: 'papel', us: 'nosotros', them: 'ellos', gap: 'distancia', rounds: 'rondas', status: 'estado', deal: 'trato', points: 'puntos' },
     duelStatus: { open: 'abierto', deal: 'trato', 'no deal': 'sin trato' },
     against: 'En duelo contra',
     unknownRival: 'rival desconocido',

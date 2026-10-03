@@ -46,6 +46,12 @@ export type Thread = {
   status: 'open' | 'closed'
   lastText: string | null
   offers: ThreadOffer[]
+  /** The price it settled at: a dealer thread often ends with a settlement and no thread.closed. */
+  dealPrice?: number | null
+  /** The tick it closed or settled at. */
+  closedTick?: number | null
+  /** thread.closed's reason (`idle`, ...), or `deal` when a settlement closed it. */
+  closedReason?: string | null
 }
 
 export type Duel = {
@@ -277,6 +283,21 @@ function threadMessage(s: State, e: GameEvent) {
   th.rounds += 1
 }
 
+/**
+ * A settlement names no thread: our newest open thread with that counterparty about that card is the one it
+ * closed (a dealer's deal reaches the feed as a settlement only, never as thread.closed).
+ */
+function settleThread(s: State, other: string, ref: string, price: number, tick: number | undefined) {
+  const th = Object.values(s.threads)
+    .filter((t) => t.status === 'open' && t.with === other && t.topic === ref)
+    .sort((a, b) => b.id - a.id)[0]
+  if (!th) return
+  th.status = 'closed'
+  th.dealPrice = price
+  th.closedTick = tick ?? null
+  th.closedReason = 'deal'
+}
+
 function settlement(s: State, e: GameEvent) {
   const p = e.payload
   const parties: string[] = p.parties ?? []
@@ -300,6 +321,7 @@ function settlement(s: State, e: GameEvent) {
       name: item.name ?? ref, price, fee: p.fee ?? 0, ours, gain,
     })
     if (s.tape.length > LIMITS.tape) s.tape.length = LIMITS.tape
+    if (ours) settleThread(s, buyer === s.team ? seller : buyer, ref, price, e.tick)
     push((s.prices[ref] ??= []), price, LIMITS.prices)
     dropFilled(s, p.venue, item, price)
   }
@@ -580,7 +602,12 @@ export function apply(s: State, e: GameEvent): State {
       break
     case 'thread.closed': {
       const th = s.threads[p.thread]
-      if (th) th.status = 'closed'
+      if (th) {
+        th.status = 'closed'
+        th.closedTick ??= e.tick ?? null
+        // a settlement's `deal` stays: the mock closes a thread after settling it
+        if (th.closedReason !== 'deal') th.closedReason = typeof p.reason === 'string' ? p.reason : null
+      }
       break
     }
     case 'settlement':

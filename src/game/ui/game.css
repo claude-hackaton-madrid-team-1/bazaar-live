@@ -2784,3 +2784,381 @@
     min-width: 0;
   }
 }
+
+/* ---------------------------------------------------------------- negotiations: one card per live thread */
+
+.neg-list,
+.neg-ended-list,
+.neg-convo {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.neg-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 34rem), 1fr));
+  align-items: start;
+}
+
+.neg-card {
+  --c: var(--gm-us);
+  display: grid;
+  gap: var(--s-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--c);
+  border-radius: var(--r-md);
+  background: var(--gm-well);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out);
+}
+
+.neg-card:hover {
+  background: var(--gm-well-hover);
+}
+
+.neg-card[aria-current='true'] {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  border-left-color: var(--c);
+}
+
+.neg-card[data-state='stuck'],
+.neg-pill[data-state='stuck'],
+.neg-verdict[data-state='stuck'] {
+  --c: var(--gm-bad);
+}
+
+.neg-card[data-state='closing'],
+.neg-pill[data-state='closing'],
+.neg-verdict[data-state='closing'],
+.neg-pill[data-state='won'],
+.neg-ended-text[data-state='won'] {
+  --c: var(--gm-good);
+}
+
+.neg-card[data-state='expiring'],
+.neg-pill[data-state='expiring'],
+.neg-verdict[data-state='expiring'] {
+  --c: var(--gm-warn);
+}
+
+.neg-pill[data-state='haggling'] {
+  --c: var(--gm-us);
+}
+
+.neg-pill[data-state='lost'] {
+  --c: var(--text-2);
+}
+
+.neg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--s-2);
+  min-width: 0;
+}
+
+.neg-pill {
+  --c: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--c) 85%, var(--text));
+}
+
+.neg-who {
+  overflow: hidden;
+  max-width: 12rem;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.neg-side,
+.neg-set {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.neg-figs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2) var(--s-5);
+}
+
+.neg-deal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2) var(--s-3);
+}
+
+.neg-fig {
+  display: grid;
+  gap: 2px;
+}
+
+.neg-fig-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.neg-fig b {
+  font-size: 1.5rem;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: var(--track-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.neg-fig[data-warn] b {
+  color: var(--gm-bad);
+}
+
+.neg-arrow {
+  padding-bottom: 4px;
+  font-size: 1.125rem;
+  color: var(--text-2);
+}
+
+.neg-gap {
+  padding-bottom: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.neg-verdict {
+  --c: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--c) 80%, var(--text));
+}
+
+.neg-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.neg-next b {
+  color: var(--text);
+}
+
+.neg-next-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+}
+
+.neg-next[data-blocked] > span:nth-child(3) {
+  font-weight: 600;
+  color: var(--gm-bad);
+}
+
+.neg-next-why {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+/* the conversation, compact: a price chip and the words; the ids behind a disclosure */
+
+.neg-split {
+  grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
+}
+
+.neg-split > :only-child {
+  grid-column: 1 / -1;
+}
+
+.neg-convo {
+  gap: 6px;
+}
+
+.neg-msg {
+  display: grid;
+  gap: 2px;
+  max-width: 88%;
+  justify-self: start;
+}
+
+.neg-msg[data-side='us'] {
+  justify-self: end;
+  justify-items: end;
+}
+
+.neg-msg-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--s-2);
+  padding: 6px var(--s-3);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--seller-1) 9%, transparent);
+}
+
+.neg-msg[data-side='us'] .neg-msg-body {
+  background: color-mix(in srgb, var(--buyer-1) 10%, transparent);
+}
+
+.neg-chip {
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--gm-them) 16%, transparent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--gm-them);
+}
+
+.neg-chip[data-side='us'] {
+  background: color-mix(in srgb, var(--gm-us) 16%, transparent);
+  color: var(--gm-us);
+}
+
+.neg-msg-text {
+  min-width: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.neg-msg-who {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.neg-msg-details {
+  padding: 0 var(--s-2);
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  color: var(--text-2);
+}
+
+.neg-msg-details summary {
+  width: fit-content;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.neg-msg-details[open] summary,
+.neg-msg-details summary:hover {
+  opacity: 1;
+}
+
+/* ended threads, one line each */
+
+.neg-ended-list {
+  gap: 4px;
+}
+
+.neg-ended {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.neg-ended:hover {
+  background: var(--gm-row-hover);
+}
+
+.neg-ended[aria-current='true'] {
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.neg-ended .neg-who {
+  font-size: 0.9375rem;
+}
+
+.neg-ended-text {
+  --c: var(--text-2);
+  flex: 1 1 14rem;
+  min-width: 0;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--c) 85%, var(--text));
+}
+
+.neg-ended-meta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-2);
+}
+
+@media (max-width: 960px) {
+  .neg-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .neg-card {
+    padding: var(--s-3);
+  }
+
+  .neg-set {
+    display: none;
+  }
+
+  .neg-figs {
+    gap: var(--s-2) var(--s-4);
+  }
+
+  .neg-fig b {
+    font-size: 1.25rem;
+  }
+
+  .neg-msg {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .neg-card,
+  .neg-pill {
+    border: 1px solid var(--text);
+  }
+}
+
+@media (forced-colors: active) {
+  .neg-card[aria-current='true'],
+  .neg-ended[aria-current='true'] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+}
