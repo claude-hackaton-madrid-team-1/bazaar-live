@@ -7,6 +7,8 @@ export interface Line {
   readonly speaker: Speaker
   /** With expressive tags (`[laughs]`), stripped or converted by each TTS provider. */
   readonly text: string
+  /** Shown in the captions but never voiced (a real quote in the other language). */
+  readonly silent?: boolean
 }
 
 export type DealerId = 'abuela' | 'chato' | 'other'

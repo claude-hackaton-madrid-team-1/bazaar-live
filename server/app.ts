@@ -16,6 +16,7 @@ import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isShowLine } from '../shared/lines.ts'
+import { isRealLine } from '../shared/real-lines.ts'
 import { isSpeaker } from '../shared/tags.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
@@ -126,7 +127,12 @@ interface TtsRequest {
   readonly text: string
 }
 
-export function parseTtsRequest(raw: string, available: readonly ProviderId[]): TtsRequest | string {
+/**
+ * A body for the proxy, or why not. The text must be a line the show can vouch for: one of its own
+ * templates, a line generated from a real conversation's structure, or a quote the server itself read
+ * from the database (`vouches`). Nothing a caller invents is ever voiced.
+ */
+export function parseTtsRequest(raw: string, available: readonly ProviderId[], vouches: (text: string) => boolean = () => false): TtsRequest | string {
   let body: unknown
   try {
     body = JSON.parse(raw)
@@ -141,7 +147,7 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[]): 
   // eslint-disable-next-line no-control-regex
   const clean = typeof text === 'string' ? text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : ''
   if (!clean || clean.length > MAX_TEXT) return `text must be 1 to ${MAX_TEXT} characters`
-  if (!isShowLine(speaker, clean)) return 'only the show\'s own lines are spoken here'
+  if (!isShowLine(speaker, clean) && !isRealLine(clean) && !vouches(clean)) return 'only the show\'s own lines are spoken here'
   return { provider, speaker, text: clean }
 }
 
@@ -157,10 +163,11 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
   const inFlight = new Map<string, Promise<Audio>>()
   const available = availableProviders(deps.config)
   const serveStatic = createStatic(deps.distDir)
+  const transcriptStore = deps.transcript?.store ?? new TranscriptStore()
   const transcript = createTranscriptRoutes({
-    store: new TranscriptStore(),
     enabled: () => false,
     ...deps.transcript,
+    store: transcriptStore,
     headers: SECURITY_HEADERS,
     address: (req) => clientAddress(req, limits.clientIpHeader),
   })
@@ -181,7 +188,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       res.on('finish', () => req.socket.destroy())
       return json(res, 413, { error: 'too_large' }, { Connection: 'close' })
     }
-    const parsed = parseTtsRequest(raw, available)
+    const parsed = parseTtsRequest(raw, available, (text) => transcriptStore.quoteLang(text) !== undefined)
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
     const key = `${parsed.provider}|${parsed.speaker}|${parsed.text}`
     const started = Date.now()

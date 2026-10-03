@@ -22,7 +22,7 @@ const ES = words(`
   hacer hago haces bueno buena buen eres soy somos ser estoy estás pues entonces ahora aquí allí
   dame doy dale puedo puedes quiere dejo dejas lleva llevo llévatelo barato caro cariño niño niña
   tío hombre mujer gracias hola adiós señor señora usted ustedes vosotros vuestro nuestro nuestra
-  hagas haga perder tiempo ofrece ofrezco algo mejor peor hable habla digo dice dices sé creo verdad justo justa
+  hagas haga perder tiempo oferta ofrece ofrezco algo mejor peor hable habla digo dice dices sé creo verdad justo justa
   sesenta cincuenta cuarenta treinta veinte diez cien mil euros
 `)
 
@@ -35,7 +35,7 @@ const EN = words(`
   more than one just nothing extra would could will can but or if at on by from they them his her our us
   price deal take offer again today want give pay get got see said think there here when where why who
   which their these those been being were am im i'm don't dont won't can't it's that's you're
-  fine pigeons offers better cheap
+  fine pigeons offers better cheap final number last leave cost mine yours
 `)
 
 const SPANISH_ONLY_CHARS = /[ñ¿¡]/gu
