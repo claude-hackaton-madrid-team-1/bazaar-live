@@ -1,11 +1,12 @@
 import { motion, useReducedMotion } from 'motion/react'
+import { useState } from 'react'
 import { TTS_PICKER, type TtsChoice } from '../config'
 import { AGENTS, type AgentHealth, type AgentId } from '../model/events'
 import type { FeedStatus } from '../net/feed'
 import type { ShowState } from '../show/engine'
 import { LANGS, type Lang } from '../../shared/lang.ts'
 import { setLang, useLang, useStrings } from './lang'
-import { modeOf, worldOf, type Mode } from './mode'
+import { modeOf, rememberTargets, worldOf, type Mode, type Targets } from './mode'
 import type { SpeechControls } from './useShow'
 
 
@@ -32,9 +33,15 @@ function ModeBadge({ agent, health, feed, mock }: { agent: AgentId; health: Agen
 /** Always visible: which game the agents play in (the real one or the simulator), from their /health. */
 function WorldBadge({ state, mock }: { state: ShowState; mock: boolean }) {
   const t = useStrings()
-  const world = worldOf(state.health, mock)
+  // Each agent's target is remembered across a failed poll (it is fixed per deploy): one missed /health
+  // must not turn MIXED into REAL.
+  const [known, setKnown] = useState<Targets>({ taker: null, maker: null })
+  const next = rememberTargets(known, state.health)
+  if (next !== known) setKnown(next)
+  const world = worldOf(next, mock)
+  const detail = `${t.who.taker}: ${next.taker ? t.worlds[next.taker] : '?'} · ${t.who.maker}: ${next.maker ? t.worlds[next.maker] : '?'}`
   return (
-    <span className={`badge world ${world}`} role="status" title={t.worlds[world]}>
+    <span className={`badge world ${world}`} role="status" title={mock ? t.worlds.mock : detail}>
       {t.worlds[world]}
     </span>
   )
