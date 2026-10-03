@@ -270,7 +270,8 @@ export class ShowEngine {
     this.lang = lang
     this.langEpoch += 1
     this.speech.clear()
-    this.director.clear()
+    // Queued beats of the old language are kept in the quest log as skipped, not lost.
+    this.director.clear().forEach((beat) => this.set({ transcript: this.appendLines(beat, 'skipped') }))
     this.activityAt = Date.now()
     this.set({ line: null, beat: null, reach: null, deal: null, denied: null, fail: null, jev: null, dealer: null })
     this.wake?.()
@@ -486,21 +487,22 @@ export class ShowEngine {
     // A real line carries its own language; ours are all in the language the beat was built in.
     const say = (line: Line, i: number): Promise<void> => (line.silent ? Promise.resolve() : this.speech.say({ id: `${beat.id}#${i}`, speaker: line.speaker, lang: line.lang ?? lang, text: line.text }))
     // The next line goes into the voice queue while the current one is still being said, so the queue
-    // never waits for the stage and there is no silence between lines.
-    let current: Promise<void> = Promise.resolve()
+    // never waits for the stage and there is no silence between lines. Only a voiced line looks ahead:
+    // behind a silent caption the next voice waits for its own line to be on screen, or it would start
+    // under the wrong caption.
+    let queued: Promise<void> | null = null
     for (const [i, line] of beat.lines.entries()) {
       if (stale()) return
       this.set({ line, transcript: this.appendLines(beat, 'played', line) })
-      if (i === 0) current = say(line, 0)
+      const current = queued ?? say(line, i)
       const following = beat.lines[i + 1]
-      const next = following ? say(following, i + 1) : Promise.resolve()
+      queued = following && !line.silent ? say(following, i + 1) : null
       // A voice sets the pace; the reading time only applies to a muted or silent stage (and to a line with no voice).
       const reading = this.speech.audible && !line.silent ? MIN_CAPTION_MS : readingMs(line.text, this.director.size + this.speech.backlog)
       const started = Date.now()
       await Promise.all([current, this.sleep(reading)])
       // A voice that ends at once (none for this language, or it failed) leaves the caption its reading time.
       if (!line.silent && this.speech.audible && Date.now() - started < INSTANT_VOICE_MS) await this.sleep(Math.max(0, readingMs(line.text, this.director.size) - MIN_CAPTION_MS))
-      current = next
     }
     await this.sleep(this.director.size > 3 ? 150 : 450)
     if (stale()) return

@@ -300,6 +300,12 @@
   font-weight: 700;
   line-height: 1.2;
   text-wrap: pretty;
+  /* a long quote never climbs over the board: four lines here, the full text is in the quest log */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
   box-shadow: 0 0.6cqw 1.6cqw rgb(0 0 0 / 0.55), inset 0 0 1.4cqw rgb(184 134 43 / 0.3);
 }
 
@@ -751,6 +757,7 @@
   .bubble.abuela,
   .bubble.chato {
     left: 2cqw;
+    max-width: 84cqw;
   }
 
   .bubble.buyer {

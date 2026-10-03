@@ -1,6 +1,6 @@
 /**
  * Feeds the show the real conversations: the live transcript from the server, or the synthetic one with
- * `?mock=1`. Each item becomes a beat in the show's selected language (`config.lang`) and goes to the
+ * `?mock=1`. Each item becomes a beat in the show's selected language (`getLang()`) and goes to the
  * director like any other beat; history goes to the captions only.
  */
 import { useEffect } from 'react'

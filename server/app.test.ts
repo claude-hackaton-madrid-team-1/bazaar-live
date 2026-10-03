@@ -406,3 +406,26 @@ describe('one language per line (the proxy contract, both languages)', () => {
     expect(style('en')).toMatch(/English with a light Madrid accent/)
   })
 })
+
+describe('a quote the server vouches for is voiced only in its own language (review of the merge)', () => {
+  const vouch = () => true
+  const ask = (lang: unknown, speaker: string, text: string) => parseTtsRequest(JSON.stringify({ provider: 'elevenlabs', speaker, lang, text }), ['elevenlabs'], vouch)
+
+  it('speaks a Spanish quote in Spanish, and refuses it for the English voice', () => {
+    const quote = 'Eso es muy poco para una carta así, hombre, no me hagas perder el tiempo.'
+    expect(ask('es', 'abuela', quote)).toMatchObject({ lang: 'es' })
+    expect(ask('en', 'abuela', quote)).toMatch(/own lines/)
+    expect(ask(undefined, 'abuela', quote)).toMatchObject({ lang: 'es' })
+  })
+
+  it('speaks an English quote in English only, and refuses one whose language it cannot tell', () => {
+    expect(ask('en', 'chato', "That is not enough for a card like that, you are wasting my time.")).toMatchObject({ lang: 'en' })
+    expect(ask('es', 'chato', "That is not enough for a card like that, you are wasting my time.")).toMatch(/own lines/)
+    expect(ask('es', 'chato', 'Xyzzy plugh.')).toMatch(/own lines/)
+    expect(ask(undefined, 'chato', 'Xyzzy plugh.')).toMatch(/own lines/)
+  })
+
+  it('refuses a quote nobody vouches for', () => {
+    expect(parseTtsRequest(JSON.stringify({ provider: 'elevenlabs', speaker: 'abuela', lang: 'es', text: 'Eso es muy poco para una carta así, hombre, no me hagas perder el tiempo.' }), ['elevenlabs'])).toMatch(/own lines/)
+  })
+})

@@ -386,3 +386,35 @@ describe('ShowEngine with real conversations', () => {
     show.stop()
   })
 })
+
+describe('a voice never starts under another line\'s caption (review of the merge)', () => {
+  it('behind a silent caption the next voice waits until its own line is on screen', async () => {
+    const seen: { text: string; onScreen: string | undefined }[] = []
+    let show: ShowEngine | null = null
+    // Looked at a few ms after the voice starts: a voiced line behind a voiced line starts as the last ends, and its caption follows at once.
+    const provider: SpeechProvider = { name: 'webspeech', speak: async (u) => {
+        await new Promise((r) => setTimeout(r, 2))
+        seen.push({ text: u.text, onScreen: show?.getSnapshot().line?.text })
+        await new Promise((r) => setTimeout(r, 300)) // a voice takes time to say its line (an instant one is treated as no voice)
+      },
+    }
+    show = new ShowEngine({ speech: new SpeechQueue({ provider }), idle: false, sleep: () => new Promise((r) => setTimeout(r, 5)) })
+    show.start()
+    show.ingestBeat(
+      {
+        id: 'real:1', agent: 'taker', tick: null, priority: 60, mood: 'calm', denied: false, jev: null, practice: false, note: null,
+        cue: { kind: 'talk' },
+        lines: [
+          { speaker: 'chato', text: 'Eso es muy poco para una carta así, hombre.', silent: true },
+          { speaker: 'chato', text: 'La Latina número 9 te sale por 31 primas.', lang: 'es' },
+          { speaker: 'buyer', text: 'Ofrezco 24 primas por La Latina número 9.', lang: 'es' },
+        ],
+      },
+      false,
+    )
+    await new Promise((r) => setTimeout(r, 900))
+    show.stop()
+    expect(seen.length).toBe(2)
+    for (const s of seen) expect(s.onScreen, s.text).toBe(s.text)
+  })
+})
