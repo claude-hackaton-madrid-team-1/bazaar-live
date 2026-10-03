@@ -1,0 +1,640 @@
+/* The header: one Liquid Glass bar with the brand, the status strip (world, agents, heartbeat) and the
+   few controls (language, voice, sound), plus the notice under it. Chips inside the glass are flat
+   tinted capsules, never another .glass. State is a word plus a glyph or dot, never colour alone. */
+
+.hdr {
+  /* the well of a control or chip and the thumb of the segmented control */
+  --well: color-mix(in srgb, var(--text) 5%, transparent);
+  --well-hover: color-mix(in srgb, var(--text) 9%, transparent);
+  --thumb: var(--material-solid);
+  --ctl-h: 36px;
+  --chip-h: 28px;
+
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'brand controls'
+    'status status';
+  align-items: center;
+  gap: var(--s-3) var(--s-4);
+  padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4);
+  border-radius: var(--r-xl);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .hdr {
+    --thumb: color-mix(in srgb, var(--text) 26%, var(--glass-solid));
+  }
+}
+
+:root[data-theme='dark'] .hdr {
+  --thumb: color-mix(in srgb, var(--text) 26%, var(--glass-solid));
+}
+
+/* ---------------------------------------------------------------- icons */
+
+.hdr-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hdr-ico-fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* ---------------------------------------------------------------- brand */
+
+.hdr-brand {
+  grid-area: brand;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* two soft orbs, cool and warm: the buyer and the seller */
+.hdr-mark {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 20px;
+}
+
+.hdr-mark i {
+  position: absolute;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: inset 0 1px 1px var(--glass-rim-hi);
+}
+
+.hdr-mark i:first-child {
+  left: 0;
+  background: radial-gradient(circle at 32% 28%, var(--buyer-1), var(--buyer-2) 82%);
+}
+
+.hdr-mark i:last-child {
+  right: 0;
+  background: radial-gradient(circle at 32% 28%, var(--seller-1), var(--seller-2) 82%);
+  opacity: 0.88;
+}
+
+.hdr-word {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: var(--track-display);
+  white-space: nowrap;
+}
+
+.hdr-word span {
+  font-weight: 400;
+}
+
+.hdr-tag {
+  min-width: 0;
+  margin-left: 4px;
+  padding-left: 14px;
+  border-left: 1px solid var(--hairline);
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------- status strip */
+
+.hdr-status {
+  grid-area: status;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--hairline);
+}
+
+.hdr-chip {
+  --c: var(--idle-dot);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--chip-h);
+  padding: 0 var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.hdr-chip .hdr-ico {
+  width: 14px;
+  height: 14px;
+}
+
+/* the world: the strongest chip (the game the agents really play in) */
+.hdr-world {
+  height: calc(var(--chip-h) + 2px);
+  padding: 0 var(--s-3) 0 9px;
+  gap: 7px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  border-color: color-mix(in srgb, var(--c) 40%, transparent);
+}
+
+.hdr-world .hdr-ico {
+  width: 15px;
+  height: 15px;
+  /* a touch of --text keeps the glyph distinct from the tint in both themes */
+  color: color-mix(in srgb, var(--c) 78%, var(--text));
+}
+
+.hdr-world[data-world='real'] {
+  --c: var(--ok);
+}
+
+.hdr-world[data-world='simulator'] {
+  --c: var(--sim);
+}
+
+.hdr-world[data-world='mixed'] {
+  --c: var(--mixed);
+}
+
+.hdr-world[data-world='mock'] {
+  --c: var(--idle-dot);
+}
+
+.hdr-world[data-world='unknown'] {
+  --c: var(--text-2);
+  background: transparent;
+  border: 1px dashed var(--text-3);
+}
+
+/* an agent's mode: a dot (pulsing when live), the word, and who */
+.hdr-mode {
+  background: color-mix(in srgb, var(--c) 7%, transparent);
+  border-color: color-mix(in srgb, var(--c) 20%, transparent);
+}
+
+.hdr-mode[data-mode='live'] {
+  --c: var(--live);
+}
+
+.hdr-mode[data-mode='dry'] {
+  --c: var(--dry);
+}
+
+.hdr-mode .hdr-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.hdr-mode[data-mode='live'] .hdr-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent);
+}
+
+.hdr-mode[data-mode='offline'] .hdr-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--c);
+}
+
+.hdr-who {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-2);
+}
+
+.hdr-spin {
+  display: inline-flex;
+  color: var(--text-2);
+}
+
+.hdr-spin .hdr-ico {
+  width: 12px;
+  height: 12px;
+  animation: hdr-rotate 1.1s linear infinite;
+}
+
+@keyframes hdr-rotate {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* no voice: a quiet danger tint, the text stays AA */
+.hdr-novoice {
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: color-mix(in srgb, var(--danger-ink) 85%, var(--text));
+  background: color-mix(in srgb, var(--danger-ink) 9%, transparent);
+  border-color: color-mix(in srgb, var(--danger-ink) 24%, transparent);
+}
+
+/* the heartbeat sits at the end of the strip, like a clock */
+.hdr-beat {
+  margin-left: auto;
+  gap: 7px;
+  background: transparent;
+}
+
+.hdr-beat .hdr-ico {
+  color: var(--text-2);
+}
+
+.hdr-beat-label {
+  color: var(--text-2);
+}
+
+.hdr-beat-num {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.hdr-controls {
+  grid-area: controls;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+/* ES / EN: a segmented control, the thumb slides to the chosen language */
+.hdr-seg {
+  display: inline-flex;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--well-hover);
+  border: 1px solid transparent;
+}
+
+.hdr-seg button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 46px;
+  height: calc(var(--ctl-h) - 2px);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: var(--track-eyebrow);
+  /* --text-2 leaned toward --text: AA on the track in both themes */
+  color: color-mix(in srgb, var(--text-2) 70%, var(--text));
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-out);
+}
+
+.hdr-seg button:hover,
+.hdr-seg button[aria-pressed='true'] {
+  color: var(--text);
+}
+
+.hdr-seg-thumb {
+  position: absolute;
+  inset: 3px;
+  border-radius: var(--r-pill);
+  background: var(--thumb);
+  box-shadow: 0 0 0 0.5px var(--glass-stroke), 0 1px 2px rgb(0 0 0 / 0.1), 0 3px 8px -2px rgb(0 0 0 / 0.14);
+}
+
+.hdr-seg-label {
+  position: relative;
+}
+
+/* the voice: a native select dressed as a capsule, with its own chevron */
+.hdr-voice {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.hdr-voice select {
+  appearance: none;
+  min-width: 0;
+  max-width: 16rem;
+  height: var(--ctl-h);
+  padding: 0 34px 0 var(--s-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out);
+}
+
+.hdr-voice select:hover {
+  background: var(--well-hover);
+}
+
+.hdr-voice option {
+  background: var(--glass-solid);
+  color: var(--text);
+}
+
+.hdr-voice .hdr-chev {
+  position: absolute;
+  right: 13px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-2);
+  pointer-events: none;
+}
+
+/* sound on / muted, with its key */
+.hdr-mute {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--ctl-h);
+  padding: 0 7px 0 var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out);
+}
+
+.hdr-mute:hover {
+  background: var(--well-hover);
+}
+
+.hdr-mute .hdr-off {
+  color: var(--text-2);
+}
+
+.hdr-mute-label {
+  display: grid;
+}
+
+.hdr-mute-label > span {
+  grid-area: 1 / 1;
+}
+
+/* the other state's word only holds the width: hidden from sight and from screen readers */
+.hdr-mute-label .hdr-idle {
+  visibility: hidden;
+}
+
+.hdr-mute kbd {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  padding: 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--thumb);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- notice */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px var(--s-4);
+  border-radius: var(--r-lg);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.notice .hdr-ico {
+  margin-top: 1px;
+  width: 18px;
+  height: 18px;
+  color: var(--text-2);
+}
+
+.notice p {
+  margin: 0;
+}
+
+.notice a {
+  /* --accent leaned toward --text: AA on the glass in both themes */
+  color: color-mix(in srgb, var(--accent) 86%, var(--text));
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- sizes */
+
+@media (max-width: 1100px) {
+  .hdr-tag {
+    display: none;
+  }
+}
+
+/* narrow: brand and language on top, the status strip, then voice and sound */
+@media (max-width: 680px) {
+  .hdr {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'brand lang'
+      'status status'
+      'voice mute';
+    gap: 10px var(--s-2);
+  }
+
+  .hdr-brand {
+    padding-left: 6px;
+  }
+
+  .hdr-controls {
+    display: contents;
+  }
+
+  .hdr-seg {
+    grid-area: lang;
+  }
+
+  .hdr-voice {
+    grid-area: voice;
+  }
+
+  .hdr-voice select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .hdr-mute {
+    grid-area: mute;
+  }
+}
+
+/* phone: taller touch targets, tighter chips, and the strip arranged to fit two lines */
+@media (max-width: 520px) {
+  .hdr {
+    --ctl-h: 40px;
+    --chip-h: 26px;
+    padding: 10px;
+  }
+
+  .hdr-status {
+    gap: 6px;
+    padding-top: 10px;
+  }
+
+  .hdr-chip {
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 0.65625rem;
+    letter-spacing: 0.04em;
+  }
+
+  .hdr-world {
+    order: 1;
+    padding: 0 9px 0 7px;
+    font-size: 0.6875rem;
+  }
+
+  .hdr-who,
+  .hdr-novoice {
+    font-size: 0.6875rem;
+    letter-spacing: 0;
+  }
+
+  .hdr-beat {
+    order: 2;
+    margin-left: 0;
+  }
+
+  .hdr-novoice {
+    order: 3;
+  }
+
+  .hdr-mode {
+    order: 4;
+  }
+
+  /* the world chip already says RECORDING: the per-agent prefix stays for screen readers only */
+  .hdr-mock {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* a touch screen has no M key to press */
+@media (hover: none) and (pointer: coarse) {
+  .hdr-mute kbd {
+    display: none;
+  }
+
+  .hdr-mute {
+    padding-right: var(--s-3);
+  }
+}
+
+/* ---------------------------------------------------------------- accessibility settings */
+
+@media (prefers-contrast: more) {
+  .hdr-chip,
+  .hdr-seg,
+  .hdr-voice select,
+  .hdr-mute,
+  .hdr-mute kbd {
+    border: 1px solid var(--text);
+  }
+
+  .hdr-world[data-world='unknown'] {
+    border-style: dashed;
+  }
+
+  .hdr-seg-thumb {
+    box-shadow: inset 0 0 0 1.5px var(--text);
+  }
+
+  .notice a {
+    color: var(--text);
+  }
+}
+
+@media (forced-colors: active) {
+  .hdr-chip,
+  .hdr-seg,
+  .hdr-voice select,
+  .hdr-mute {
+    border: 1px solid CanvasText;
+  }
+
+  .hdr-mode .hdr-dot {
+    forced-color-adjust: none;
+    background: CanvasText;
+    box-shadow: none;
+  }
+
+  /* the mark is a logo: it keeps its own colours */
+  .hdr-mark i {
+    forced-color-adjust: none;
+  }
+
+  .hdr-seg button[aria-pressed='true'] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .hdr-seg-thumb {
+    display: none;
+  }
+}

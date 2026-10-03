@@ -1,14 +1,73 @@
 import { motion, useReducedMotion } from 'motion/react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { TTS_PICKER, type TtsChoice } from '../config'
 import { AGENTS, type AgentHealth, type AgentId } from '../model/events'
 import type { FeedStatus } from '../net/feed'
 import type { ShowState } from '../show/engine'
 import { LANGS, type Lang } from '../../shared/lang.ts'
 import { setLang, useLang, useStrings } from './lang'
-import { modeOf, rememberTargets, worldOf, type Mode, type Targets } from './mode'
+import { modeOf, rememberTargets, worldOf, type Mode, type Targets, type World } from './mode'
 import type { SpeechControls } from './useShow'
+import './header.css'
 
+/** A 24-unit line icon: stroke, round caps, sized and coloured by its CSS. */
+function Icon({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <svg className={`hdr-ico ${className}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {children}
+    </svg>
+  )
+}
+
+const SPEAKER = <path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z" />
+
+function SpeakerOn() {
+  return (
+    <Icon>
+      {SPEAKER}
+      <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
+    </Icon>
+  )
+}
+
+function SpeakerOff({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      {SPEAKER}
+      <path d="M16 10l4 4m0-4l-4 4" />
+    </Icon>
+  )
+}
+
+/** One glyph per world, so the state never rests on colour alone. */
+const WORLD_ICON: Readonly<Record<World, ReactNode>> = {
+  real: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <ellipse cx="12" cy="12" rx="3.5" ry="8" />
+      <path d="M4 12h16" />
+    </>
+  ),
+  simulator: (
+    <>
+      <path d="M12 3.75l7.25 4.1v8.3L12 20.25l-7.25-4.1v-8.3z" />
+      <path d="M4.75 7.85L12 12l7.25-4.15M12 12v8.25" />
+    </>
+  ),
+  mixed: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 4a8 8 0 0 0 0 16z" className="hdr-ico-fill" />
+    </>
+  ),
+  mock: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="3.25" className="hdr-ico-fill" />
+    </>
+  ),
+  unknown: <circle cx="12" cy="12" r="8" strokeDasharray="2.5 3.2" />,
+}
 
 function ModeBadge({ agent, health, feed, mock }: { agent: AgentId; health: AgentHealth | null; feed: FeedStatus; mock: boolean }) {
   const mode = modeOf(health, feed)
@@ -16,16 +75,24 @@ function ModeBadge({ agent, health, feed, mock }: { agent: AgentId; health: Agen
   const reduce = useReducedMotion()
   const connecting = feed === 'connecting' || feed === 'reconnecting'
   return (
-    <span className={`badge ${mode}`} title={`${agent}: ${mode}${connecting ? ` (feed ${feed})` : ''}`}>
+    <span className="hdr-chip hdr-mode" data-mode={mode} title={`${agent}: ${mode}${connecting ? ` (feed ${feed})` : ''}`}>
       {mode === 'live' && !reduce ? (
-        <motion.span className="dot" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1.4, repeat: Infinity }} />
+        <motion.span className="hdr-dot" animate={{ opacity: [1, 0.25, 1] }} transition={{ duration: 1.4, repeat: Infinity }} />
       ) : (
-        <span className="dot" />
+        <span className="hdr-dot" />
       )}
-      {mock && `${t.mock} · `}
-      {t.modes[mode satisfies Mode]}
-      <span className="who">{t.who[agent]}</span>
-      {connecting && <span aria-label="reconnecting">⟳</span>}
+      <span>
+        {mock && <span className="hdr-mock">{`${t.mock} · `}</span>}
+        {t.modes[mode satisfies Mode]}
+      </span>{' '}
+      <span className="hdr-who">{t.who[agent]}</span>
+      {connecting && (
+        <span className="hdr-spin" role="img" aria-label="reconnecting">
+          <Icon>
+            <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+          </Icon>
+        </span>
+      )}
     </span>
   )
 }
@@ -41,7 +108,8 @@ function WorldBadge({ state, mock }: { state: ShowState; mock: boolean }) {
   const world = worldOf(next, mock)
   const detail = `${t.who.taker}: ${next.taker ? t.worlds[next.taker] : '?'} · ${t.who.maker}: ${next.maker ? t.worlds[next.maker] : '?'}`
   return (
-    <span className={`badge world ${world}`} role="status" title={mock ? t.worlds.mock : detail}>
+    <span className="hdr-chip hdr-world" data-world={world} role="status" title={mock ? t.worlds.mock : detail}>
+      <Icon>{WORLD_ICON[world]}</Icon>
       {t.worlds[world]}
     </span>
   )
@@ -53,18 +121,21 @@ function Heartbeat({ state }: { state: ShowState }) {
   const beats = state.heartbeat.taker + state.heartbeat.maker
   const tick = state.ticks.taker ?? state.ticks.maker ?? state.health.taker?.tick ?? state.health.maker?.serverTick ?? null
   return (
-    <span className="heart" aria-label={tick === null ? t.noTick : `${t.tick} ${tick}`}>
+    <span className="hdr-chip hdr-beat" aria-label={tick === null ? t.noTick : `${t.tick} ${tick}`}>
+      {/* each beat redraws the pulse line once (a fade under Reduce Motion) */}
       <motion.svg
         key={beats}
+        className="hdr-ico"
         viewBox="0 0 24 24"
         aria-hidden="true"
-        initial={reduce ? { opacity: 0.4 } : { scale: 1 }}
-        animate={reduce ? { opacity: 1 } : { scale: [1, 1.45, 1, 1.2, 1] }}
+        initial={reduce ? { opacity: 0.4 } : { opacity: 0.55 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
       >
-        <path d="M12 21s-7.5-4.6-10-9.3C.4 8.4 2.3 4 6.4 4c2.2 0 3.6 1.3 4.6 2.7C12 5.3 13.4 4 15.6 4c4.1 0 6 4.4 4.4 7.7C19.5 16.4 12 21 12 21z" />
+        <motion.path d="M2.5 12h4l2.5-6 5 12 2.5-6h5" initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }} />
       </motion.svg>
-      {t.tick} {tick ?? '—'}
+      <span className="hdr-beat-label">{t.tick}</span>
+      <span className="hdr-beat-num">{tick ?? '—'}</span>
     </span>
   )
 }
@@ -73,52 +144,66 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
   const t = useStrings()
   const unavailable = (c: TtsChoice) => (c === 'elevenlabs' || c === 'gemini') && !speech.available.includes(c)
   return (
-    <header className="header">
-      <div className="brand">
-        <h1>
+    <header className="hdr glass">
+      <div className="hdr-brand">
+        <span className="hdr-mark" aria-hidden="true">
+          <i />
+          <i />
+        </span>
+        <h1 className="hdr-word">
           Bazaar <span>Live</span>
         </h1>
-        <small>{t.brandTag}</small>
+        <small className="hdr-tag">{t.brandTag}</small>
       </div>
-      <div className="badges" aria-label="Agent modes">
+      <div className="hdr-status" aria-label="Agent modes">
         <WorldBadge state={state} mock={mock} />
         {AGENTS.map((a) => (
           <ModeBadge key={a} agent={a} health={state.health[a]} feed={state.feeds[a]} mock={mock} />
         ))}
-        <Heartbeat state={state} />
-      </div>
-      <div className="controls">
-        <LangToggle />
         {speech.elevenMissing && (
-          <span className="no-voice" role="status" title={t.noEleven}>
-            🔇 ElevenLabs
+          <span className="hdr-chip hdr-novoice" role="status" title={t.noEleven}>
+            <SpeakerOff />
+            ElevenLabs
           </span>
         )}
         {speech.noVoiceFor && (
-          <span className="no-voice" role="status" title={t.noVoice}>
-            🔇 {speech.noVoiceFor.toUpperCase()}
+          <span className="hdr-chip hdr-novoice" role="status" title={t.noVoice}>
+            <SpeakerOff />
+            {speech.noVoiceFor.toUpperCase()}
           </span>
         )}
-        <label className="sr-only" htmlFor="voice">
-          {t.voiceLabel}
-        </label>
-        <select
-          id="voice"
-          className="control"
-          value={speech.choice === 'auto' ? 'elevenlabs' : speech.choice}
-          onChange={(e) => speech.setChoice(e.target.value as TtsChoice)}
-          title={speech.lastError ? `Last voice error: ${speech.lastError}` : `Speaking with: ${speech.active}`}
-        >
-          {(TTS_PICKER.includes(speech.choice) || speech.choice === 'auto' ? TTS_PICKER : [...TTS_PICKER, speech.choice]).map((c) => (
-            <option key={c} value={c} disabled={unavailable(c)}>
-              {t.voices[c]}
-              {unavailable(c) ? ` (${t.noKey})` : ''}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="control" aria-pressed={speech.muted} aria-keyshortcuts="M" onClick={() => speech.setMuted(!speech.muted)}>
-          <span aria-hidden="true">{speech.muted ? '🔇' : '🔊'}</span>
-          {speech.muted ? t.muted : t.soundOn}
+        <Heartbeat state={state} />
+      </div>
+      <div className="hdr-controls">
+        <LangToggle />
+        <span className="hdr-voice">
+          <label className="sr-only" htmlFor="voice">
+            {t.voiceLabel}
+          </label>
+          <select
+            id="voice"
+            value={speech.choice === 'auto' ? 'elevenlabs' : speech.choice}
+            onChange={(e) => speech.setChoice(e.target.value as TtsChoice)}
+            title={speech.lastError ? `Last voice error: ${speech.lastError}` : `Speaking with: ${speech.active}`}
+          >
+            {(TTS_PICKER.includes(speech.choice) || speech.choice === 'auto' ? TTS_PICKER : [...TTS_PICKER, speech.choice]).map((c) => (
+              <option key={c} value={c} disabled={unavailable(c)}>
+                {t.voices[c]}
+                {unavailable(c) ? ` (${t.noKey})` : ''}
+              </option>
+            ))}
+          </select>
+          <Icon className="hdr-chev">
+            <path d="M7 10l5 5 5-5" />
+          </Icon>
+        </span>
+        <button type="button" className="hdr-mute" aria-pressed={speech.muted} aria-keyshortcuts="M" onClick={() => speech.setMuted(!speech.muted)}>
+          {speech.muted ? <SpeakerOff className="hdr-off" /> : <SpeakerOn />}
+          {/* both words share one cell, so the button keeps its width when it toggles */}
+          <span className="hdr-mute-label">
+            <span className={speech.muted ? undefined : 'hdr-idle'}>{t.muted}</span>
+            <span className={speech.muted ? 'hdr-idle' : undefined}>{t.soundOn}</span>
+          </span>
           <kbd>M</kbd>
         </button>
       </div>
@@ -128,15 +213,17 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
 
 const LANG_NAME: Readonly<Record<Lang, string>> = { es: 'Castellano', en: 'English' }
 
-/** The ES / EN selector: a small banner toggle. Choosing re-picks the lines and the voices at once. */
+/** The ES / EN selector: a segmented control. Choosing re-picks the lines and the voices at once. */
 function LangToggle() {
   const lang = useLang()
   const t = useStrings()
+  const reduce = useReducedMotion()
   return (
-    <div className="lang-toggle" role="group" aria-label={t.langLabel}>
+    <div className="hdr-seg" role="group" aria-label={t.langLabel}>
       {LANGS.map((l) => (
-        <button key={l} type="button" lang={l} className={l === lang ? 'on' : undefined} aria-pressed={l === lang} title={LANG_NAME[l]} onClick={() => setLang(l)}>
-          {l.toUpperCase()}
+        <button key={l} type="button" lang={l} aria-pressed={l === lang} title={LANG_NAME[l]} onClick={() => setLang(l)}>
+          {l === lang && <motion.span layoutId="lang-thumb" className="hdr-seg-thumb" transition={reduce ? { duration: 0 } : { type: 'spring', bounce: 0, duration: 0.36 }} />}
+          <span className="hdr-seg-label">{l.toUpperCase()}</span>
         </button>
       ))}
     </div>
@@ -151,20 +238,38 @@ function madridTime(iso: string, lang: string): string {
   }
 }
 
+function NoticeBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="notice glass">
+      <Icon>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 11v5.5M12 7.75v.01" />
+      </Icon>
+      <p>{children}</p>
+    </div>
+  )
+}
+
 /** Doors closed or both feeds down: say so instead of an empty stage. */
 export function Notice({ state, mock }: { state: ShowState; mock: boolean }) {
   const t = useStrings()
   const lang = useLang()
-  if (mock) return <div className="notice">{t.mockNotice}</div>
+  if (mock) return <NoticeBar>{t.mockNotice}</NoticeBar>
   const closed = AGENTS.map((a) => state.health[a]).find((h) => h?.doors === 'closed')
   if (closed) {
     return (
-      <div className="notice">
+      <NoticeBar>
         {t.doorsClosed(closed.nextOpens ? madridTime(closed.nextOpens, lang) : null)} <a href="?mock=1">{t.tryMock}</a>.
-      </div>
+      </NoticeBar>
     )
   }
   const down = AGENTS.every((a) => state.feeds[a] === 'reconnecting')
-  if (down) return <div className="notice">{t.cantReach} <a href="?mock=1">{t.tryMock}</a>.</div>
+  if (down) {
+    return (
+      <NoticeBar>
+        {t.cantReach} <a href="?mock=1">{t.tryMock}</a>.
+      </NoticeBar>
+    )
+  }
   return null
 }
