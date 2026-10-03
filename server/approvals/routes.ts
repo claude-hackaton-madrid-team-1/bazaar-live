@@ -53,8 +53,10 @@ export interface ApprovalsRouteDeps {
   readonly writeLimiter?: RateLimiter
   /** Writes, per session: 10 a minute. */
   readonly sessionWriteLimiter?: RateLimiter
-  /** Reads (session, approvals), per address: the page polls every 10 s. */
+  /** GET /session, per address (anyone may ask it). */
   readonly readLimiter?: RateLimiter
+  /** GET /approvals, per session: the page polls every 10 s; a stranger at the same address cannot drain it. */
+  readonly pollLimiter?: RateLimiter
 }
 
 type Reply = (status: number, body: unknown, extra?: Record<string, string>) => void
@@ -66,6 +68,7 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
   const writes = deps.writeLimiter ?? new RateLimiter({ capacity: 10, refillPerSecond: 10 / 60 })
   const sessionWrites = deps.sessionWriteLimiter ?? new RateLimiter({ capacity: 10, refillPerSecond: 10 / 60 })
   const reads = deps.readLimiter ?? new RateLimiter({ capacity: 30, refillPerSecond: 0.5 })
+  const polls = deps.pollLimiter ?? new RateLimiter({ capacity: 20, refillPerSecond: 0.5 })
   const call = createMcpClient({ config: deps.config, fetchImpl: deps.fetchImpl ?? fetch, timeoutMs: deps.timeoutMs })
 
   const sessionOf = (req: IncomingMessage): Session | null => sessions.get(cookieOf(req.headers.cookie))
@@ -113,22 +116,30 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     }
   }
 
-  function readAllowed(req: IncomingMessage, reply: Reply): boolean {
-    const taken = reads.take(deps.address(req))
+  function allowed(limiter: RateLimiter, key: string, reply: Reply): boolean {
+    const taken = limiter.take(key)
     if (!taken.ok) reply(429, { error: 'rate_limited' }, { 'Retry-After': String(taken.retryAfterSeconds) })
     return taken.ok
+  }
+
+  /** The lockout's answer when `address` may not try now (logged), else false. */
+  function lockedOut(address: string, reply: Reply): boolean {
+    const locked = guard.lockedFor(address)
+    if (locked === 0) return false
+    log({ event: 'approvals.login', ok: false, status: 429 })
+    reply(429, { error: 'locked' }, { 'Retry-After': String(locked) })
+    return true
   }
 
   async function login(req: IncomingMessage, res: ServerResponse, reply: Reply): Promise<void> {
     if (!deps.sameOrigin(req)) return reply(403, { error: 'cross_origin' })
     const address = deps.address(req)
-    const locked = guard.lockedFor(address)
-    if (locked > 0) {
-      log({ event: 'approvals.login', ok: false, status: 429 })
-      return reply(429, { error: 'locked' }, { 'Retry-After': String(locked) })
-    }
+    if (lockedOut(address, reply)) return
     const parsed = await body(req, res, reply)
     if (!parsed.ok) return
+    // Again, now that the body is here: logins that all sent their headers before the lock and their bodies after
+    // it must not each get a compare. From here to guard.fail() nothing awaits, so no other login can interleave.
+    if (lockedOut(address, reply)) return
     const password = typeof parsed.value === 'object' && parsed.value !== null ? (parsed.value as Record<string, unknown>).password : undefined
     if (typeof password !== 'string' || password.length === 0 || password.length > MAX_PASSWORD) {
       return reply(400, { error: 'bad_request', message: 'password must be text' })
@@ -204,7 +215,7 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     }
     switch (route) {
       case 'session': {
-        if (!readAllowed(req, reply)) return true
+        if (!allowed(reads, deps.address(req), reply)) return true
         const session = sessionOf(req)
         // a cookie that names no live session (expired, or the server restarted) is cleared
         const stale = !session && cookieOf(req.headers.cookie) !== null ? { 'Set-Cookie': clearedCookie() } : undefined
@@ -230,7 +241,7 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
           reply(401, { error: 'unauthorized' })
           return true
         }
-        if (!readAllowed(req, reply)) return true
+        if (!allowed(polls, session.id, reply)) return true
         await tool(reply, 'approvals', {}, approvalsOf)
         return true
       }

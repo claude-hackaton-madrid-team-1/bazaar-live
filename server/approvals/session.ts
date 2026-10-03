@@ -94,6 +94,8 @@ export interface LoginGuardOptions {
   readonly global?: number
   readonly windowMs?: number
   readonly lockMs?: number
+  /** How long an address that logged in stays exempt from the global lock (never from its own). */
+  readonly trustMs?: number
   readonly maxKeys?: number
 }
 
@@ -101,15 +103,22 @@ export interface LoginGuardOptions {
  * The login's lockout: 5 failures from one address in 15 minutes lock that address for 15 minutes, and 20 from all
  * addresses together lock everyone for 15 minutes (a guess spread over many addresses stays bounded). A locked
  * caller is refused before its password is even compared, so the right password does not open it either.
+ *
+ * An address that logged in within the last 24 hours is exempt from the global lock (never from its own): a stranger's
+ * 20 wrong guesses must not lock the approver out of the veto. The maps are bounded caches, updated in place (a copy
+ * per failure would cost O(addresses) on every guess).
  */
 export class LoginGuard {
-  private byAddress = new Map<string, Failures>()
+  private readonly byAddress = new Map<string, Failures>()
+  /** When each address last logged in. */
+  private readonly trusted = new Map<string, number>()
   private everyone: Failures = NONE
   private readonly now: () => number
   private readonly perAddress: number
   private readonly global: number
   private readonly windowMs: number
   private readonly lockMs: number
+  private readonly trustMs: number
   private readonly maxKeys: number
 
   constructor(opts: LoginGuardOptions = {}) {
@@ -118,41 +127,48 @@ export class LoginGuard {
     this.global = opts.global ?? 20
     this.windowMs = opts.windowMs ?? 15 * 60 * 1000
     this.lockMs = opts.lockMs ?? 15 * 60 * 1000
+    this.trustMs = opts.trustMs ?? 24 * 60 * 60 * 1000
     this.maxKeys = opts.maxKeys ?? 10_000
   }
 
   /** Seconds until `address` may try again, 0 when it may now. */
   lockedFor(address: string): number {
-    const until = Math.max(this.byAddress.get(address)?.lockedUntil ?? 0, this.everyone.lockedUntil)
-    const left = until - this.now()
+    const now = this.now()
+    const lastIn = this.trusted.get(address)
+    const global = lastIn !== undefined && now - lastIn < this.trustMs ? 0 : this.everyone.lockedUntil
+    const left = Math.max(this.byAddress.get(address)?.lockedUntil ?? 0, global) - now
     return left > 0 ? Math.ceil(left / 1000) : 0
   }
 
   fail(address: string): void {
     const now = this.now()
     this.everyone = this.counted(this.everyone, now, this.global)
-    const next = new Map(this.byAddress)
-    next.delete(address)
-    next.set(address, this.counted(this.byAddress.get(address) ?? NONE, now, this.perAddress))
-    while (next.size > this.maxKeys) {
-      const oldest = next.keys().next().value
-      if (oldest === undefined) break
-      next.delete(oldest)
-    }
-    this.byAddress = next
+    const prev = this.byAddress.get(address) ?? NONE
+    this.byAddress.delete(address)
+    this.byAddress.set(address, this.counted(prev, now, this.perAddress))
+    bound(this.byAddress, this.maxKeys)
   }
 
-  /** A right password clears that address's count (never the global one). */
+  /** A right password clears that address's count (never the global one) and trusts it for a day. */
   succeed(address: string): void {
-    if (!this.byAddress.has(address)) return
-    const next = new Map(this.byAddress)
-    next.delete(address)
-    this.byAddress = next
+    this.byAddress.delete(address)
+    this.trusted.delete(address)
+    this.trusted.set(address, this.now())
+    bound(this.trusted, 100)
   }
 
   private counted(prev: Failures, now: number, limit: number): Failures {
     const at = [...prev.at.filter((t) => now - t < this.windowMs), now]
     return at.length >= limit ? { at: [], lockedUntil: now + this.lockMs } : { at, lockedUntil: prev.lockedUntil }
+  }
+}
+
+/** Drops the oldest keys of an insertion-ordered map past `max`. */
+function bound(map: Map<string, unknown>, max: number): void {
+  while (map.size > max) {
+    const oldest = map.keys().next().value
+    if (oldest === undefined) break
+    map.delete(oldest)
   }
 }
 

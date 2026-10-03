@@ -4,6 +4,7 @@
  * two errors, neither carrying the upstream's words: `McpUnavailable` (the service, its HTTP status or a malformed
  * reply) and `McpToolError` (the tool said isError: a short plain message we never pass on). Never retried here.
  */
+import { Buffer } from 'node:buffer'
 import type { ApprovalsConfig } from './config.ts'
 
 export const MCP_TIMEOUT_MS = 8000
@@ -38,6 +39,27 @@ export interface McpClientDeps {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** The reply's body as text, refused past MAX_REPLY bytes without buffering more than that. */
+async function cappedText(res: Response): Promise<string> {
+  const declared = Number(res.headers.get('content-length'))
+  if (Number.isFinite(declared) && declared > MAX_REPLY) throw new Error('too large')
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > MAX_REPLY) {
+      await reader.cancel().catch(() => undefined)
+      throw new Error('too large')
+    }
+    chunks.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks))
+}
 
 /** The JSON-RPC message in a reply: a JSON body, or (Streamable HTTP's other form) the SSE event that carries our id. */
 function messageOf(body: string, contentType: string, id: number): unknown {
@@ -96,8 +118,7 @@ export function createMcpClient(deps: McpClientDeps): (tool: HumanTool, args: Re
     }
     let reply: { text: string; isError: boolean } | null
     try {
-      const body = await res.text()
-      if (body.length > MAX_REPLY) throw new Error('too large')
+      const body = await cappedText(res)
       reply = toolTextOf(messageOf(body, res.headers.get('content-type') ?? '', id), id)
     } catch {
       throw new McpUnavailable(200, 'malformed')

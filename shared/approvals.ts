@@ -142,9 +142,10 @@ export const CONTRACT_LIMITS: ApprovalLimits = {
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-// C0 and C1 controls, DEL, and the bidi overrides and isolates that could make a line read as something else.
+// C0 and C1 controls, DEL, the bidi marks, overrides and isolates, and the zero-width characters: anything that could
+// make a line read as something else, or hide part of it.
 // eslint-disable-next-line no-control-regex
-const HIDDEN = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g
+const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g
 
 /** A string with its control characters made spaces and trimmed, or null when it is not a string. */
 export function stripControls(v: unknown): string | null {
