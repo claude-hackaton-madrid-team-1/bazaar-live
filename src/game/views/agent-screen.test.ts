@@ -132,3 +132,29 @@ test('bug 6: a restart reads "reinicio (deploy)", and kinds that write nothing c
   assert.equal(GAME_STRINGS.en.decide.kind('process_started'), 'restart (deploy)')
   assert.equal(GAME_STRINGS.es.decide.kind('accept_ask'), 'accept_ask')
 })
+
+test('review: interleaved refusals of two asks each fold into their own run; an accepted move on that item ends it', () => {
+  const rows: GameEvent[] = []
+  for (let i = 0; i < 4; i++) {
+    rows.push(decision(900 + 2 * i, 'taker', 300 + i, { price: 31 }))
+    rows.push(decision(901 + 2 * i, 'taker', 300 + i, { item: 'LAV-08', price: 33 }))
+  }
+  rows.push(decision(950, 'taker', 310, { status: 'done', verdict: 'allowed', rule: null, text: null, method: 'accept' }))
+  rows.push(decision(951, 'taker', 311, { price: 30 }))
+  const s = feed(fresh(320), rows)
+  const shown = timeline(s).flatMap((c) => c.decide.flatMap((d) => (d.kind === 'row' ? [[d.row.decision, d.run?.count ?? 1]] : [])))
+  assert.deepEqual(shown, [[951, 1], [950, 1], [906, 4], [907, 4]])
+})
+
+test('review: a dealer fill takes its value from its own thread, never from an older one', () => {
+  const s = feed(fresh(300), [
+    decision(100, 'taker', 100, { kind: 'dealer_open', counterparty: 'abuela', price: null, value: 80, status: 'done', verdict: 'allowed', rule: null, text: null, method: 'open_thread' }),
+    decision(101, 'taker', 100, { kind: 'dealer_opened', counterparty: 'abuela', price: null, value: null, status: 'done', verdict: null, rule: null, text: null }),
+    decision(102, 'taker', 101, { kind: 'dealer_closed', counterparty: 'abuela', price: null, value: null, status: 'done', verdict: null, rule: null, text: null }),
+    decision(200, 'taker', 289, { kind: 'dealer_opened', counterparty: 'abuela', price: null, value: null, status: 'done', verdict: null, rule: null, text: null }),
+    decision(201, 'taker', 290, { kind: 'dealer_closed', counterparty: 'abuela', price: 25, value: null, status: 'done', verdict: null, rule: null, text: null }),
+    outcome('thread:700', 290, { target: 'dealer', item: 'SAL-08', counterparty: 'abuela', price: 25, value: null, surplus: null, label: 'bad' }),
+  ])
+  assert.deepInclude(deals(s)[0], { value: null, edge: null, verdict: null })
+  assert.equal(now(s).gain, 0)
+})

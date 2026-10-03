@@ -317,7 +317,7 @@ export function now(s: State): Now {
     cash: s.cash,
     thought,
     action,
-    decision: latestDecision(s, (r) => r.kind !== 'process_started'),
+    decision: latestDecision(s, (r) => isWrite(r.kind)),
     executed: latestDecision(s, (r) => isWrite(r.kind) && r.method != null && r.status !== 'failed' && r.status !== 'rejected'),
   }
 }

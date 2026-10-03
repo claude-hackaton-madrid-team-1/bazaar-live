@@ -40,35 +40,43 @@ export function decisionTicks(s: State): number[] {
 const refusalKey = (r: DecisionRow): string | null => (r.verdict === 'denied' ? `${r.kind}|${r.item ?? ''}|${r.rule ?? ''}` : null)
 
 /**
- * Identical refusals in a row (same agent, kind, item and rule; rows that write nothing do not break a run): the
- * last row of each run of two or more carries the run, the earlier ones are folded into it. Decision id → run, or
- * null for a folded row.
+ * The same refusal repeated (same agent, kind, item and rule): the last row of each run of two or more carries the
+ * run, the earlier ones are folded into it. Other rows in between do not break a run (the taker refuses several asks
+ * each tick); a row of the same kind and item that was not refused does. Decision id → run, or null for a folded row.
  */
 export function refusalRuns(s: State, upToTick: number | null = null): Map<number, Run | null> {
   const out = new Map<number, Run | null>()
+  const close = (run: DecisionRow[] | undefined) => {
+    const last = run?.at(-1)
+    if (!run || !last || run.length < 2) return
+    const prices = run.map((r) => r.price).filter((p): p is number => p != null)
+    for (const r of run) out.set(r.decision, null)
+    out.set(last.decision, {
+      count: run.length, from: run[0]?.tick ?? last.tick, to: last.tick,
+      low: prices.length ? Math.min(...prices) : null, high: prices.length ? Math.max(...prices) : null,
+    })
+  }
   for (const agent of AGENTS) {
-    let run: DecisionRow[] = []
-    const close = () => {
-      const last = run.at(-1)
-      if (last && run.length > 1) {
-        const prices = run.map((r) => r.price).filter((p): p is number => p != null)
-        for (const r of run) out.set(r.decision, null)
-        out.set(last.decision, {
-          count: run.length, from: run[0]?.tick ?? last.tick, to: last.tick,
-          low: prices.length ? Math.min(...prices) : null, high: prices.length ? Math.max(...prices) : null,
-        })
-      }
-      run = []
-    }
+    const runs = new Map<string, DecisionRow[]>()
     for (const r of s.agents.decisions[agent]) {
       if (upToTick != null && r.tick > upToTick) break
       if (!isWrite(r.kind)) continue
       const key = refusalKey(r)
-      const prev = run[0]
-      if (key == null || (prev && refusalKey(prev) !== key)) close()
-      if (key != null) run.push(r)
+      if (key == null) {
+        // an accepted move on the same kind and item ends that item's refusals
+        for (const [k, run] of runs) {
+          if (k.startsWith(`${r.kind}|${r.item ?? ''}|`)) {
+            close(run)
+            runs.delete(k)
+          }
+        }
+        continue
+      }
+      const run = runs.get(key)
+      if (run) run.push(r)
+      else runs.set(key, [r])
     }
-    close()
+    for (const run of runs.values()) close(run)
   }
   return out
 }
@@ -168,14 +176,28 @@ export type Deal = {
 /** A dealer thread that ended with no fill (we walked, she walked) scored as an outcome, but nothing changed hands. */
 const settled = (o: OutcomeRow): boolean => o.target !== 'dealer' || o.price != null
 
-/** Our value of a dealer fill: the latest value our agent logged for that card with that dealer up to the fill. */
+/**
+ * Our value of a dealer fill: the latest value our agent logged for that card with that dealer up to the fill,
+ * within that thread (back to its `dealer_opened`, the row before it included: `dealer_open` carries the value).
+ */
 function dealerValue(s: State, o: OutcomeRow): number | null {
   if (o.target !== 'dealer' || o.agent == null || o.item == null) return null
   const rows = s.agents.decisions[o.agent]
+  let value: number | null = null
+  let opened = false
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i]
-    if (r && r.value != null && r.item === o.item && r.counterparty === o.counterparty && (o.tick == null || r.tick <= o.tick)) return r.value
+    if (!r || r.item !== o.item || r.counterparty !== o.counterparty || (o.tick != null && r.tick > o.tick)) continue
+    // past the thread's start: only the open request that started it may still lend its value
+    if (opened) return r.kind === 'dealer_open' ? r.value : null
+    if (value == null && r.value != null) value = r.value
+    if (r.kind === 'dealer_open') return value
+    if (r.kind === 'dealer_opened') {
+      if (value != null) return value
+      opened = true
+    }
   }
+  // the thread's start is older than the decisions we hold: no value rather than another thread's
   return null
 }
 
