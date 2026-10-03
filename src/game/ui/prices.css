@@ -1,0 +1,93 @@
+/* ── Prices (/prices): the live price guide. A state is never colour alone: arrows, words and badges carry it. ── */
+.prc-live {
+  font-variant-numeric: tabular-nums;
+  color: var(--gm-warn);
+}
+
+.prc-live[data-transport='ws'] {
+  color: var(--gm-good);
+}
+
+.prc-table td {
+  vertical-align: top;
+}
+
+.prc-quote {
+  white-space: nowrap;
+}
+
+.prc-quote > span {
+  display: block;
+  font-size: 0.75rem;
+}
+
+.prc-quote[data-side='bid'] b {
+  color: var(--gm-us);
+}
+
+.prc-quote[data-side='ask'] b {
+  color: var(--gm-them);
+}
+
+.prc-trend {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.prc-trend > span {
+  margin-left: var(--s-1);
+}
+
+.prc-trend[data-trend='up'] > span {
+  color: var(--gm-good);
+}
+
+.prc-trend[data-trend='down'] > span {
+  color: var(--gm-bad);
+}
+
+.prc-deal {
+  min-width: 11rem;
+}
+
+.prc-lines {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-left: var(--s-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.prc-lines > [data-side='buy'] {
+  color: var(--gm-us);
+}
+
+.prc-lines > [data-side='sell'] {
+  color: var(--gm-them);
+}
+
+.prc-row[data-signal] {
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
+}
+
+/* a row that moved this tick flashes once (a new key mounts it again) */
+.prc-row[data-fresh] {
+  animation: prc-flash 1.6s ease-out 1;
+}
+
+@keyframes prc-flash {
+  from {
+    background: color-mix(in srgb, var(--buyer-ink) 22%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prc-row[data-fresh] {
+    animation: none;
+    outline: 1px solid color-mix(in srgb, var(--buyer-ink) 40%, transparent);
+  }
+}
+
+.prc-legend {
+  margin-top: var(--s-3);
+}

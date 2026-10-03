@@ -21,6 +21,7 @@
  */
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Duplex } from 'node:stream'
 import { cleanQuote, MAX_QUOTE } from '../shared/clean.ts'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isLang, LANGS, type Lang } from '../shared/lang.ts'
@@ -242,7 +243,12 @@ export function isRecordedInjection(rows: readonly { readonly raw: string }[], t
   return index.cleaned.some((raw) => raw.startsWith(cut))
 }
 
-export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+/** The request handler, plus `upgrade` for the server's 'upgrade' event (the game stream's WebSocket, GET /api/game/ws). */
+export type AppHandler = ((req: IncomingMessage, res: ServerResponse) => Promise<void>) & {
+  readonly upgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void
+}
+
+export function createApp(deps: AppDeps): AppHandler {
   const log = deps.log ?? defaultLog
   const fetchImpl = deps.fetchImpl ?? fetch
   const limits = deps.limits ?? DEFAULT_LIMITS
@@ -370,7 +376,22 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     res.end(audio.body)
   }
 
-  return async (req, res) => {
+  /** Only the game stream upgrades to a WebSocket; any other path is answered 404 and closed. */
+  function upgradePath(req: IncomingMessage): string {
+    try {
+      return new URL(req.url ?? '/', 'http://local').pathname
+    } catch {
+      return ''
+    }
+  }
+
+  function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    if (game.upgrade(req, socket, head, upgradePath(req))) return
+    socket.on('error', () => socket.destroy())
+    socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
+  }
+
+  const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
       const path = new URL(req.url ?? '/', 'http://local').pathname
       if (path === '/health') return json(res, 200, { ok: true, service: 'bazaar-live', tts: available })
@@ -396,4 +417,5 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       else res.end()
     }
   }
+  return Object.assign(handler, { upgrade })
 }
