@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { fmtP } from '../game.ts'
+import { fmtP, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
-  cardStats, deltaText, deltaTone, marketTape, orderBook, teamStats, venueRows,
-  type CardStat, type Include, type Quote, type TapeRow, type TeamStat, type VenueBook, type VenueRow, type Whose,
+  deltaText, deltaTone, marketTape, opportunities, orderBook, ourOffers, venueRows, watchPrices,
+  type Include, type Opportunity, type OurOffer, type Quote, type TapeRow, type VenueBook, type VenueRow, type WatchRow, type Worth,
 } from '../views/market.ts'
-import { Badge, CardRef, Empty, EventLink, Panel, Seg, Sparkline } from './bits.tsx'
+import { Badge, CardRef, Empty, EventLink, Panel, Seg } from './bits.tsx'
 
 /** Header cells; the indexes in `right` are numbers, aligned right. */
 function Head({ cells, right }: { cells: readonly string[]; right: readonly number[] }) {
@@ -14,7 +14,7 @@ function Head({ cells, right }: { cells: readonly string[]; right: readonly numb
     <thead>
       <tr>
         {cells.map((h, i) => (
-          <th key={h} className={right.includes(i) ? 'gm-r' : undefined}>
+          <th key={`${i}-${h}`} className={right.includes(i) ? 'gm-r' : undefined}>
             {h}
           </th>
         ))}
@@ -23,8 +23,154 @@ function Head({ cells, right }: { cells: readonly string[]; right: readonly numb
   )
 }
 
+/** A value to us: "~" and a title when it is our estimate (a card we do not hold). */
+function WorthText({ worth }: { worth: Worth | null }) {
+  const t = useGameStrings()
+  if (!worth) return <span className="gm-muted">—</span>
+  return <span title={worth.estimated ? t.market.estimated : undefined}>{worth.estimated ? `~${fmtP(worth.value)}` : fmtP(worth.value)}</span>
+}
+
+const minutesOf = (ticks: number | null, tickSeconds: number): number | null => {
+  if (ticks == null || ticks <= 0) return null
+  const m = Math.round((ticks * tickSeconds) / 60)
+  return m >= 1 ? m : null
+}
+
+// ---------------------------------------------------------------- right now for us
+
+function Opp({ o, tickSeconds }: { o: Opportunity; tickSeconds: number }) {
+  const t = useGameStrings()
+  const store = useGame()
+  return (
+    <li className="mkt-opp" data-side={o.side} data-untaken={o.untaken || undefined} aria-selected={store.selected === o.eventId || undefined}>
+      <div className="mkt-opp-card">
+        <CardRef code={o.ref} name={o.name} />
+        <Badge tone={o.need === 'missing' ? 'us' : 'neutral'}>{t.market.need[o.need]}</Badge>
+        {o.completes && (
+          <Badge tone="good" title={t.market.completesTitle}>
+            {t.market.completes[o.completes]}
+          </Badge>
+        )}
+        {o.forUs && (
+          <Badge tone="good" title={t.market.forUsTitle}>
+            {t.market.forUs}
+          </Badge>
+        )}
+      </div>
+      <b className="mkt-net" title={t.market.netTitle}>
+        {signed(o.net)}
+      </b>
+      <div className="mkt-opp-meta">
+        <span>
+          {o.side === 'buy' ? t.market.pay : t.market.get} <b>{fmtP(o.price)}</b>
+        </span>
+        <span>
+          {t.market.worth} <b><WorthText worth={{ value: o.value, estimated: o.estimated }} /></b>
+        </span>
+        <span>{t.market.from(o.maker, o.venueName)}</span>
+        {o.expiresIn != null && <span data-soon={o.expiresIn <= 2 || undefined}>⏱ {t.market.expiresIn(o.expiresIn, minutesOf(o.expiresIn, tickSeconds))}</span>}
+        {o.more > 0 && <span className="gm-muted">{t.market.more(o.more)}</span>}
+        <EventLink id={o.eventId}>↗</EventLink>
+      </div>
+      {o.untaken && o.age != null && (
+        <p className="mkt-flag">
+          <span>
+            <span aria-hidden="true">⚑</span> {t.market.untaken(o.age)}
+          </span>
+          <span className="mkt-flag-why">{o.agent ? t.market.agentSaid(o.agent.agent, o.agent.status, o.agent.rule) : t.market.noAgent}</span>
+        </p>
+      )}
+    </li>
+  )
+}
+
+function Side({ side, rows, tickSeconds, foot }: { side: 'buy' | 'sell'; rows: Opportunity[]; tickSeconds: number; foot?: string }) {
+  const t = useGameStrings()
+  return (
+    <section className="mkt-side" data-side={side}>
+      <h3 className="mkt-side-head">
+        {side === 'buy' ? t.market.buy : t.market.sell}
+        <span className="mkt-side-n">{rows.length}</span>
+        <span className="mkt-side-hint">{side === 'buy' ? t.market.buyHint : t.market.sellHint}</span>
+      </h3>
+      {rows.length ? (
+        <ul className="mkt-opps">
+          {rows.map((o) => (
+            <Opp key={o.offerId} o={o} tickSeconds={tickSeconds} />
+          ))}
+        </ul>
+      ) : (
+        <Empty>{side === 'buy' ? t.market.noBuy : t.market.noSell}</Empty>
+      )}
+      {foot && <p className="mkt-foot">{foot}</p>}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------- ours: offers and prices
+
+function OurOffers({ rows, tickSeconds }: { rows: OurOffer[]; tickSeconds: number }) {
+  const t = useGameStrings()
+  if (!rows.length) return <Empty>{t.market.noOffers}</Empty>
+  return (
+    <ul className="mkt-mine">
+      {rows.map((o) => (
+        <li key={o.offerId}>
+          <Badge tone={o.side === 'ask' ? 'them' : 'us'}>{o.side === 'ask' ? t.market.weSell : t.market.weBuy}</Badge>
+          <CardRef code={o.ref} />
+          <span className="mkt-mine-meta">
+            <b>{fmtP(o.price)}</b>
+            <span className="gm-muted">
+              {t.market.worth} <WorthText worth={o.worth} />
+            </span>
+            <span className="gm-muted">{o.venueName}</span>
+            {o.expiresIn != null && <span data-soon={o.expiresIn <= 2 || undefined}>⏱ {t.market.expiresIn(o.expiresIn, minutesOf(o.expiresIn, tickSeconds))}</span>}
+            {o.beatenBy != null ? (
+              <Badge tone="warn">{t.market.beatenBy(fmtP(o.beatenBy))}</Badge>
+            ) : (
+              <Badge tone={o.best == null ? 'neutral' : 'good'}>{o.best == null ? t.market.alone : t.market.bestPrice}</Badge>
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function OurPrices({ rows }: { rows: WatchRow[] }) {
+  const t = useGameStrings()
+  if (!rows.length) return <Empty>{t.market.noOurPrices}</Empty>
+  return (
+    <div className="gm-scroll">
+      <table className="gm-table mkt-prices">
+        <Head cells={t.market.priceHead} right={[1, 2, 3, 4]} />
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.ref}>
+              <td>
+                <CardRef code={c.ref} name={c.name} /> <Badge tone={c.need === 'missing' ? 'us' : 'neutral'}>{t.market.need[c.need]}</Badge>
+              </td>
+              <td className="gm-r">
+                <WorthText worth={c.worth} />
+              </td>
+              <td className="gm-r">
+                <b>{fmtP(c.last)}</b>
+              </td>
+              <td className="gm-r">{fmtP(c.median)}</td>
+              <td className="gm-r gm-muted">{c.min === c.max ? fmtP(c.min) : `${fmtP(c.min)} – ${fmtP(c.max)}`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- everything else, behind the toggle
+
 function Tape({ rows, team }: { rows: TapeRow[]; team: string }) {
   const store = useGame()
+  const venueName = (id: string) => store.state.venues.get(id)?.name ?? id
   const t = useGameStrings()
   if (!rows.length) return <Empty>{t.market.noTrades}</Empty>
   const party = (p: string) => <span data-tone={p === team ? 'us' : undefined}>{p}</span>
@@ -36,7 +182,7 @@ function Tape({ rows, team }: { rows: TapeRow[]; team: string }) {
           {rows.map((r) => (
             <tr key={`${r.eventId}-${r.assetId ?? r.serial}-${r.ref}`} data-ours={r.ours || undefined} aria-selected={store.selected === r.eventId || undefined}>
               <td className="gm-r">{r.tick ?? '—'}</td>
-              <td>{r.venue}</td>
+              <td>{venueName(r.venue)}</td>
               <td>
                 {party(r.seller)} <span className="gm-muted">→</span> {party(r.buyer)}
               </td>
@@ -48,65 +194,9 @@ function Tape({ rows, team }: { rows: TapeRow[]; team: string }) {
                 {deltaText(r.delta)}
               </td>
               <td className="gm-r">{r.fee ? fmtP(r.fee) : <span className="gm-muted">—</span>}</td>
-              <td className="gm-muted">{r.settlementId == null ? '—' : `s${r.settlementId}`}</td>
               <td>
-                <EventLink id={r.eventId} />
+                <EventLink id={r.eventId}>↗</EventLink>
               </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function CardPrices({ cards }: { cards: CardStat[] }) {
-  const t = useGameStrings()
-  if (!cards.length) return <Empty>{t.market.noCards}</Empty>
-  return (
-    <div className="gm-scroll">
-      <table className="gm-table">
-        <Head cells={t.market.cardHead} right={[1, 2, 3, 4, 5]} />
-        <tbody>
-          {cards.map((c) => (
-            <tr key={c.ref}>
-              <td>
-                <CardRef code={c.ref} name={c.name} />
-              </td>
-              <td className="gm-r">{c.trades}</td>
-              <td className="gm-r">{fmtP(c.last)}</td>
-              <td className="gm-r">{fmtP(c.median)}</td>
-              <td className="gm-r">{c.min === c.max ? fmtP(c.min) : `${fmtP(c.min)} – ${fmtP(c.max)}`}</td>
-              <td className="gm-r gm-muted">{fmtP(c.book)}</td>
-              <td>
-                <Sparkline values={c.trend} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function Teams({ teams }: { teams: TeamStat[] }) {
-  const t = useGameStrings()
-  if (!teams.length) return <Empty>{t.market.noTeams}</Empty>
-  return (
-    <div className="gm-scroll">
-      <table className="gm-table">
-        <Head cells={t.market.teamHead} right={[1, 2, 3, 4, 5]} />
-        <tbody>
-          {teams.map((s) => (
-            <tr key={s.team}>
-              <td>
-                <b>{s.team}</b>
-              </td>
-              <td className="gm-r">{s.trades}</td>
-              <td className="gm-r">{fmtP(s.volume)}</td>
-              <td className="gm-r">{s.asBuyer}</td>
-              <td className="gm-r">{s.asSeller}</td>
-              <td className="gm-r gm-muted">{s.lastTick ?? '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -129,9 +219,9 @@ function QuoteCell({ q, team }: { q: Quote | null; team: string }) {
   )
 }
 
-function OrderBook({ books, team, whose }: { books: VenueBook[]; team: string; whose: Whose }) {
+function OrderBook({ books, team }: { books: VenueBook[]; team: string }) {
   const t = useGameStrings()
-  if (!books.length) return <Empty>{whose === 'ours' ? t.market.noOurOffers : t.market.noOffers}</Empty>
+  if (!books.length) return <Empty>{t.market.noOffers}</Empty>
   return (
     <div className="gm-scroll">
       <table className="gm-table gm-book">
@@ -145,7 +235,7 @@ function OrderBook({ books, team, whose }: { books: VenueBook[]; team: string; w
                 <span className="gm-muted">
                   {' '}
                   · {t.market.offers(v.offers)}
-                  {v.ours > 0 && whose === 'all' && ` · ${t.market.oursCount(v.ours)}`}
+                  {v.ours > 0 && ` · ${t.market.oursCount(v.ours)}`}
                 </span>
               </td>
             </tr>
@@ -169,105 +259,118 @@ function OrderBook({ books, team, whose }: { books: VenueBook[]; team: string; w
   )
 }
 
+/** One line per venue: name, owner, open offers, fee; the status only when it is not open. */
 function Venues({ venues, team }: { venues: VenueRow[]; team: string }) {
   const t = useGameStrings()
   if (!venues.length) return <Empty>{t.market.noVenues}</Empty>
   return (
-    <ul className="gm-venues">
+    <ul className="mkt-venues">
       {venues.map((v) => (
-        <li key={v.id} data-ours={v.ours || undefined}>
-          <div className="gm-venue-head">
-            <b>{v.name}</b>
-            {v.name !== v.id && <span className="gm-mono gm-muted">{v.id}</span>}
-            {v.ours && <Badge tone="us">{t.badge.ours}</Badge>}
-            <Badge tone={v.status === 'open' ? 'good' : v.status === 'closing' ? 'warn' : 'neutral'}>{t.market.venueStatus[v.status]}</Badge>
-          </div>
-          <div className="gm-venue-meta">
-            <span>
-              {t.market.owner} <span data-tone={v.owner === team ? 'us' : undefined}>{v.owner ?? '—'}</span>
-            </span>
-            <span>{t.market.offers(v.offers)}</span>
-            {(v.feeBps != null || v.feePerCard != null) && <span>{t.market.fee(v.feeBps, v.feePerCard)}</span>}
-          </div>
-          {v.announcement ? (
-            <p className="gm-venue-said" title={t.market.announcements(v.announcements)}>
-              “{v.announcement.text}” <span className="gm-muted">t{v.announcement.tick ?? '—'}</span> <EventLink id={v.announcement.eventId} />
-            </p>
-          ) : (
-            <p className="gm-venue-said gm-muted">{t.market.noAnnouncement}</p>
-          )}
+        <li key={v.id} data-ours={v.ours || undefined} title={v.announcement ? `“${v.announcement.text}”` : undefined}>
+          <b>{v.name}</b>
+          <span className="gm-muted">
+            {v.owner && <span data-tone={v.owner === team ? 'us' : undefined}>{v.owner} · </span>}
+            {t.market.offers(v.offers)}
+            {(v.feeBps != null || v.feePerCard != null) && ` · ${t.market.fee(v.feeBps, v.feePerCard)}`}
+          </span>
+          {v.status !== 'open' && <Badge tone={v.status === 'closing' ? 'warn' : 'neutral'}>{t.market.venueStatus[v.status]}</Badge>}
         </li>
       ))}
     </ul>
   )
 }
 
-export function MarketScreen() {
+function AllActivity() {
   const { state, version } = useGame()
   const t = useGameStrings()
   const [include, setInclude] = useState<Include>('others')
   const [query, setQuery] = useState('')
-  const [whose, setWhose] = useState<Whose>('all')
-  const view = useMemo(() => {
-    const rows = marketTape(state, { include, query })
-    return { rows, volume: rows.reduce((a, r) => a + r.price, 0), cards: cardStats(state, include), teams: teamStats(state, include) }
-    // the state is mutated in place: the version is what changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, version, include, query])
+  // the state is mutated in place: the version is what changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const books = useMemo(() => orderBook(state, { whose }), [state, version, whose])
+  const rows = useMemo(() => marketTape(state, { include, query }), [state, version, include, query])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const books = useMemo(() => orderBook(state), [state, version])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const venues = useMemo(() => venueRows(state), [state, version])
   const offers = books.reduce((n, b) => n + b.offers, 0)
-  const actions = (
-    <>
-      <Seg
-        label={t.market.which}
-        value={include}
-        options={[
-          ['others', t.market.others],
-          ['all', t.market.all],
-        ]}
-        onChange={setInclude}
-      />
-      <input type="search" className="gm-search" placeholder={t.market.search} aria-label={t.market.searchLabel} value={query} onChange={(e) => setQuery(e.target.value)} />
-    </>
-  )
+  const volume = rows.reduce((a, r) => a + r.price, 0)
   return (
     <>
       <div className="gm-book-layout">
-        <Panel
-          title={t.market.book}
-          sub={t.market.bookSub(offers, books.length)}
-          actions={
-            <Seg
-              label={t.market.whose}
-              value={whose}
-              options={[
-                ['all', t.market.everyone],
-                ['ours', t.market.ours],
-              ]}
-              onChange={setWhose}
-            />
-          }
-        >
-          <OrderBook books={books} team={state.team} whose={whose} />
+        <Panel title={t.market.book} sub={t.market.bookSub(offers, books.length)}>
+          <OrderBook books={books} team={state.team} />
         </Panel>
         <Panel title={t.market.venues} sub={t.market.venuesSub(venues.filter((v) => v.status === 'open').length)}>
           <Venues venues={venues} team={state.team} />
         </Panel>
       </div>
-      <Panel title={t.market.tape} sub={t.market.tapeSub(view.rows.length, view.volume)} actions={actions}>
-        <Tape rows={view.rows} team={state.team} />
+      <Panel
+        title={t.market.tape}
+        sub={t.market.tapeSub(rows.length, volume)}
+        actions={
+          <>
+            <Seg
+              label={t.market.which}
+              value={include}
+              options={[
+                ['others', t.market.others],
+                ['all', t.market.all],
+              ]}
+              onChange={setInclude}
+            />
+            <input type="search" className="gm-search" placeholder={t.market.search} aria-label={t.market.searchLabel} value={query} onChange={(e) => setQuery(e.target.value)} />
+          </>
+        }
+      >
+        <Tape rows={rows} team={state.team} />
+      </Panel>
+    </>
+  )
+}
+
+export function MarketScreen() {
+  const { state, version } = useGame()
+  const t = useGameStrings()
+  const [all, setAll] = useState(false)
+  const view = useMemo(
+    () => ({ opps: opportunities(state), mine: ourOffers(state), prices: watchPrices(state) }),
+    // the state is mutated in place: the version is what changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, version],
+  )
+  const { opps, mine, prices } = view
+  const untaken = [...opps.buy, ...opps.sell].filter((o) => o.untaken).length
+  const boardSize = [...state.book.values()].reduce((n, o) => n + o.size, 0)
+  return (
+    <>
+      <Panel
+        className="mkt-now"
+        title={t.market.now}
+        sub={
+          <>
+            {t.market.nowSub(opps.buy.length, opps.sell.length)}
+            {untaken > 0 && <span className="mkt-untaken"> · ⚑ {t.market.untakenSub(untaken)}</span>}
+          </>
+        }
+      >
+        <div className="mkt-sides">
+          <Side side="buy" rows={opps.buy} tickSeconds={state.tickSeconds} foot={opps.overCash ? t.market.overCash(opps.overCash, fmtP(opps.cash)) : undefined} />
+          <Side side="sell" rows={opps.sell} tickSeconds={state.tickSeconds} />
+        </div>
       </Panel>
       <div className="gm-two">
-        <Panel title={t.market.prices} sub={t.market.pricesSub(view.cards.length)}>
-          <CardPrices cards={view.cards} />
+        <Panel title={t.market.ourOffers} sub={t.market.ourOffersSub(mine.length)}>
+          <OurOffers rows={mine} tickSeconds={state.tickSeconds} />
         </Panel>
-        <Panel title={t.market.teams} sub={t.market.teamsSub(view.teams.length)}>
-          <Teams teams={view.teams} />
+        <Panel title={t.market.ourPrices} sub={t.market.ourPricesSub(prices.rows.length, prices.untraded)}>
+          <OurPrices rows={prices.rows} />
         </Panel>
       </div>
+      <button type="button" className="gm-btn mkt-toggle" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+        <span aria-hidden="true">{all ? '▾' : '▸'}</span> {all ? t.market.hideAll : t.market.showAll}
+        <span className="gm-sub">{t.market.allSub(boardSize, state.tape.length, state.venues.size)}</span>
+      </button>
+      {all && <AllActivity />}
     </>
   )
 }
