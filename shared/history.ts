@@ -1,6 +1,6 @@
 /**
  * The wire type of GET /api/history: our cash over the day and what moved it (db/history.sql), as the server
- * last read it. Every field is checked on the server (server/history/rows.ts). Days are the Madrid date
+ * last read it, with our score over the day and what may have moved it. Every field is checked on the server (server/history/rows.ts). Days are the Madrid date
  * (`2026-10-03`): the game's tick may start again on a new day, so a moment is (day, tick).
  */
 
@@ -59,12 +59,46 @@ export interface TeamEvent {
   readonly why: string | null
 }
 
+/** Our score and its parts at a tick one of them moved (and at the latest tick). The parts are in their own
+ *  units: the score is not their sum. */
+export interface ScorePoint {
+  readonly day: string
+  readonly tick: number
+  /** When we read it (ISO), or null. */
+  readonly at: string | null
+  readonly cash: number | null
+  readonly score: number | null
+  readonly duel: number | null
+  readonly ladder: number | null
+  readonly neg: number | null
+  readonly mm: number | null
+  readonly bench: number | null
+}
+
+/** What may explain a change of score: one of our agents starting (a deploy or a restart), or the game's own
+ *  turn (a round, a Market Test, duels, a new day). */
+export interface ScoreMark {
+  readonly kind: 'start' | 'game'
+  readonly id: number
+  readonly day: string
+  readonly tick: number
+  /** The agent that started (kind start). */
+  readonly agent: string | null
+  /** round · bench · duels · day (kind game). */
+  readonly action: string | null
+  readonly note: string | null
+  /** When we received it (ISO): game turns only, a start has a tick and no time. */
+  readonly at: string | null
+}
+
 /** Which views answered on the last poll (a view the admin has not applied yet is `false`). */
 export interface HistoryParts {
   readonly points: boolean
   readonly trades: boolean
   readonly orders: boolean
   readonly events: boolean
+  readonly scores: boolean
+  readonly marks: boolean
 }
 
 export interface HistorySnapshot {
@@ -75,13 +109,17 @@ export interface HistorySnapshot {
   readonly trades: readonly Trade[]
   readonly orders: readonly Order[]
   readonly events: readonly TeamEvent[]
+  readonly scores: readonly ScorePoint[]
+  readonly marks: readonly ScoreMark[]
 }
 
 export const EMPTY_HISTORY: HistorySnapshot = {
   at: null,
-  parts: { points: false, trades: false, orders: false, events: false },
+  parts: { points: false, trades: false, orders: false, events: false, scores: false, marks: false },
   points: [],
   trades: [],
   orders: [],
   events: [],
+  scores: [],
+  marks: [],
 }

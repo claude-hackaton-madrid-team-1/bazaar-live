@@ -481,6 +481,29 @@ export interface GameStrings {
     readonly ordersHead: readonly string[]
     readonly agent: string
     readonly allAgents: string
+    readonly score: {
+      readonly title: string
+      readonly sub: (marks: number) => string
+      readonly series: Readonly<Record<'score' | 'duel' | 'ladder' | 'neg' | 'mm' | 'bench' | 'cash', string>>
+      readonly until: string
+      readonly untilNow: string
+      readonly untilNext: string
+      readonly start: (agent: string, count: number, first: number, last: number) => string
+      readonly startWhy: string
+      readonly game: Readonly<Record<string, string>>
+      readonly from: string
+      readonly to: string
+      readonly now: string
+      readonly ticks: (n: number, minutes: number | null) => string
+      readonly after: string
+      readonly before: (ticks: number) => string
+      readonly better: string
+      readonly worse: string
+      readonly same: string
+      readonly noMarks: string
+      readonly focus: (series: string) => string
+      readonly chartLabel: (series: string) => string
+    }
   }
 }
 
@@ -1000,6 +1023,29 @@ const EN: GameStrings = {
     ordersHead: ['tick', 'agent', 'order', 'card', 'price'],
     agent: 'Agent',
     allAgents: 'All',
+    score: {
+      title: 'Score today',
+      sub: (marks) => `${plural(marks, 'mark', 'marks')} where something changed · tap one to compare`,
+      series: { score: 'Score', duel: 'Duels', ladder: 'Ladder', neg: 'Negotiation', mm: 'Market-making', bench: 'Bench', cash: 'Cash' },
+      until: 'Compare until',
+      untilNow: 'until now',
+      untilNext: 'until the next mark',
+      start: (agent, count, first, last) => `${agent} restart${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      startWhy: 'the process started: a deploy or a restart',
+      game: { round: 'New round', bench: 'Market Test', duels: 'Duels', day: 'New day' },
+      from: 'since',
+      to: 'until',
+      now: 'now',
+      ticks: (n, minutes) => `${plural(n, 'tick', 'ticks')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      after: 'since the mark',
+      before: (ticks) => `the ${ticks} ticks before`,
+      better: 'moving faster than before the mark',
+      worse: 'moving slower than before the mark',
+      same: 'as before the mark',
+      noMarks: 'No change marked today yet: the chart shows the score alone.',
+      focus: (series) => `Show ${series} on the big chart`,
+      chartLabel: (series) => `${series} today, tick by tick, with the marks where something changed`,
+    },
   },
 }
 
@@ -1519,6 +1565,29 @@ const ES: GameStrings = {
     ordersHead: ['turno', 'agente', 'orden', 'carta', 'precio'],
     agent: 'Agente',
     allAgents: 'Todos',
+    score: {
+      title: 'Puntos de hoy',
+      sub: (marks) => `${plural(marks, 'marca', 'marcas')} donde algo cambió · toca una para comparar`,
+      series: { score: 'Puntos', duel: 'Duelos', ladder: 'Escalera', neg: 'Negociación', mm: 'Creación de mercado', bench: 'Banco de pruebas', cash: 'Caja' },
+      until: 'Comparar hasta',
+      untilNow: 'hasta ahora',
+      untilNext: 'hasta la siguiente',
+      start: (agent, count, first, last) => `reinicio de ${agent}${count > 1 ? ` ×${count} (t${first}–${last})` : ''}`,
+      startWhy: 'arrancó el proceso: un despliegue o un reinicio',
+      game: { round: 'Nueva ronda', bench: 'Prueba de mercado', duels: 'Duelos', day: 'Nuevo día' },
+      from: 'desde',
+      to: 'hasta',
+      now: 'ahora',
+      ticks: (n, minutes) => `${plural(n, 'turno', 'turnos')}${minutes === null ? '' : ` · ${minutes} min`}`,
+      after: 'desde la marca',
+      before: (ticks) => `${ticks} turnos antes`,
+      better: 'avanza más rápido que antes de la marca',
+      worse: 'avanza más despacio que antes de la marca',
+      same: 'igual que antes de la marca',
+      noMarks: 'Hoy aún no hay cambios marcados: el gráfico muestra solo los puntos.',
+      focus: (series) => `Ver ${series} en el gráfico grande`,
+      chartLabel: (series) => `${series} de hoy, turno a turno, con las marcas donde algo cambió`,
+    },
   },
 }
 

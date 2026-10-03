@@ -3,7 +3,7 @@
  * or a made-up day with `?mock=1`. Keeps the last good snapshot through an error, like ./learn.ts.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { EMPTY_HISTORY, type CashPoint, type HistorySnapshot, type Order, type TeamEvent, type Trade } from '../../shared/history.ts'
+import { EMPTY_HISTORY, type CashPoint, type HistorySnapshot, type Order, type ScoreMark, type ScorePoint, type TeamEvent, type Trade } from '../../shared/history.ts'
 
 export type HistoryStatus = 'loading' | 'live' | 'off' | 'locked' | 'error' | 'mock'
 
@@ -25,11 +25,20 @@ export function historyStateOf(httpStatus: number, body: unknown, prev: HistoryS
     status: 'live',
     snapshot: {
       at: typeof body.at === 'string' ? body.at : null,
-      parts: { points: parts.points === true, trades: parts.trades === true, orders: parts.orders === true, events: parts.events === true },
+      parts: {
+        points: parts.points === true,
+        trades: parts.trades === true,
+        orders: parts.orders === true,
+        events: parts.events === true,
+        scores: parts.scores === true,
+        marks: parts.marks === true,
+      },
       points: list(body.points),
       trades: list(body.trades),
       orders: list(body.orders),
       events: list(body.events),
+      scores: list(body.scores),
+      marks: list(body.marks),
     },
   }
 }
@@ -109,12 +118,50 @@ export function mockHistory(tick: number): HistorySnapshot {
   const orders: Order[] = Array.from({ length: 12 }, (_, i) => ({
     id: 60 + i, day: DAY, tick: at(26 + i), kind: i % 4 === 3 ? 'accept' : 'listing', price: 10 + ((i * 7) % 20), item: ['LAV-04', 'SAL-03', 'MAL-08', 'LAT-02'][i % 4] ?? null, agent: i % 4 === 3 ? 'taker' : 'maker',
   }))
+  const { scores, marks } = mockScores(t, points)
   return {
     at: new Date(0).toISOString(),
-    parts: { points: true, trades: true, orders: true, events: true },
+    parts: { points: true, trades: true, orders: true, events: true, scores: true, marks: true },
     points,
     trades: trades.filter((x) => x.tick <= t),
     orders: orders.filter((o) => o.tick <= t),
     events: events.filter((e) => e.tick <= t),
+    scores,
+    marks,
   }
+}
+
+const r2 = (n: number): number => Math.round(n * 100) / 100
+
+/**
+ * The made-up day's score: negotiation climbs in steps and faster after the taker's restart (at 16/40 of the
+ * day), market-making starts with the maker's (at 28/40), the Market Test (20/40) brings the bench, and the
+ * score drifts down a little while nothing happens, as the real one does against the others' play.
+ */
+function mockScores(t: number, cash: readonly CashPoint[]): { scores: ScorePoint[]; marks: ScoreMark[] } {
+  const at = (n: number) => Math.max(1, Math.round((t * n) / 40))
+  const time = (tick: number) => new Date(Date.UTC(2026, 9, 3, 7, 0, 0) + tick * 30_000).toISOString()
+  const negSteps: [number, number][] = [[3, 5.7], [6, 7.3], [10, 18.8], [14, 32.2], [18, 41], [20, 57.4], [23, 74.9], [26, 92.3], [30, 118], [33, 134.7], [37, 151.2]]
+  const scores: ScorePoint[] = []
+  for (let tick = 0; tick <= t; tick++) {
+    const n = (tick * 40) / t
+    const neg = negSteps.filter(([k]) => at(k) <= tick).at(-1)?.[1] ?? 0
+    const duel = n < 22 ? 0 : r2((n - 22) * 0.42)
+    const ladder = n < 3 ? 0 : n < 16 ? 0.009 : n < 25 ? 0.6 : 1.4
+    const mm = n < 28 ? 0 : r2((n - 28) * 0.31)
+    const bench = n < 20 ? null : 0.5
+    const drift = (Math.floor(n * 2) % 5) * 0.03
+    const score = r2(8.34 + neg * 0.075 + duel * 0.6 + ladder * 1.2 + mm * 1.5 + (bench ?? 0) * 6 - drift)
+    const money = cash.filter((p) => p.tick <= tick).at(-1)?.cash ?? null
+    scores.push({ day: DAY, tick, at: time(tick), cash: money, score, duel, ladder, neg, mm, bench })
+  }
+  const mark = (id: number, n: number, kind: 'start' | 'game', extra: Partial<ScoreMark>): ScoreMark => ({
+    kind, id, day: DAY, tick: at(n), agent: null, action: null, note: null, at: kind === 'game' ? time(at(n)) : null, ...extra,
+  })
+  const marks = [
+    mark(979, 16, 'start', { agent: 'taker' }),
+    mark(22260, 20, 'game', { action: 'bench', note: 'The Market Test: every venue gets the same synthetic book' }),
+    mark(1104, 28, 'start', { agent: 'maker' }),
+  ].filter((m) => m.tick <= t)
+  return { scores, marks }
 }
