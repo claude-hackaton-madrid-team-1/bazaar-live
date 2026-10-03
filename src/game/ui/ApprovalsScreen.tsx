@@ -397,7 +397,6 @@ function PendingRow({ row, tick, limits, csrf, onDone }: { row: PendingRequest; 
             {!priceCheck.ok && <span className="gm-bad">{t.priceError(priceCheck.error, bounds.min, bounds.max, bounds.cap?.rule ?? null)}</span>}
             {!ttlCheck.ok && <span className="gm-bad">{t.ttlError(limits.ttl_min, limits.ttl_max)}</span>}
             {reasonTooLong(reason) && <span className="gm-bad">{t.reasonError(REASON_MAX)}</span>}
-            {priceCheck.ok && bounds.cap && <span className="gm-muted">{t.cap(bounds.cap.max, bounds.cap.rule)}</span>}
           </p>
         </form>
       )}
