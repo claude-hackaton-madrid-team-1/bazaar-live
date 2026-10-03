@@ -54,7 +54,7 @@ export interface AppDeps {
     readonly vouchQuotes?: boolean
   }
   /** The game screens' feed (server/game); absent → /api/game answers `enabled: false`. */
-  readonly game?: Pick<GameRouteDeps, 'hub' | 'enabled' | 'target' | 'token' | 'source'> & Partial<Pick<GameRouteDeps, 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter' | 'maxQueuedBytes'>>
+  readonly game?: Pick<GameRouteDeps, 'hub' | 'enabled' | 'target' | 'token' | 'source'> & Partial<Pick<GameRouteDeps, 'sockets' | 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter' | 'maxQueuedBytes'>>
   /** What our agents learned (server/learn); absent → /api/learn answers `enabled: false`. */
   readonly learn?: Pick<LearnRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<LearnRouteDeps, 'limiter'>>
   /** Our cash and what moved it (server/history); absent → /api/history answers `enabled: false`. */

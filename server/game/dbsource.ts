@@ -138,6 +138,8 @@ export class GameDbSource {
   private timer: unknown = null
   private stopped = true
   private missing = false
+  private polling = false
+  private again = false
 
   constructor(deps: DbSourceDeps) {
     this.deps = deps
@@ -160,6 +162,22 @@ export class GameDbSource {
     this.timer = null
   }
 
+  /**
+   * Read now rather than at the timer's next turn (an agent's socket said something moved). While a read is
+   * running, one more follows it; while stopped, missing or backing off after a failure, nothing: the backoff
+   * holds. True when a read is coming.
+   */
+  poke(): boolean {
+    if (this.stopped || this.missing || this.fails > 0) return false
+    if (this.polling) {
+      this.again = true
+      return true
+    }
+    if (this.timer !== null) this.o.clearTimer(this.timer)
+    this.schedule(0)
+    return true
+  }
+
   /** True once the views turned out to be missing: the source stays stopped. */
   get viewsMissing(): boolean {
     return this.missing
@@ -175,8 +193,12 @@ export class GameDbSource {
     this.timer = this.o.setTimer(() => {
       this.timer = null
       if (this.stopped) return
+      this.polling = true
       void this.pollOnce().then(() => {
-        if (!this.stopped) this.schedule(this.nextDelayMs())
+        this.polling = false
+        const again = this.again && this.fails === 0
+        this.again = false
+        if (!this.stopped) this.schedule(again ? 0 : this.nextDelayMs())
       })
     }, ms)
   }

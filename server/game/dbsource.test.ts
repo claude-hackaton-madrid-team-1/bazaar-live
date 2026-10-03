@@ -187,3 +187,95 @@ describe('startGame with the show pool', () => {
     game.stop()
   })
 })
+
+/** Timers the test fires by hand, and a database whose answers wait until the test lets them go. */
+function manual() {
+  const tasks: { fn: () => void; ms: number }[] = []
+  const gates: (() => void)[] = []
+  let gated = false
+  let fail: Error | null = null
+  const reads = { count: 0 }
+  const db = {
+    query: async (sql: string) => {
+      if (sql === DB_SQL.feedFirst || sql === DB_SQL.feedAfter) reads.count += 1
+      if (gated) await new Promise<void>((r) => gates.push(r))
+      if (fail) throw fail
+      return { rows: [] }
+    },
+  }
+  return {
+    db, reads, tasks,
+    setTimer: (fn: () => void, ms: number) => {
+      const t = { fn, ms }
+      tasks.push(t)
+      return t
+    },
+    clearTimer: (h: unknown) => {
+      const i = tasks.indexOf(h as { fn: () => void; ms: number })
+      if (i >= 0) tasks.splice(i, 1)
+    },
+    /** Fire every timer due within `ms` (a poke's is 0, the poll's 3000), then let the reads settle. */
+    fire: async (ms = 0) => {
+      for (const t of tasks.splice(0).filter((x) => x.ms <= ms)) t.fn()
+      for (let i = 0; i < 20; i += 1) await Promise.resolve()
+    },
+    gate: (on: boolean) => {
+      gated = on
+      if (!on) gates.splice(0).forEach((r) => r())
+    },
+    failWith: (e: Error | null) => {
+      fail = e
+    },
+  }
+}
+
+describe('GameDbSource.poke', () => {
+  const source = (m: ReturnType<typeof manual>) => new GameDbSource({ db: m.db, hub: new GameHub(), log: () => undefined, setTimer: m.setTimer, clearTimer: m.clearTimer, random: () => 0.5 })
+
+  it('reads now instead of at the next 3 s turn, then goes back to the 3 s poll', async () => {
+    const m = manual()
+    const s = source(m)
+    expect(s.poke()).toBe(false) // not started
+    s.start()
+    await m.fire()
+    expect(m.reads.count).toBe(1)
+    expect(m.tasks.map((t) => t.ms)).toEqual([3000])
+    expect(s.poke()).toBe(true)
+    expect(m.tasks.map((t) => t.ms)).toEqual([0])
+    await m.fire()
+    expect(m.reads.count).toBe(2)
+    expect(m.tasks.map((t) => t.ms)).toEqual([3000])
+    s.stop()
+  })
+
+  it('never reads twice at once: pokes during a read make one more read right after it', async () => {
+    const m = manual()
+    const s = source(m)
+    s.start()
+    m.gate(true)
+    await m.fire()
+    expect(m.reads.count).toBe(1)
+    expect(s.poke()).toBe(true)
+    expect(s.poke()).toBe(true)
+    expect(m.tasks).toEqual([])
+    m.gate(false)
+    for (let i = 0; i < 20; i += 1) await Promise.resolve()
+    expect(m.tasks.map((t) => t.ms)).toEqual([0])
+    await m.fire()
+    expect(m.reads.count).toBe(2)
+    expect(m.tasks.map((t) => t.ms)).toEqual([3000])
+    s.stop()
+  })
+
+  it('does nothing while the database fails: the backoff holds', async () => {
+    const m = manual()
+    const s = source(m)
+    m.failWith(Object.assign(new Error('down'), { code: 'ECONNREFUSED' }))
+    s.start()
+    await m.fire()
+    expect(m.tasks.map((t) => t.ms)).toEqual([6000])
+    expect(s.poke()).toBe(false)
+    expect(m.tasks.map((t) => t.ms)).toEqual([6000])
+    s.stop()
+  })
+})

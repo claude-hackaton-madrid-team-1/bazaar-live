@@ -1,6 +1,7 @@
 /**
- * GET /api/game          JSON: {enabled, target, source, tokenRequired}: whether the game screens have a feed, and
- *                        where it comes from ('db': our database's views, 'api': the game's API with the team key)
+ * GET /api/game          JSON: {enabled, target, source, tokenRequired, sockets}: whether the game screens have a feed, and
+ *                        where it comes from ('db': our database's views, 'api': the game's API with the team key);
+ *                        `sockets`: each agent's /events socket (state, last live event) while ./agentsws.ts runs, else null
  * GET /api/game/stream   SSE: `events` with the replay (sticky first, then the backlog), then one `events`
  *                        per batch the relay publishes; `hb` every few seconds
  *
@@ -12,6 +13,7 @@ import { Buffer } from 'node:buffer'
 import { timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { RateLimiter } from '../limits.ts'
+import type { AgentSockets } from './agentsws.ts'
 import type { GameTarget } from './config.ts'
 import type { GameEvent, GameHub } from './relay.ts'
 
@@ -22,6 +24,8 @@ export interface GameRouteDeps {
   readonly target: GameTarget | null
   /** Where the feed comes from now ('db' or 'api'); absent → 'api' (the relay). */
   readonly source?: () => 'db' | 'api' | null
+  /** Our agents' sockets (./agentsws.ts): instant liveness, no secret in it. Absent or null → `sockets: null`. */
+  readonly sockets?: () => AgentSockets | null
   /** GAME_VIEW_TOKEN, or null: the stream is open to anyone with the URL. */
   readonly token: string | null
   readonly headers: Readonly<Record<string, string>>
@@ -63,7 +67,7 @@ export function createGameRoutes(deps: GameRouteDeps): (req: IncomingMessage, re
   function info(res: ServerResponse): void {
     const enabled = deps.enabled() && deps.hub !== null
     const source = enabled ? (deps.source?.() ?? 'api') : null
-    json(res, deps.headers, 200, { enabled, target: enabled ? deps.target : null, source, tokenRequired: deps.token !== null })
+    json(res, deps.headers, 200, { enabled, target: enabled ? deps.target : null, source, tokenRequired: deps.token !== null, sockets: deps.sockets?.() ?? null })
   }
 
   function stream(req: IncomingMessage, res: ServerResponse, url: URL): void {

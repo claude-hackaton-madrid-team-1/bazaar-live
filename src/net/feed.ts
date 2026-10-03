@@ -6,9 +6,9 @@
  * dropped by key; the rest arrive flagged `replay: true` (history for the transcript, not a scene to
  * act out). Read-only: this client never sends anything on the socket.
  */
-import type { AgentId, ShowEvent } from '../model/events'
-import { parseEnvelope } from '../model/sanitize'
-import { backoffDelay, DEFAULT_BACKOFF, type BackoffOptions } from './backoff'
+import type { AgentId, ShowEvent } from '../model/events.ts'
+import { parseEnvelope } from '../model/sanitize.ts'
+import { backoffDelay, DEFAULT_BACKOFF, type BackoffOptions } from './backoff.ts'
 
 export type FeedStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'stopped'
 

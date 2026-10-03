@@ -11,11 +11,14 @@
  * With SHOW_DATABASE_URL (or a game key and the database), our agents' decisions join that stream (GUARDRAIL_* override the caps shown).
  * With SHOW_DATABASE_URL the game screens read db/game.sql's views instead of the game's API (GAME_SOURCE=api
  * forces the API); views missing → the API relay. One pool for all of them: the role holds four connections.
+ * With SHOW_DATABASE_URL the server also listens to the agents' /events sockets and reads at once on a live event
+ * (the 3 s poll stays): AGENTS_WS=off turns that off, =watch only logs; AGENT_TAKER_WS_URL / _MAKER_WS_URL override.
  */
 import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from './app.ts'
+import { startAgentsWs } from './game/agentsws.ts'
 import { startDecisions } from './game/decisions.ts'
 import { startHealth } from './game/health.ts'
 import { startGame } from './game/start.ts'
@@ -45,6 +48,8 @@ const learn = startLearn(process.env, log, show)
 const decisions = startDecisions(process.env, { db: transcript.db, hub: game.hub, log, secrets: transcript.secrets })
 // Our agents' /health (taker, maker) every 10 s into the same stream, so the page never calls them itself.
 const health = startHealth(process.env, { hub: game.hub, log })
+// The agents' /events: a live event reads the game views and the decisions now instead of at the next 3 s poll.
+const agentsWs = startAgentsWs(process.env, { database: show !== null, game, decisions, log })
 // Our cash and what moved it (db/history.sql), on the shared pool: no connection of its own.
 const history = startHistory(process.env, log, show)
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
@@ -56,7 +61,7 @@ const server = createServer(
       maxPerAddress: Number.isInteger(perAddress) && perAddress > 0 ? perAddress : undefined,
       vouchQuotes: process.env.TRANSCRIPT_SPEAK_QUOTES === '1',
     },
-    game,
+    game: { ...game, sockets: agentsWs.sockets },
     learn,
     history,
   }),
@@ -67,6 +72,7 @@ server.listen(port, '0.0.0.0', () => {
 })
 
 const shutdown = (): void => {
+  agentsWs.stop()
   decisions.stop()
   health.stop()
   void transcript.stop()
