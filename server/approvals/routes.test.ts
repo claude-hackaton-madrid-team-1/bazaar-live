@@ -286,13 +286,14 @@ describe('the approver writes', () => {
     expect(mcp.calls).toHaveLength(3)
   })
 
-  it('allows 6 writes a minute per session by default', async () => {
+  it('allows 10 writes a minute per session by default, whatever the server-wide room', async () => {
     const mcp = fakeMcp((call) => toolReply(call, REVOKED))
-    const { base } = await start({ config: CONFIG, fetchImpl: mcp.fetchImpl })
+    const { base } = await start({ config: CONFIG, fetchImpl: mcp.fetchImpl, writeLimiter: new RateLimiter({ capacity: 100, refillPerSecond: 1 }) })
     const s = await login(base)
     const statuses: number[] = []
-    for (let i = 0; i < 7; i++) statuses.push((await post(base, '/api/approver/revoke', { card: 'SAL-09', side: 'buy' }, { Cookie: s.cookie, 'x-csrf-token': s.csrf })).status)
-    expect(statuses).toEqual([200, 200, 200, 200, 200, 200, 429])
+    for (let i = 0; i < 11; i++) statuses.push((await post(base, '/api/approver/revoke', { card: 'SAL-09', side: 'buy' }, { Cookie: s.cookie, 'x-csrf-token': s.csrf })).status)
+    expect(statuses).toEqual([...Array<number>(10).fill(200), 429])
+    expect(mcp.calls).toHaveLength(10)
   })
 })
 

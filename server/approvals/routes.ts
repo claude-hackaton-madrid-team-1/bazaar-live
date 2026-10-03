@@ -51,7 +51,7 @@ export interface ApprovalsRouteDeps {
   readonly guard?: LoginGuard
   /** Writes, the whole server: 10 a minute. */
   readonly writeLimiter?: RateLimiter
-  /** Writes, per session: 6 a minute. */
+  /** Writes, per session: 10 a minute. */
   readonly sessionWriteLimiter?: RateLimiter
   /** Reads (session, approvals), per address: the page polls every 10 s. */
   readonly readLimiter?: RateLimiter
@@ -64,7 +64,7 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
   const sessions = deps.sessions ?? new SessionStore()
   const guard = deps.guard ?? new LoginGuard()
   const writes = deps.writeLimiter ?? new RateLimiter({ capacity: 10, refillPerSecond: 10 / 60 })
-  const sessionWrites = deps.sessionWriteLimiter ?? new RateLimiter({ capacity: 6, refillPerSecond: 6 / 60 })
+  const sessionWrites = deps.sessionWriteLimiter ?? new RateLimiter({ capacity: 10, refillPerSecond: 10 / 60 })
   const reads = deps.readLimiter ?? new RateLimiter({ capacity: 30, refillPerSecond: 0.5 })
   const call = createMcpClient({ config: deps.config, fetchImpl: deps.fetchImpl ?? fetch, timeoutMs: deps.timeoutMs })
 
