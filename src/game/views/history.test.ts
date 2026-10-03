@@ -109,6 +109,7 @@ describe('the orders in words', () => {
     expect(st(bid(7, 'open'), 121)).toMatchObject({ status: 'expired', expiresIn: null })
     // the feed never listed it: still "an offer posted by hand", never its raw id
     expect(st(null)).toMatchObject({ verb: 'hand', item: null, status: null })
+    expect(orderLines([O(3, 'cancel', 100, 0, 'hands-off:7', 'sell')], 'all', 110)[0]).toMatchObject({ verb: 'other', item: null })
   })
 
   it('maps every source to who wrote it: the agents by name, every command run by hand as one', () => {

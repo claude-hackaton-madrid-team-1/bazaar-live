@@ -286,7 +286,7 @@ export class GameDbSource {
   }
 
   /**
-   * Our open board offers, all of them, as one sticky status sent again only when it changed (the hub replays it after
+   * Our open board offers, all of them, as one sticky status sent again when they or the tick changed (the hub replays it after
    * its backlog, so a page opened late gets it after the older listings). Its own failures stay here: the source goes on.
    */
   private async publishOurs(): Promise<void> {
@@ -298,7 +298,8 @@ export class GameDbSource {
       const { rows } = await this.deps.db.query(DB_SQL.ours, [this.o.oursLimit])
       this.oursFails = 0
       const offers = ourOfferRows(rows)
-      const sig = JSON.stringify(offers)
+      // with the tick: once a tick at least, so a page that guessed one of ours away (a fill the feed does not name) gets it back
+      const sig = JSON.stringify([this.tick, offers])
       if (sig === this.oursSent) return
       this.oursSent = sig
       const id = this.nextOurs

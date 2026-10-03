@@ -151,15 +151,19 @@ describe('GameDbSource', () => {
     await source.pollOnce()
     expect(statuses).toHaveLength(1)
     expect(statuses[0]).toMatchObject({ id: FIRST_OURS_ID, type: 'offers.ours', scope: 'team', payload: { offers: [{ id: 100, tick: 300, actor: 't01', hand: true, payload: OLD.payload }] } })
-    // the same offers: nothing new; one fewer: sent again
+    // the same offers at the same tick: nothing new; a new tick: sent again (a page may have guessed one away); one fewer: sent again
     await source.pollOnce()
     expect(statuses).toHaveLength(1)
+    answers.set(DB_SQL.feedAfter, [{ id: 21200, tick: 402, type: 'settlement', actor: '', payload: {} }])
+    await source.pollOnce()
+    answers.set(DB_SQL.feedAfter, [])
+    expect(statuses.map((e) => e.tick)).toEqual([401, 402])
     answers.set(DB_SQL.ours, [])
     await source.pollOnce()
-    expect(statuses.map((e) => e.payload.offers)).toEqual([[expect.objectContaining({ id: 100 })], []])
+    expect(statuses.map((e) => e.payload.offers)).toEqual([[expect.objectContaining({ id: 100 })], [expect.objectContaining({ id: 100 })], []])
     // a page that opens now gets the backlog first, then the latest list of ours
     const replay = hub.replay()
-    expect(replay.at(-1)).toBe(statuses[1])
+    expect(replay.at(-1)).toBe(statuses[2])
     expect(replay.filter((e) => e.type === 'offers.ours')).toHaveLength(1)
   })
 

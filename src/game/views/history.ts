@@ -242,7 +242,8 @@ function lineOf(o: Order, now: number): Omit<OrderLine, 'raw' | 'count'> {
     }
   }
   const item = o.item ?? ''
-  if (o.kind === 'listing' && item.startsWith('hands-off:')) return { ...base, verb: 'hand', item: null }
+  // an offer id is never shown outside the details, whatever kind of row carries it
+  if (item.startsWith('hands-off:')) return { ...base, verb: o.kind === 'listing' ? 'hand' : 'other', item: null }
   if (o.kind === 'listing' && item.startsWith('team:')) return { ...base, verb: 'team', item: null }
   if (o.kind === 'listing' && isCard(o.item)) return { ...base, verb: 'sell' }
   if (o.kind === 'accept' && /^duel[:#]\d+$/i.test(item)) return { ...base, verb: 'duel' }
