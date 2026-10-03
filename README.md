@@ -435,7 +435,7 @@ token. It never touches Postgres: this repo's database role stays read-only.
 
 | Env | Effect |
 |---|---|
-| `APPROVER_PASSWORD` | The screen's own login, at least 16 characters (a shorter one counts as unset). Not `GAME_VIEW_TOKEN`. Use a generated value, not a phrase (e.g. `openssl rand -base64 24`, piped straight into `railway variable set ... --stdin`): the lockout bounds guessing, it does not make a weak password safe. |
+| `APPROVER_PASSWORD` | The screen's own login, at least 20 characters with at least 12 different ones (a shorter or low-variety one counts as unset, logged as `password_too_short` / `password_too_weak`). Not `GAME_VIEW_TOKEN`. Use a generated value, not a phrase (e.g. `openssl rand -base64 24`, piped straight into `railway variable set ... --stdin`): the lockout bounds guessing, it does not make a weak password safe. |
 | `BAZAAR_MCP_URL` | bazaar-mcp's base URL, without `/mcp` (e.g. `https://bazaar-mcp-production.up.railway.app`). https, or http only to localhost or `*.railway.internal`. |
 | `BAZAAR_MCP_TOKEN` | The bearer bazaar-mcp asks for. |
 | `BAZAAR_APPROVER_TOKEN` | The human tools' own token (`x-approver-token`). |
@@ -446,10 +446,13 @@ names are missing, never a value.
 
 - `GET /api/approver/session` → `{authenticated, csrf?}`.
 - `POST /api/approver/login` `{password}` → `{csrf}` and the cookie `bz_approver` (`HttpOnly; Secure; SameSite=Strict;
-  Path=/api/approver; Max-Age=7200`). Wrong: `401 {"error":"unauthorized"}`. 5 failures from one address in 15 minutes
-  lock it for 15 minutes, and 20 from all addresses together lock everyone else: an address that logged in during the
-  last 24 hours is exempt from that global lock (never from its own), so a stranger's guesses cannot lock the approver
-  out of the veto. The lock is checked again once the body has arrived, so parallel logins cannot race past it.
+  Path=/api/approver; Max-Age=7200`), plus a device cookie `bz_device` (same flags, 30 days; an HMAC keyed from
+  `APPROVER_PASSWORD`, so a new password voids every device). Wrong: `401 {"error":"unauthorized"}`. A login without a
+  valid device cookie is charged to a per-address request bucket, then 5 failures from one address in 15 minutes lock
+  it for 15 minutes, and 20 from all addresses together lock every such login. A login that carries a valid device
+  cookie (OWASP "device cookies") is counted only against that device's own 5 failures: strangers behind the venue's
+  shared NAT cannot lock the approver's browser out of the veto. The lock is checked again once the body has arrived,
+  so parallel logins cannot race past it, and a locked caller is logged at most once a minute.
 - `POST /api/approver/logout`.
 - `GET /api/approver/approvals` → the `approvals` tool's answer, checked field by field (`shared/approvals.ts`).
 - `POST /api/approver/approve` `{card, side, price, ttl_ticks, reason?}` and `POST /api/approver/revoke` `{card, side,
@@ -457,7 +460,9 @@ names are missing, never a value.
   the reason "denied from Bazaar Live".
 
 Security: writes need the cookie, the `x-csrf-token` header (the token from the login, kept in the page's memory only)
-and a same-origin request (`/session` is limited per address, the page's `/approvals` polls per session); every field is checked against the contract's ranges before bazaar-mcp is called (card
+and a same-origin request (`/session` is limited per address unless it carries a live session, the page's `/approvals`
+polls per session; one `approvals` answer serves every session for 10 s, one call in flight at a time, and any write
+drops it, so the page stays inside bazaar-mcp's 30 calls a minute per bearer); every field is checked against the contract's ranges before bazaar-mcp is called (card
 `^[A-Z]{3}-\d{2}$`, side buy/sell, integer price 1-1000, integer `ttl_ticks` 1-480, reason up to 300 characters with
 control characters stripped), and writes are limited to 10 a minute per session and 10 a minute for the whole server.
 Passwords and CSRF tokens are compared in constant time (both sides hashed, then `timingSafeEqual`). bazaar-mcp is
@@ -600,7 +605,7 @@ once, by hand, through stdin so they never appear on a command line:
 ```sh
 railway variable set ELEVENLABS_API_KEY --stdin --service bazaar-live
 railway variable set GEMINI_API_KEY --stdin --service bazaar-live
-# the Approvals screen (all four, or it stays off)
+# the Approvals screen (all four, or it stays off); the password: generated, e.g. openssl rand -base64 24 piped in
 railway variable set APPROVER_PASSWORD --stdin --service bazaar-live
 railway variable set BAZAAR_MCP_URL --stdin --service bazaar-live
 railway variable set BAZAAR_MCP_TOKEN --stdin --service bazaar-live
