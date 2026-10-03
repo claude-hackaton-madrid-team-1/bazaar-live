@@ -44,7 +44,13 @@ export interface RivalStrings {
   readonly oursTitle: string
   readonly pick: string
   // one team's album
-  readonly album: (team: string) => string
+  readonly compare: (team: string) => string
+  readonly usCol: string
+  readonly ourCount: (have: number, of: number, complete: boolean) => string
+  readonly noPage: string
+  readonly weHave: (n: number) => string
+  readonly weLack: string
+  readonly legendOurs: string
   readonly albumSub: (cards: number) => string
   readonly albumHead: (rank: number, score: number, pages: number | null) => string
   readonly known: (n: number, of: number) => string
@@ -96,7 +102,13 @@ const EN: RivalStrings = {
   pagesTitle: 'Complete album pages, by the leaderboard',
   oursTitle: 'How many of the cards we need it holds',
   pick: 'See its album',
-  album: (team) => `${team}'s album`,
+  compare: (team) => `Us vs ${team}`,
+  usCol: 'Us',
+  ourCount: (have, of, complete) => (complete ? `${have}/${of} complete` : `${have}/${of}`),
+  noPage: 'no page',
+  weHave: (n) => (n > 1 ? `we hold ${n} copies` : 'we hold it'),
+  weLack: 'we lack it',
+  legendOurs: 'we hold it',
   albumSub: (cards) => `${plural(cards, 'card', 'cards')} seen in public moves; the rest unknown`,
   albumHead: (rank, score, pages) => `#${rank} · ${score.toFixed(1)} points${pages == null ? '' : ` · ${plural(pages, 'complete page', 'complete pages')}`}`,
   known: (n, of) => `${n}/${of} known`,
@@ -145,7 +157,13 @@ const ES: RivalStrings = {
   pagesTitle: 'Páginas del álbum completas, según la clasificación',
   oursTitle: 'Cuántas de las cartas que nos faltan tiene',
   pick: 'Ver su álbum',
-  album: (team) => `Álbum de ${team}`,
+  compare: (team) => `Nosotros vs ${team}`,
+  usCol: 'Nosotros',
+  ourCount: (have, of, complete) => (complete ? `${have}/${of} completa` : `${have}/${of}`),
+  noPage: 'sin página',
+  weHave: (n) => (n > 1 ? `tenemos ${n} copias` : 'la tenemos'),
+  weLack: 'nos falta',
+  legendOurs: 'la tenemos',
   albumSub: (cards) => `${plural(cards, 'carta vista', 'cartas vistas')} en movimientos públicos; el resto, desconocido`,
   albumHead: (rank, score, pages) => `#${rank} · ${score.toFixed(1).replace('.', ',')} puntos${pages == null ? '' : ` · ${plural(pages, 'página completa', 'páginas completas')}`}`,
   known: (n, of) => `${n}/${of} conocidas`,

@@ -3,7 +3,7 @@ import { EMPTY_RIVALS, type RivalCard, type RivalsSnapshot, type RivalTeam } fro
 import { mockRivals, rivalsStateOf } from '../rivals.ts'
 import { GAME_STRINGS } from '../strings.ts'
 import { apply, createState, type GameEvent, type Payload } from '../state.ts'
-import { CHASE_TICKS, chasedSet, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows } from './rivals.ts'
+import { CHASE_TICKS, chasedSet, compareAlbums, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows } from './rivals.ts'
 
 let nextId = 1
 const ev = (type: string, payload: Payload = {}, tick = 500): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor: '', payload })
@@ -123,18 +123,53 @@ describe('teamRows', () => {
 })
 
 describe('rivalAlbum', () => {
-  it('draws a known card filled and every other one unknown, our needs marked, the page holding most of them first', () => {
+  it('draws a known card filled and every other one unknown, our needs marked, in the order asked, the other sets after', () => {
     // a set the screen does not know (not in SETS) is never drawn
     expect(rivalAlbum(snap({ holdings: [card('t07', 'AAA-10')] }), 't07')).toEqual([])
     const real = [card('t07', 'LAV-10', { copies: 2, since: 300, seen: 450 }), card('t07', 'MAL-01'), card('t07', 'MAL-02'), card('t07', 'MAL-03'), card('t07', 'LAV-11', { how: 'pack' }), card('t05', 'SAL-01')]
     const needs = [{ ref: 'LAV-10', set: 'LAV', page: 'Lavapiés', rarity: 'rare' as const, have: 9, of: 10 }]
-    const album = rivalAlbum(snap({ holdings: real }), 't07', needs)
-    expect(album.map((p) => [p.set, p.known, p.needs])).toEqual([['LAV', 1, 1], ['MAL', 3, 0], ['SAL', 0, 0]])
+    const album = rivalAlbum(snap({ holdings: real }), 't07', needs, ['LAV', 'RET', 'MAL'])
+    // RET from the order, though nobody holds one; SAL (no page of ours) after, in the catalog's order
+    expect(album.map((p) => [p.set, p.known, p.needs])).toEqual([['LAV', 1, 1], ['RET', 0, 0], ['MAL', 3, 0], ['SAL', 0, 0]])
+    expect(rivalAlbum(snap({ holdings: real }), 't07').map((p) => p.set)).toEqual(['LAV', 'MAL', 'SAL'])
     const lav = album[0]
     expect(lav?.slots).toHaveLength(12)
     expect(lav?.slots[9]).toMatchObject({ ref: 'LAV-10', need: true, known: { copies: 2, how: 'bought', since: 300, seen: 450 } })
     expect(lav?.slots[10]?.known?.how).toBe('pack')
     expect(lav?.slots[0]).toMatchObject({ ref: 'LAV-01', known: null, need: false, name: 'La Corrala' })
+  })
+})
+
+describe('compareAlbums', () => {
+  /** Our album on real sets: Malasaña 9/10 (×1.1), Lavapiés complete, La Latina 2/10 (×0.5). */
+  function ours() {
+    const s = createState()
+    apply(s, ev('agent.hello', { team: 't01', name: 'Team 1' }))
+    const held = (set: string, slots: number[]) => slots.map((n) => ({ id: Number(`${set.charCodeAt(0)}${n}`), kind: 'card', ref: ref(set, n), serial: 1 }))
+    apply(s, ev('agent.me', {
+      cash: 10,
+      affinity: { MAL: 1.1, LAV: 1.6, LAT: 0.5 },
+      album: {
+        pages: [
+          { set: 'LAT', name: 'La Latina', have: 2, of: 10, complete: false },
+          { set: 'LAV', name: 'Lavapiés', have: 10, of: 10, complete: true },
+          { set: 'MAL', name: 'Malasaña', have: 9, of: 10, complete: false },
+        ],
+      },
+      assets: [...held('MAL', [1, 2, 2, 3, 4, 5, 6, 7, 8, 10]), ...held('LAV', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), ...held('LAT', [2, 3])],
+    }, 500))
+    return s
+  }
+
+  it('pairs each of our pages with the rival\'s in our Album screen\'s order, the sets only it has after', () => {
+    const s = ours()
+    const holdings = [card('t07', 'MAL-09'), card('t07', 'LAT-01'), card('t07', 'SAL-01')]
+    const pages = compareAlbums(snap({ holdings }), s, 't07')
+    // the Album screen's default order: the fewest missing first (Lavapiés 0, Malasaña 1, La Latina 8)
+    expect(pages.map((p) => [p.set, p.ours?.have ?? null, p.theirs.known])).toEqual([['LAV', 10, 0], ['MAL', 9, 1], ['LAT', 2, 1], ['SAL', null, 1]])
+    const mal = pages[1]
+    expect(mal?.ours?.slots.map((c) => c.count)).toEqual([1, 2, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0])
+    expect(mal?.theirs.slots[8]).toMatchObject({ ref: 'MAL-09', need: true, known: { copies: 1 } })
   })
 })
 
