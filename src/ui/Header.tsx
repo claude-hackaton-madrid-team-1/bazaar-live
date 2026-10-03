@@ -6,6 +6,7 @@ import type { FeedStatus } from '../net/feed'
 import type { ShowState } from '../show/engine'
 import { LANGS, type Lang } from '../../shared/lang.ts'
 import { setLang, useLang, useStrings } from './lang'
+import { Nav } from './Nav'
 import { modeOf, rememberTargets, worldOf, type Mode, type Targets, type World } from './mode'
 import type { SpeechControls } from './useShow'
 import './header.css'
@@ -155,6 +156,7 @@ export function Header({ state, speech, mock }: { state: ShowState; speech: Spee
         </h1>
         <small className="hdr-tag">{t.brandTag}</small>
       </div>
+      <Nav />
       <div className="hdr-status" aria-label="Agent modes">
         <WorldBadge state={state} mock={mock} />
         {AGENTS.map((a) => (

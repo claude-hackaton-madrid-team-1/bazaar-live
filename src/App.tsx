@@ -1,27 +1,51 @@
 import { MotionConfig } from 'motion/react'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { readConfig } from './config'
 import { Stage } from './stage/Stage'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
 import { useLang, useStrings } from './ui/lang'
+import { useRoute } from './ui/route'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
 import { unlockAudio } from './tts/remote'
 import { unlockWebSpeech } from './tts/webspeech'
 import { useShow } from './ui/useShow'
 
+// The game screens are their own chunk: the show never loads them.
+const GameApp = lazy(() => import('./game/ui/GameApp'))
+
+/** The start gate's answer (with sound or not), kept while the visitor moves between screens. */
+let gateChoice: boolean | null = null
+
 export default function App() {
-  const config = useMemo(() => readConfig(window.location.search), [])
+  const route = useRoute()
   const lang = useLang()
-  const t = useStrings()
-  const { state, speech } = useShow(config)
-  const [started, setStarted] = useState(false)
-  const { muted, setMuted } = speech
 
   useEffect(() => {
     document.documentElement.lang = lang
   }, [lang])
+
+  if (route === 'show') return <ShowApp />
+  return (
+    <Suspense fallback={null}>
+      <GameApp route={route} />
+    </Suspense>
+  )
+}
+
+/** The show: the buyer and the seller at the stall, out loud. */
+function ShowApp() {
+  const config = useMemo(() => readConfig(window.location.search), [])
+  const t = useStrings()
+  const { state, speech } = useShow(config)
+  const [started, setStarted] = useState(gateChoice !== null)
+  const { muted, setMuted } = speech
+
+  // back from another screen: the gate was answered already, keep that answer
+  useEffect(() => {
+    if (gateChoice !== null) setMuted(!gateChoice)
+  }, [setMuted])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -55,6 +79,7 @@ export default function App() {
               unlockWebSpeech()
               unlockAudio()
             }
+            gateChoice = withSound
             setStarted(true)
             setMuted(!withSound)
           }}

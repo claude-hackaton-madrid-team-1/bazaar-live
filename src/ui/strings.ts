@@ -12,7 +12,6 @@ export interface Strings {
   readonly boardLabel: string
   readonly boardEmpty: string
   readonly wanted: string
-  readonly priceUnknown: string
   readonly bidFor: string
   readonly askFor: string
   readonly cardPrivate: string
@@ -50,7 +49,6 @@ export interface Strings {
   readonly noVoice: string
   readonly noEleven: string
   /** A speaker's voice status when its provider voice fails: a short word and the tooltip. */
-  readonly voiceStatus: { readonly fallback: string; readonly failed: string; readonly fallbackTitle: string; readonly failedTitle: string }
   readonly muted: string
   readonly soundOn: string
   readonly tick: string
@@ -79,7 +77,6 @@ const ES: Strings = {
   boardLabel: 'Nuestras ofertas en el tablón',
   boardEmpty: 'El tablón está vacío… por ahora.',
   wanted: 'SE BUSCA',
-  priceUnknown: 'precio privado',
   bidFor: 'Puja por',
   askFor: 'Oferta de',
   cardPrivate: 'precio privado',
@@ -114,7 +111,6 @@ const ES: Strings = {
   langLabel: 'Idioma',
   noVoice: 'Este navegador no tiene voz en castellano: solo se muestra el texto',
   noEleven: 'El servidor no tiene la clave de ElevenLabs: solo se muestra el texto, sin voz',
-  voiceStatus: { fallback: 'voz de reserva', failed: 'sin voz', fallbackTitle: 'Su voz no está disponible: habla con una voz de reserva', failedTitle: 'Su voz ha fallado: sus frases se muestran como subtítulos' },
   muted: 'Silenciado',
   soundOn: 'Con sonido',
   tick: 'turno',
@@ -141,7 +137,6 @@ const EN: Strings = {
   boardLabel: 'Our offers on the board',
   boardEmpty: 'The board is empty… for now.',
   wanted: 'WANTED',
-  priceUnknown: 'price private',
   bidFor: 'Bid for',
   askFor: 'Ask for',
   cardPrivate: 'price private',
@@ -176,7 +171,6 @@ const EN: Strings = {
   langLabel: 'Language',
   noVoice: 'This browser has no English voice: the text is shown, not spoken',
   noEleven: 'The server has no ElevenLabs key: the text is shown, with no voice',
-  voiceStatus: { fallback: 'backup voice', failed: 'no voice', fallbackTitle: 'Its voice is unavailable: it speaks with a backup voice', failedTitle: 'Its voice failed: its lines are shown as captions' },
   muted: 'Muted',
   soundOn: 'Sound on',
   tick: 'tick',

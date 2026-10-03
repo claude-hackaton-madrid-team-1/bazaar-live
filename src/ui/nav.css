@@ -1,0 +1,97 @@
+/* The screens: one segmented capsule, the thumb slides to the current screen. It sits in the header's
+   own row and scrolls sideways on a phone rather than wrapping. */
+
+.nav {
+  grid-area: nav;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  padding: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav a {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  height: 30px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-pill);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  /* --text-2 leaned toward --text: AA on the track in both themes */
+  color: color-mix(in srgb, var(--text-2) 70%, var(--text));
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--dur-1) var(--ease-out);
+}
+
+.nav a:hover,
+.nav a[aria-current='page'] {
+  color: var(--text);
+}
+
+.nav-thumb {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  background: var(--material-solid);
+  box-shadow: 0 0 0 0.5px var(--glass-stroke), 0 1px 2px rgb(0 0 0 / 0.1), 0 3px 8px -2px rgb(0 0 0 / 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .nav-thumb {
+    background: color-mix(in srgb, var(--text) 26%, var(--glass-solid));
+  }
+}
+
+:root[data-theme='dark'] .nav-thumb {
+  background: color-mix(in srgb, var(--text) 26%, var(--glass-solid));
+}
+
+.nav-label {
+  position: relative;
+}
+
+@media (max-width: 520px) {
+  .nav a {
+    height: 34px;
+    padding: 0 var(--s-3);
+  }
+}
+
+@media (prefers-contrast: more) {
+  .nav {
+    border: 1px solid var(--text);
+  }
+
+  .nav-thumb {
+    box-shadow: inset 0 0 0 1.5px var(--text);
+  }
+}
+
+@media (forced-colors: active) {
+  .nav {
+    border: 1px solid CanvasText;
+  }
+
+  .nav a[aria-current='page'] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .nav-thumb {
+    display: none;
+  }
+}

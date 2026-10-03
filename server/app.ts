@@ -6,6 +6,8 @@
  *   POST /api/tts              {provider, speaker, text} → audio (MP3 or WAV)
  *   GET  /api/transcript       the real conversations, JSON (LIVE-T1; `enabled: false` without a database)
  *   GET  /api/transcript/stream  the same as server-sent events
+ *   GET  /api/game             {enabled, target, tokenRequired}: the game screens' feed (the team key's relay)
+ *   GET  /api/game/stream      that feed as server-sent events (GAME_VIEW_TOKEN as ?token= when set)
  *   GET  /*                    dist/ (SPA)
  *
  * The proxy is public, so it only speaks the show's own short lines: same-origin requests, one of
@@ -22,6 +24,7 @@ import { isRealLine } from '../shared/real-lines.ts'
 import { isSpeaker, type Speaker } from '../shared/tags.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
+import { createGameRoutes, type GameRouteDeps } from './game/routes.ts'
 import { createStatic } from './static.ts'
 import { createTranscriptRoutes, type TranscriptRouteDeps } from './transcript/routes.ts'
 import { TranscriptStore } from './transcript/store.ts'
@@ -44,6 +47,8 @@ export interface AppDeps {
     /** Voice real quotes the server read from the database. Off by default: they are captions only. */
     readonly vouchQuotes?: boolean
   }
+  /** The game screens' feed (server/game); absent → /api/game answers `enabled: false`. */
+  readonly game?: Pick<GameRouteDeps, 'hub' | 'enabled' | 'target' | 'token'> & Partial<Pick<GameRouteDeps, 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter' | 'maxQueuedBytes'>>
 }
 
 const CSP = [
@@ -188,6 +193,12 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     headers: SECURITY_HEADERS,
     address: (req) => clientAddress(req, limits.clientIpHeader),
   })
+  const game = createGameRoutes({
+    hub: null, enabled: () => false, target: null, token: null,
+    ...deps.game,
+    headers: SECURITY_HEADERS,
+    address: (req) => clientAddress(req, limits.clientIpHeader),
+  })
 
   async function synthesize(req: TtsRequest): Promise<Audio> {
     if (req.provider === 'elevenlabs' && deps.config.elevenlabs) return elevenLabs(deps.config.elevenlabs, req.speaker, req.lang, req.text, fetchImpl)
@@ -257,6 +268,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       if (path === '/api/tts/providers') return json(res, 200, { providers: available })
       if (path === '/api/tts') return await tts(req, res)
       if (transcript(req, res, path)) return
+      if (game(req, res, path)) return
       if (path.startsWith('/api/')) return json(res, 404, { error: 'not_found' })
       if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' })
       await serveStatic(req, res, SECURITY_HEADERS)
