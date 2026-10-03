@@ -149,7 +149,7 @@ export function OurMarketScreen() {
                   <span className="gm-muted">{m.tick(x.tick)}</span>
                   <Badge tone={x.bench ? 'neutral' : 'us'}>{x.bench ? m.benchTag : m.liveTag}</Badge>
                   {x.item && !x.item.startsWith('bench:') && <RefChip topic={x.item} />}
-                  <span className="gm-mono">{m.match(x.buyer ?? '?', x.seller ?? '?', x.price)}</span>
+                  <span className="gm-mono">{m.match(x)}</span>
                   {x.surplus != null && <span className="gm-muted">{m.surplus(x.surplus)}</span>}
                 </li>
               ))}

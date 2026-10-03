@@ -23,11 +23,13 @@ export type MarketExtras = {
   readonly announcements: Map<string, Announcement[]>
   /** Bench sessions, oldest first. */
   readonly benches: Bench[]
+  /** An `agent.venues` that came before we knew our team (`agent.hello`): applied once we do. */
+  pendingVenues: GameEvent | null
 }
 
 export const MARKET_LIMITS = { announcements: 12, benches: 20, text: 280 }
 
-export const createMarketExtras = (): MarketExtras => ({ venues: new Map(), announcements: new Map(), benches: [] })
+export const createMarketExtras = (): MarketExtras => ({ venues: new Map(), announcements: new Map(), benches: [], pendingVenues: null })
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 

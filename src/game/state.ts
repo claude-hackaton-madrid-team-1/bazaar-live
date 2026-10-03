@@ -121,6 +121,8 @@ export type BookOffer = {
   maker: string
   /** The one team the offer is addressed to; null when anyone may take it. */
   to: string | null
+  /** The copies (asset ids) a bid or a swap wants, when it names them: a bid for one team's copy asks nobody else. */
+  wantAssetIds?: number[]
   side: 'ask' | 'bid' | 'swap'
   ref: string
   kind: string
@@ -427,6 +429,7 @@ function offerListed(s: State, e: GameEvent) {
     ref: side === 'bid' ? topicOf({ want: offer.want }) : topicOf({ give: offer.give }),
     kind: first?.kind ?? goods?.types?.[0]?.split(':')[0] ?? 'card',
     assetIds: assets.map((a) => a.id).filter((id) => typeof id === 'number'),
+    wantAssetIds: (offer.want?.assets ?? []).map((a: Payload) => a?.id).filter((id: unknown): id is number => typeof id === 'number'),
     serial: first?.serial ?? null, price: priceOf(offer), createdTick: offer.created_tick ?? e.tick, expiresTick,
     give: sideOf(offer.give), want: sideOf(offer.want),
   })
@@ -489,14 +492,21 @@ function venueEvent(s: State, e: GameEvent) {
  */
 function ourVenuesEvent(s: State, e: GameEvent) {
   const list: Payload[] = Array.isArray(e.payload.venues) ? e.payload.venues : []
-  if (!s.team) return
+  // before agent.hello we cannot say whose they are: kept until it comes
+  if (!s.team) {
+    s.market.pendingVenues = e
+    return
+  }
   for (const x of list) {
     if (typeof x?.venue !== 'string' || typeof x.tick !== 'number') continue
-    const v = touchVenue(s, x.venue, x.tick)
+    const known = s.venues.has(x.venue)
+    // seen now (not at its opening tick, or it would be the first evicted past the venue cap)
+    const v = touchVenue(s, x.venue, s.tick)
     v.owner = s.team
     if (typeof x.name === 'string') v.name = x.name
-    if (typeof x.feeBps === 'number') v.feeBps = x.feeBps
-    if (typeof x.feePerCard === 'number') v.feePerCard = x.feePerCard
+    // the opening fees only for a venue the page did not know: a fee change seen in the window stays
+    if (!known && typeof x.feeBps === 'number') v.feeBps = x.feeBps
+    if (!known && typeof x.feePerCard === 'number') v.feePerCard = x.feePerCard
     v.openedTick = x.tick
     if (typeof x.closedTick === 'number') v.status = 'closed'
     s.market.venues.set(x.venue, { bond: typeof x.bond === 'number' ? x.bond : null, mechanism: typeof x.mechanism === 'string' ? x.mechanism : null })
@@ -632,10 +642,16 @@ export function apply(s: State, e: GameEvent): State {
     }
   }
   switch (e.type) {
-    case 'agent.hello':
+    case 'agent.hello': {
       s.team = p.team ?? s.team
       s.name = p.name ?? s.name
+      const pending = s.market.pendingVenues
+      if (pending && s.team) {
+        s.market.pendingVenues = null
+        ourVenuesEvent(s, pending)
+      }
       break
+    }
     case 'clock':
       s.tick = tick
       s.day = p.day ?? s.day

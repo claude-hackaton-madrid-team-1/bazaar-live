@@ -87,9 +87,15 @@ const DECISIONS: Row[] = [
   { tick: 130, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed',
     candidates: { ask: 3636, bid: 5151, buy: 'b69-3', sell: 'b69-19', item: 'bench:b69', bench: true, price: 43, surplus: 15, makers: ['b69-19', 'b69-3'] },
     chosen: { buy: 'b69-3', sell: 'b69-19', price: 43 } },
+  // a live match as broker.py writes it: the card as `card:LAV-08`, the two offer ids, the makers sorted
   { tick: 131, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed',
-    candidates: { ask: 2020, bid: 3030, item: 'LAV-08', price: 25, surplus: 10.25, reason_text: SECRET_REASON }, chosen: { buy: 't05', sell: 't12', price: 25 } },
+    candidates: { ask: 2020, bid: 3030, item: 'card:LAV-08', bench: false, makers: ['t04', 't15'], fee: 0, price: 25, surplus: 10.25, sell: 13276, buy: 13280, reason_text: SECRET_REASON },
+    chosen: { sell: 13276, buy: 13280, price: 25 } },
   { tick: 132, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed', dry_run: true, candidates: { item: 'DRY-02' }, chosen: { buy: 'x', sell: 'y', price: 1 } },
+  // 22-24: matches the game never took: refused by a guardrail, past the tick window, refused by the game
+  { tick: 133, agent: 'broker', kind: 'broker_match', status: 'rejected', guardrail: 'denied: pause file .local/PAUSE exists', candidates: { item: 'bench:b69', bench: true, surplus: 26 }, chosen: null },
+  { tick: 133, agent: 'broker', kind: 'broker_match', status: 'expired', guardrail: 'allowed', candidates: { item: 'bench:b69', bench: true, surplus: 26 }, chosen: null },
+  { tick: 133, agent: 'broker', kind: 'broker_match', status: 'failed', guardrail: 'allowed', candidates: { item: 'bench:b69', bench: true, surplus: 26 }, chosen: { buy: 'b69-1', sell: 'b69-2', price: 40 } },
 ]
 
 const dbName = `decisions_test_${randomBytes(4).toString('hex')}`
@@ -250,9 +256,10 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
 
   it("shows our broker's matches: the pair, the price, the surplus and whether it was a bench; never its bid or ask", async () => {
     const { rows } = await reader.query('select * from show.agent_broker order by id')
+    // only what the game took: not the rejected, expired or failed ones (22-24), nor the dry run
     expect(rows).toEqual([
-      { id: '19', tick: 130, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: '15.0' },
-      { id: '20', tick: 131, bench: false, item: 'LAV-08', buyer: 't05', seller: 't12', price: 25, surplus: '10.3' },
+      { id: '19', tick: 130, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: '15.0', makers: 'b69-19 b69-3' },
+      { id: '20', tick: 131, bench: false, item: 'LAV-08', buyer: '13280', seller: '13276', price: 25, surplus: '10.3', makers: 't04 t15' },
     ])
     const dump = JSON.stringify(rows)
     for (const secret of ['3636', '5151', '2020', '3030', SECRET_REASON, 'DRY-02']) expect(dump).not.toContain(secret)

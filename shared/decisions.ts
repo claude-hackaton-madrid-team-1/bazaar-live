@@ -66,8 +66,11 @@ export interface BrokerPayload {
   readonly bench: boolean
   /** The bench (`bench:b69`) or the card the match moved. */
   readonly item: string | null
+  /** A bench trader's pseudonym, or a live offer's id (digits). */
   readonly buyer: string | null
   readonly seller: string | null
+  /** The two makers (team ids or pseudonyms), sorted: who met, when the pair is two offer ids. */
+  readonly makers: readonly string[]
   readonly price: number | null
   /** Bid minus ask of the pair it matched: the value the match created. */
   readonly surplus: number | null

@@ -286,7 +286,7 @@ describe('our broker\'s matches (show.agent_broker)', () => {
   const match = (id: number, extra: Record<string, unknown> = {}) => ({ id: String(id), tick: 930, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: '15.0', ...extra })
 
   it('brokerOf keeps the pair, the price and the surplus, and drops anything that is not a plain id', () => {
-    expect(brokerOf(match(2114))).toEqual({ tick: 930, payload: { decision: 2114, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: 15 } })
+    expect(brokerOf({ ...match(2114), makers: 'b69-19 b69-3' })).toEqual({ tick: 930, payload: { decision: 2114, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', makers: ['b69-19', 'b69-3'], price: 43, surplus: 15 } })
     expect(brokerOf(match(2115, { bench: false, item: 'LAV-08', buyer: 't05', seller: '<script>', price: 25, surplus: null }))?.payload).toMatchObject({ bench: false, item: 'LAV-08', buyer: 't05', seller: null, surplus: null })
     expect(brokerOf({ id: 'x', tick: 1 })).toBeNull()
   })
@@ -304,6 +304,20 @@ describe('our broker\'s matches (show.agent_broker)', () => {
     const broker = batches.flat().filter((e) => e.type === 'agent.broker')
     expect(broker.map((e) => [e.payload.decision, e.tick, e.actor, e.scope])).toEqual([[1, 930, 'broker', 'team'], [2, 930, 'broker', 'team'], [3, 931, 'broker', 'team']])
     expect(calls.filter((c) => c.sql === SQL.brokerAfter).map((c) => c.params[0])).toEqual([2])
+  })
+
+  it('any other broker error never fails the round: the other views go on and it is logged once, redacted', async () => {
+    const { db } = fakeDb((c) => (c.sql.includes('show.agent_broker') || c.sql.includes('show.our_venues') ? pgError('57014', 'canceling statement due to statement timeout at postgres://u:hunter2-secret@h/db') : c.sql === SQL.decisionsBackfill ? [decisionRow(1)] : []))
+    const hub = new GameHub()
+    const batches: GameEvent[][] = []
+    hub.subscribe((b) => batches.push([...b]))
+    const logs: Record<string, unknown>[] = []
+    const poller = new DecisionsPoller({ db, hub, log: (e) => logs.push(e), secrets: ['hunter2-secret'] })
+    await poller.pollOnce()
+    expect(poller.nextDelayMs()).toBe(3000)
+    expect(batches.flat().some((e) => e.type === 'agent.decision')).toBe(true)
+    expect(logs.filter((l) => l.event === 'broker_poll_failed')).toHaveLength(1)
+    expect(JSON.stringify(logs)).not.toContain('hunter2-secret')
   })
 
   it('a missing broker view (the SQL not re-applied yet) is said once and never stops the other views', async () => {

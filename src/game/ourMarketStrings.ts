@@ -7,6 +7,7 @@ import type { Lang } from '../../shared/lang.ts'
 import { useLang } from '../ui/lang'
 import type { Rarity } from './game.ts'
 import type { TeamSide } from './teamThreads.ts'
+import type { BrokerRow } from './decisions.ts'
 import type { AskKind, AskRow, AskVerdict } from './views/our-market.ts'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -42,7 +43,8 @@ export interface OurMarketStrings {
   readonly matches: string
   readonly matchesSub: (n: number, bench: number) => string
   readonly noMatches: string
-  readonly match: (buyer: string, seller: string, price: number | null) => string
+  /** A match: `seller → buyer` (a bench's pseudonyms), or the two makers when the pair is two offer ids. */
+  readonly match: (m: Pick<BrokerRow, 'buyer' | 'seller' | 'makers' | 'price'>) => string
   readonly surplus: (v: number) => string
   readonly benchTag: string
   readonly liveTag: string
@@ -88,6 +90,22 @@ function noteEs(r: AskRow, values: boolean): string {
 
 const withNote = (line: string, note: string) => (note ? `${line} (${note})` : line)
 
+const both = (a: string, b: string) => [a, b].filter(Boolean).join('; ')
+
+/** What a swap would take from us: our only copy, a duplicate, or a card we do not even hold. */
+const takesEn = (r: AskRow) =>
+  r.wantHeld.map((w) => (w.held === 1 ? `our only ${w.ref}` : w.held > 1 ? `${w.ref} is a duplicate of ours` : `we don't hold ${w.ref}`)).join(', ')
+
+const takesEs = (r: AskRow) =>
+  r.wantHeld.map((w) => (w.held === 1 ? `nuestra única ${w.ref}` : w.held > 1 ? `${w.ref} la tenemos repetida` : `no tenemos ${w.ref}`)).join(', ')
+
+const isOfferId = (v: string | null) => v != null && /^\d+$/.test(v)
+
+const pairOf = (m: Pick<BrokerRow, 'buyer' | 'seller' | 'makers'>, offers: string) =>
+  isOfferId(m.buyer) || isOfferId(m.seller)
+    ? `${m.makers.length ? m.makers.join(' × ') : '?'} (${offers} #${m.seller ?? '?'} → #${m.buyer ?? '?'})`
+    : `${m.seller ?? '?'} → ${m.buyer ?? '?'}`
+
 const EN: OurMarketStrings = {
   title: 'Our market',
   noVenue: 'We run no venue right now.',
@@ -111,7 +129,7 @@ const EN: OurMarketStrings = {
   matches: 'Matches our broker made',
   matchesSub: (n, bench) => `${plural(n, 'match', 'matches')}${bench ? ` · ${bench} on a bench` : ''}`,
   noMatches: 'No match seen yet. They come from our database (db/agent_decisions.sql, view show.agent_broker).',
-  match: (buyer, seller, price) => `${seller} → ${buyer}${price == null ? '' : ` at ${p(price)}`}`,
+  match: (m) => `${pairOf(m, 'offers')}${m.price == null ? '' : ` at ${p(m.price)}`}`,
   surplus: (v) => `surplus ${p(v)}`,
   benchTag: 'bench',
   liveTag: 'live',
@@ -133,7 +151,7 @@ const EN: OurMarketStrings = {
     const wants = goods(r.want, '+')
     if (r.kind === 'forUs' && r.side === 'swap') {
       const price = r.want.cash > 0 ? `for ${p(r.want.cash)}` : 'for free'
-      return withNote(`${r.maker} offers ${gives ?? 'nothing'} to us ${price}${r.want.cards.length ? ` if we give ${r.want.cards.join(' + ')}` : ''}`, noteEn(r, values))
+      return withNote(`${r.maker} offers ${gives ?? 'nothing'} to us ${price}${r.want.cards.length ? ` if we give ${r.want.cards.join(' + ')}` : ''}`, both(noteEn(r, values), takesEn(r)))
     }
     if (r.side === 'bid') return withNote(`${r.maker} bids ${r.price == null ? '?' : p(r.price)} ${r.kind === 'forUs' ? 'to us ' : ''}for ${wants ?? r.ref}`, noteEn(r, values))
     if (r.side === 'swap') return withNote(`${r.maker} swaps ${gives ?? r.ref} for ${wants ?? 'nothing'}`, noteEn(r, values))
@@ -165,7 +183,7 @@ const ES: OurMarketStrings = {
   matches: 'Cruces de nuestro bróker',
   matchesSub: (n, bench) => `${plural(n, 'cruce', 'cruces')}${bench ? ` · ${bench} en un banco` : ''}`,
   noMatches: 'Aún no hay cruces. Llegan de nuestra base de datos (db/agent_decisions.sql, vista show.agent_broker).',
-  match: (buyer, seller, price) => `${seller} → ${buyer}${price == null ? '' : ` a ${p(price)}`}`,
+  match: (m) => `${pairOf(m, 'ofertas')}${m.price == null ? '' : ` a ${p(m.price)}`}`,
   surplus: (v) => `excedente ${p(v)}`,
   benchTag: 'banco',
   liveTag: 'real',
@@ -187,7 +205,7 @@ const ES: OurMarketStrings = {
     const wants = goods(r.want, '+')
     if (r.kind === 'forUs' && r.side === 'swap') {
       const price = r.want.cash > 0 ? `por ${p(r.want.cash)}` : 'gratis'
-      return withNote(`${r.maker} nos ofrece ${gives ?? 'nada'} ${price}${r.want.cards.length ? ` si le damos ${r.want.cards.join(' + ')}` : ''}`, noteEs(r, values))
+      return withNote(`${r.maker} nos ofrece ${gives ?? 'nada'} ${price}${r.want.cards.length ? ` si le damos ${r.want.cards.join(' + ')}` : ''}`, both(noteEs(r, values), takesEs(r)))
     }
     if (r.side === 'bid') return withNote(`${r.maker} ${r.kind === 'forUs' ? 'nos puja' : 'puja'} ${r.price == null ? '?' : p(r.price)} por ${wants ?? r.ref}`, noteEs(r, values))
     if (r.side === 'swap') return withNote(`${r.maker} cambia ${gives ?? r.ref} por ${wants ?? 'nada'}`, noteEs(r, values))

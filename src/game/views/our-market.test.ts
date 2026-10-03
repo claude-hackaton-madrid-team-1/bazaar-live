@@ -70,7 +70,7 @@ test('our venue: status, mechanism, fee, bond from venue.opened; trades, volume 
 
 test("our broker's matches and the bench sessions: bench matches counted inside each session's ticks, our venue's part flagged", () => {
   const s = fresh()
-  const broker = (decision: number, tick: number, fields: Payload) => ev('agent.broker', { decision, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: 15, ...fields }, tick, 'broker', 'team')
+  const broker = (decision: number, tick: number, fields: Payload) => ev('agent.broker', { decision, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', makers: ['b69-19', 'b69-3'], price: 43, surplus: 15, ...fields }, tick, 'broker', 'team')
   feed(s, [
     ev('venue.opened', { venue: 'v19', name: 'Team 1 market', owner: 't01', bond: 250, rules: { mechanism: 'board' }, fee_bps: 0 }, 262),
     ev('bench.started', { name: 'The Market Test: every venue gets the same synthetic book', ticks: 16, venues: ['v01', 'v19'], session: 3, start_tick: 681 }, 681),
@@ -78,11 +78,14 @@ test("our broker's matches and the bench sessions: bench matches counted inside 
     broker(2111, 893, { price: 73, surplus: 20 }),
     broker(2112, 895, { surplus: 28 }),
     broker(2113, 920, { surplus: 26 }), // after session 4 ended (892 + 16 = 908)
-    broker(2120, 899, { bench: false, item: 'LAV-08', buyer: 't07', seller: 't05', price: 25, surplus: 10 }),
+    broker(2120, 899, { bench: false, item: 'LAV-08', buyer: '13280', seller: '13276', makers: ['t04', 't15'], price: 25, surplus: 10 }),
     broker(2112, 895, { surplus: 28 }), // the same match sent again: kept once
   ])
   assert.deepEqual(brokerMatches(s).map((m) => m.decision), [2120, 2113, 2112, 2111])
-  assert.deepEqual(brokerMatches(s, { bench: false }).map((m) => [m.buyer, m.seller, m.price]), [['t07', 't05', 25]])
+  assert.deepEqual(brokerMatches(s, { bench: false }).map((m) => [m.buyer, m.seller, m.price]), [['13280', '13276', 25]])
+  const [live, , , bench] = brokerMatches(s)
+  assert.equal(OUR_MARKET_STRINGS.en.match(live!), 't04 × t15 (offers #13276 → #13280) at 25 P')
+  assert.equal(OUR_MARKET_STRINGS.es.match(bench!), 'b69-19 → b69-3 a 73 P')
   const [now, before] = benchRows(s)
   assert.deepInclude(now, { session: 4, startTick: 892, endTick: 908, live: true, ours: true, matches: 2, surplus: 48 })
   assert.deepInclude(before, { session: 3, live: false, matches: 0 })
@@ -108,14 +111,14 @@ test('what people are asking us: addressed to us first, then bids for our cards,
   assert.deepInclude(rows[0], { venue: 'v02', expiresIn: 2 })
   const en = OUR_MARKET_STRINGS.en
   const es = OUR_MARKET_STRINGS.es
-  assert.equal(en.askLine(rows[0]!, true), "t08 offers SAL-04 to us for free if we give LAV-02 (we're missing it)")
+  assert.equal(en.askLine(rows[0]!, true), "t08 offers SAL-04 to us for free if we give LAV-02 (we're missing it; our only LAV-02)")
   assert.equal(en.askLine(rows[1]!, false), 't17 bids 15 P for LAV-06 (we hold 1, not a duplicate: keep)')
   assert.equal(en.askLine(rows[2]!, true), 't09 bids 6 P for SAL-01 (we hold 2, a duplicate; worth 3.2 P to us: sell)')
   assert.equal(en.askLine(rows[3]!, true), 't02 sells LAT-04 at 7 P (worth 5 P to us: skip)')
   // without GAME_VIEW_TOKEN no value and no verdict read off one
   assert.equal(en.askLine(rows[2]!, false), 't09 bids 6 P for SAL-01 (we hold 2, a duplicate)')
   assert.equal(en.askLine(rows[3]!, false), "t02 sells LAT-04 at 7 P (we're missing it)")
-  assert.equal(es.askLine(rows[0]!, false), 't08 nos ofrece SAL-04 gratis si le damos LAV-02 (nos falta)')
+  assert.equal(es.askLine(rows[0]!, false), 't08 nos ofrece SAL-04 gratis si le damos LAV-02 (nos falta; nuestra única LAV-02)')
   assert.equal(es.askLine(rows[3]!, true), 't02 vende LAT-04 a 7 P (nos vale 5 P: no comprar)')
   assert.equal(es.askLine(rows[1]!, true), 't17 puja 15 P por LAV-06 (tenemos 1, no es repetida: la guardamos)')
 })
@@ -137,4 +140,28 @@ test('our venues from our database (agent.venues): the feed window starts long a
   apply(s, ev('venue.fee_changed', { venue: 'v19', fee_bps: 100, fee_per_card: 0 }, 901))
   const venues = ourVenues(s)
   assert.deepEqual(venues.map((v) => [v.id, v.name, v.bond, v.mechanism, v.feeBps, v.openedTick]), [['v19', 'Team 1 market', 250, 'board', 100, 262]])
+})
+
+test('review: a bid for another team\'s named copy is not asking us; one for a copy of ours is', () => {
+  const s = fresh()
+  // our LAV-06 is asset id 6 (fresh: ids follow the held list)
+  feed(s, [
+    list('t17', 'rastro', { cash: 15 }, { assets: [{ id: 7777, ref: 'LAV-06' }] }),
+    list('t18', 'rastro', { cash: 16 }, { assets: [{ id: 6, ref: 'LAV-06' }] }),
+  ])
+  assert.deepEqual(askedOfUs(s).map((r) => [r.maker, r.kind, r.ref]), [['t18', 'bidHeld', 'LAV-06']])
+})
+
+test('review: agent.venues before agent.hello waits for it; a re-sent one keeps a fee changed in the window', () => {
+  const s = createState()
+  const venues = ev('agent.venues', { venues: [{ venue: 'v19', tick: 262, name: 'Team 1 market', bond: 250, mechanism: 'board', feeBps: 0, feePerCard: 0, closedTick: null }] }, 900, 'broker', 'team')
+  apply(s, ev('clock', {}, 900))
+  apply(s, venues)
+  assert.deepEqual(ourVenues(s), [], 'no team yet: nothing claimed')
+  apply(s, ev('agent.hello', { team: 't01', name: 'Team 1' }))
+  assert.deepEqual(ourVenues(s).map((v) => [v.id, v.bond]), [['v19', 250]])
+  assert.equal(s.venues.get('v19')?.seenTick, 900, 'seen now, not at its opening tick')
+  apply(s, ev('venue.fee_changed', { venue: 'v19', fee_bps: 100, fee_per_card: 0 }, 901))
+  apply(s, { ...venues, id: nextId++ })
+  assert.equal(ourVenues(s)[0]?.feeBps, 100)
 })

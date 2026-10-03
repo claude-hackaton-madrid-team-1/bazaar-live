@@ -46,8 +46,8 @@ export const SQL = {
   // Keyset on (scored_at, target, subject): one evals run upserts many outcomes with one now().
   outcomesAfter: `select ${OUTCOME_COLUMNS}, ${STAMP} from show.agent_outcomes where (scored_at, target, subject) > ($1::timestamptz, $2::text, $3::text) order by scored_at, target, subject limit $4`,
   ledger: `select tick, t_hours, spent, accepts, listings from show.agent_ledger where t_hours > (select max(t_hours) from show.agent_ledger) - 2 order by tick limit $1`,
-  brokerBackfill: `select * from (select id, tick, bench, item, buyer, seller, price, surplus from show.agent_broker order by id desc limit $1) t order by id`,
-  brokerAfter: `select id, tick, bench, item, buyer, seller, price, surplus from show.agent_broker where id > $1 order by id limit $2`,
+  brokerBackfill: `select * from (select id, tick, bench, item, buyer, seller, price, surplus, makers from show.agent_broker order by id desc limit $1) t order by id`,
+  brokerAfter: `select id, tick, bench, item, buyer, seller, price, surplus, makers from show.agent_broker where id > $1 order by id limit $2`,
   ourVenues: `select venue, tick, name, bond, mechanism, fee_bps, fee_per_card, closed_tick from show.our_venues order by tick limit 20`,
 } as const
 
@@ -160,7 +160,11 @@ export function brokerOf(row: unknown): { tick: number; payload: BrokerPayload }
   const item = typeof row.item === 'string' && /^bench:[a-z0-9_-]{1,24}$/i.test(row.item) ? row.item : cleanItem(row.item)
   return {
     tick,
-    payload: { decision, bench: row.bench === true, item, buyer: traderOf(row.buyer), seller: traderOf(row.seller), price: cleanInt(row.price), surplus: numOf(row.surplus) },
+    payload: {
+      decision, bench: row.bench === true, item, buyer: traderOf(row.buyer), seller: traderOf(row.seller),
+      makers: typeof row.makers === 'string' ? row.makers.split(' ').map(traderOf).filter((m): m is string => m !== null).slice(0, 4) : [],
+      price: cleanInt(row.price), surplus: numOf(row.surplus),
+    },
   }
 }
 
@@ -255,6 +259,11 @@ export class DecisionsPoller {
   private brokerSaid = false
   private venuesSent = ''
   private venuesPolls = 0
+  /** Polls since the last try at the broker views, while they are missing: they are tried again every `venuesEvery`. */
+  private brokerWait = 0
+  private brokerFails = 0
+  /** The broker views' last error this round: logged only when the other three answered (else their own log says it). */
+  private brokerError: { code: string; message: string } | null = null
   private fails = 0
   private missing = false
   private timer: unknown = null
@@ -338,6 +347,11 @@ export class DecisionsPoller {
     if (batch.length > 0) this.deps.hub.publish(batch)
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (!failed) {
+      const err = this.brokerError
+      this.brokerError = null
+      // one count per round, however many of the two broker reads failed in it
+      if (err) this.brokerFails += 1
+      if (err && (this.brokerFails === 1 || this.brokerFails % 10 === 0)) this.deps.log({ route: 'agent_decisions', event: 'broker_poll_failed', fails: this.brokerFails, ...err })
       if (this.brokerOff && !this.brokerSaid) {
         this.deps.log({ route: 'agent_decisions', event: 'broker_off', reason: 'view_missing', note: 're-apply db/agent_decisions.sql: it adds show.agent_broker and show.our_venues' })
         this.brokerSaid = true
@@ -348,6 +362,8 @@ export class DecisionsPoller {
       this.fails = 0
       return
     }
+    // the round failed: its own log says it, a broker error of the same round is not said again
+    this.brokerError = null
     const { code, message } = this.describe(failed.reason)
     if (MISSING.has(code)) {
       // Said once: the views are applied by an admin, maybe later; until then this is a slow re-check.
@@ -420,19 +436,22 @@ export class DecisionsPoller {
    * re-applied yet) is said once and the other three views go on.
    */
   private async readBroker(): Promise<GameEvent[]> {
+    // while the views are missing, try again only every `venuesEvery` polls (the other three views poll on)
+    if (this.brokerOff && (this.brokerWait++ % this.o.venuesEvery) !== 0) return []
     let rows: unknown[]
     try {
       rows = this.brokerMark === null
         ? (await this.deps.db.query(SQL.brokerBackfill, [this.o.backfill])).rows
         : (await this.deps.db.query(SQL.brokerAfter, [this.brokerMark, this.o.cap])).rows
     } catch (err) {
-      if (!MISSING.has(this.describe(err).code)) throw err
-      this.brokerOff = true
+      this.brokerFailed(err)
       return []
     }
     if (this.brokerOff && this.brokerSaid) this.deps.log({ route: 'agent_decisions', event: 'broker_on' })
     this.brokerOff = false
     this.brokerSaid = false
+    this.brokerWait = 0
+    this.brokerFails = 0
     const out: GameEvent[] = []
     for (const raw of rows) {
       const b = brokerOf(raw)
@@ -447,13 +466,12 @@ export class DecisionsPoller {
   /** The venues we opened, every `venuesEvery` polls; sent again only when they changed. Off with the broker view. */
   private async readVenues(): Promise<GameEvent[]> {
     this.venuesPolls += 1
-    if (this.venuesSent && (this.venuesPolls - 1) % this.o.venuesEvery !== 0) return []
+    if ((this.venuesSent || this.brokerOff) && (this.venuesPolls - 1) % this.o.venuesEvery !== 0) return []
     let rows: unknown[]
     try {
       rows = (await this.deps.db.query(SQL.ourVenues)).rows
     } catch (err) {
-      if (!MISSING.has(this.describe(err).code)) throw err
-      this.brokerOff = true
+      this.brokerFailed(err)
       return []
     }
     const venues = rows.map(ourVenueOf).filter((v): v is OurVenuePayload => v !== null)
@@ -464,6 +482,16 @@ export class DecisionsPoller {
     // no venue of ours yet: nothing to say
     if (first && !venues.length) return []
     return [this.event('agent.venues', null, 'broker', { venues })]
+  }
+
+  /** A failed read of the broker views never fails the round: a missing view turns them off, anything else is logged. */
+  private brokerFailed(err: unknown): void {
+    const { code, message } = this.describe(err)
+    if (MISSING.has(code)) {
+      this.brokerOff = true
+      return
+    }
+    this.brokerError = { code, message }
   }
 
   private describe(reason: unknown): { code: string; message: string } {

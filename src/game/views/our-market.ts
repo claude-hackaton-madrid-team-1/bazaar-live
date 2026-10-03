@@ -10,7 +10,7 @@ import { rarityOf, type Rarity } from '../game.ts'
 import type { Announcement, Bench } from '../marketExtras.ts'
 import type { BookOffer, State, Venue } from '../state.ts'
 import type { TeamSide } from '../teamThreads.ts'
-import { needs, worthOf } from './market.ts'
+import { ourCards, worthOf } from './market.ts'
 
 /** The teams Omar marked as our rivals (3 Oct): their offers carry a badge wherever they show. */
 export const RIVAL_TEAMS: ReadonlySet<string> = new Set(['t05', 't10', 't12', 't13', 't14', 't17', 't18'])
@@ -145,6 +145,8 @@ export type AskRow = {
   /** From the album alone (`keep` a single copy), else from our value (private). */
   readonly verdict: AskVerdict | null
   readonly valueVerdict: boolean
+  /** The cards it wants from us, and how many copies of each we hold (1: our only copy). */
+  readonly wantHeld: readonly { readonly ref: string; readonly held: number }[]
 }
 
 const KIND_ORDER: Readonly<Record<AskKind, number>> = { forUs: 0, bidHeld: 1, askMissing: 2 }
@@ -165,24 +167,28 @@ function verdictOf(kind: AskKind, side: BookOffer['side'], price: number | null,
  */
 export function askedOfUs(s: State): AskRow[] {
   if (!s.team) return []
-  const need = needs(s)
+  const cards = ourCards(s)
+  const ownIds = new Set(Object.values(s.owned).flatMap((copies) => copies.map((c) => c.id)))
   const out: AskRow[] = []
   for (const [venue, offers] of s.book) {
     for (const o of offers.values()) {
       if (!live(s, o) || o.maker === s.team) continue
+      // a bid (or swap) for named copies none of which is ours asks another team, not us
+      if (o.wantAssetIds?.length && !o.wantAssetIds.some((id) => ownIds.has(id))) continue
       const held = s.owned[o.ref]?.length ?? 0
       const kind: AskKind | null = o.to === s.team ? 'forUs'
         : o.to != null ? null
         : o.side === 'bid' && held > 0 ? 'bidHeld'
-        : o.side !== 'bid' && need.get(o.ref) === 'missing' ? 'askMissing'
+        : o.side !== 'bid' && cards.get(o.ref)?.need === 'missing' ? 'askMissing'
         : null
       if (!kind) continue
-      const worth = worthOf(s, o.ref)?.value ?? null
+      const worth = worthOf(s, o.ref, cards)?.value ?? null
       const { verdict, byValue } = verdictOf(kind, o.side, o.price, held, worth)
       out.push({
         id: o.id, eventId: o.eventId, kind, side: o.side, venue, venueName: s.venues.get(venue)?.name ?? venue, maker: o.maker, rival: isRival(o.maker),
         ref: o.ref, give: o.give ?? empty, want: o.want ?? empty, price: o.price, expiresIn: o.expiresTick == null ? null : o.expiresTick - s.tick,
         held, duplicate: held > 1, worth, verdict, valueVerdict: byValue,
+        wantHeld: (o.want?.cards ?? []).map((ref) => ({ ref, held: s.owned[ref]?.length ?? 0 })),
       })
     }
   }
