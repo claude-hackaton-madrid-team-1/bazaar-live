@@ -165,3 +165,14 @@ test('review: agent.venues before agent.hello waits for it; a re-sent one keeps 
   apply(s, { ...venues, id: nextId++ })
   assert.equal(ourVenues(s)[0]?.feeBps, 100)
 })
+
+test('review: a listing seen before agent.venues leaves the fee empty; agent.venues fills it, a later fee change still wins', () => {
+  const s = fresh()
+  apply(s, list('t05', 'v19', { assets: [card('LAV-09')] }, { cash: 80 }))
+  assert.isNull(s.venues.get('v19')?.feeBps ?? null)
+  apply(s, ev('agent.venues', { venues: [{ venue: 'v19', tick: 262, name: 'Team 1 market', bond: 250, mechanism: 'board', feeBps: 0, feePerCard: 0, closedTick: null }] }, 900, 'broker', 'team'))
+  assert.deepEqual(ourVenues(s).map((v) => [v.id, v.feeBps, v.bond]), [['v19', 0, 250]])
+  apply(s, ev('venue.fee_changed', { venue: 'v19', fee_bps: 150, fee_per_card: 0 }, 901))
+  apply(s, ev('agent.venues', { venues: [{ venue: 'v19', tick: 262, name: 'Team 1 market', bond: 250, mechanism: 'board', feeBps: 0, feePerCard: 0, closedTick: null }] }, 902, 'broker', 'team'))
+  assert.equal(ourVenues(s)[0]?.feeBps, 150)
+})

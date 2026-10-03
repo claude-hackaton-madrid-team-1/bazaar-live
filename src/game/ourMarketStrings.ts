@@ -74,7 +74,7 @@ function noteEn(r: AskRow, values: boolean): string {
     return values && r.worth != null && r.valueVerdict ? `${head}; worth ${p(r.worth)} to us: ${v(r.verdict)}` : head
   }
   if (values && r.worth != null && r.valueVerdict) return `worth ${p(r.worth)} to us: ${v(r.verdict)}`
-  const missing = r.kind === 'forUs' && r.side === 'swap' ? `we're missing ${r.ref}` : "we're missing it"
+  const missing = r.kind === 'forUs' && r.side === 'swap' ? (r.give.cards.length ? `we're missing ${r.ref}` : '') : "we're missing it"
   return r.kind === 'askMissing' || (r.side !== 'bid' && r.held === 0) ? missing : r.held > 0 ? `we hold ${r.held}` : ''
 }
 
@@ -86,7 +86,7 @@ function noteEs(r: AskRow, values: boolean): string {
     return values && r.worth != null && r.valueVerdict ? `${head}; nos vale ${p(r.worth)}: ${v(r.verdict)}` : head
   }
   if (values && r.worth != null && r.valueVerdict) return `nos vale ${p(r.worth)}: ${v(r.verdict)}`
-  const missing = r.kind === 'forUs' && r.side === 'swap' ? `nos falta ${r.ref}` : 'nos falta'
+  const missing = r.kind === 'forUs' && r.side === 'swap' ? (r.give.cards.length ? `nos falta ${r.ref}` : '') : 'nos falta'
   return r.kind === 'askMissing' || (r.side !== 'bid' && r.held === 0) ? missing : r.held > 0 ? `tenemos ${r.held}` : ''
 }
 

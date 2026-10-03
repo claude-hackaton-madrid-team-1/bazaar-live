@@ -476,7 +476,8 @@ export class DecisionsPoller {
   /** The venues we opened, every `venuesEvery` polls; sent again only when they changed. Off with the broker view. */
   private async readVenues(): Promise<GameEvent[]> {
     this.venuesPolls += 1
-    if (this.venuesSent && (this.venuesPolls - 1) % this.o.venuesEvery !== 0) return []
+    // in a backoff the round already waited: read them whenever the round tries the broker views
+    if (this.venuesSent && !this.brokerBackoff && (this.venuesPolls - 1) % this.o.venuesEvery !== 0) return []
     let rows: unknown[]
     try {
       rows = (await this.deps.db.query(SQL.ourVenues)).rows
