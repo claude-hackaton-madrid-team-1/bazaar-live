@@ -32,6 +32,8 @@ export type ThreadOffer = {
   expiresTick: number | null
   final: boolean
   assets: number[]
+  /** The tactic our agent picked for the words of one of our messages (our database's feed adds it); null otherwise. */
+  tactic: string | null
 }
 
 export type Thread = {
@@ -254,6 +256,9 @@ function isOurOffer(s: State, id: unknown): boolean {
   return Object.values(s.threads).some((th) => th.offers.some((o) => o.offerId === id))
 }
 
+/** A tactic id (`scarcity`, `plain`, ...); `none` is no tactic. */
+const tacticOf = (v: unknown): string | null => (typeof v === 'string' && /^[a-z_]{1,40}$/.test(v) && v !== 'none' ? v : null)
+
 function threadMessage(s: State, e: GameEvent) {
   const p = e.payload
   if (p.team !== s.team) return
@@ -280,6 +285,7 @@ function threadMessage(s: State, e: GameEvent) {
       side: ours ? 'us' : 'them', price, maker: offer.maker, to: offer.to,
       createdTick: offer.created_tick ?? null, expiresTick: offer.expires_tick ?? null, final: Boolean(offer.final),
       assets: [...(offer.give?.assets ?? []), ...(offer.want?.assets ?? [])].map((a: Payload) => a.id),
+      tactic: ours ? tacticOf(p.tactic) : null,
     })
   }
   if (!ours && p.text) th.lastText = p.text

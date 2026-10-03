@@ -25,6 +25,20 @@ export const hhmm = (iso: string | null): string | null => {
   return at && Number.isFinite(at.getTime()) ? `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : null
 }
 
+/** Our agents' tactic ids (bazaar's tactic bank, plus `plain`: our usual words), as the screens name them. */
+const TACTICS_EN: Readonly<Record<string, string>> = {
+  plain: 'plain', kind_gratitude: 'gratitude', kind_flattery: 'flattery', kind_patience: 'patience', empathy_label: 'empathy',
+  calibrated_question: 'calibrated question', accusation_audit: 'accusation audit', no_question: 'no-question', reciprocity: 'reciprocity',
+  mirror: 'mirroring', budget_cap: 'budget cap', outside_option: 'outside option', low_need: 'low need', walk_threat: 'walk-away threat',
+  fake_demand: 'fake demand', cost_floor: 'cost floor', scarcity: 'scarcity', social_proof: 'social proof',
+}
+const TACTICS_ES: Readonly<Record<string, string>> = {
+  plain: 'sin táctica', kind_gratitude: 'gratitud', kind_flattery: 'halago', kind_patience: 'paciencia', empathy_label: 'empatía',
+  calibrated_question: 'pregunta calibrada', accusation_audit: 'auditoría de acusaciones', no_question: 'pregunta del no', reciprocity: 'reciprocidad',
+  mirror: 'espejo', budget_cap: 'tope de presupuesto', outside_option: 'otra opción', low_need: 'poca necesidad', walk_threat: 'amenaza de irse',
+  fake_demand: 'demanda inventada', cost_floor: 'precio de coste', scarcity: 'escasez', social_proof: 'prueba social',
+}
+
 export interface GameStrings {
   readonly nav: Readonly<Record<Route, string>>
   readonly navHint: Readonly<Record<Route, string>>
@@ -243,6 +257,13 @@ export interface GameStrings {
     readonly rivalDeals: (deals: number, noDeals: number) => string
     readonly rivalPoints: (points: number | null) => string
     readonly rivalPointsNone: string
+    readonly tactic: (id: string) => string
+    readonly tacticTitle: string
+    readonly worked: string
+    readonly workedSub: string
+    readonly workedDealer: (threads: number, deals: number) => string
+    readonly workedTally: (deals: number, threads: number) => string
+    readonly workedTallyTitle: string
   }
   readonly album: {
     readonly album: string
@@ -743,6 +764,13 @@ const EN: GameStrings = {
     rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'deal' : 'deals'} · ${none} no deal`,
     rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
     rivalPointsNone: 'No points recorded for these duels (our database does not keep them)',
+    tactic: (id) => TACTICS_EN[id] ?? id.replace(/_/g, ' '),
+    tacticTitle: 'The tactic our agent picked for these words',
+    worked: 'What worked',
+    workedSub: 'tactics of our ended threads, per dealer',
+    workedDealer: (threads, deals) => `${plural(threads, 'thread', 'threads')} · ${plural(deals, 'deal', 'deals')}`,
+    workedTally: (deals, threads) => `${deals}/${threads}`,
+    workedTallyTitle: 'threads that closed a deal / threads where we used it',
   },
   album: {
     album: 'Album',
@@ -1266,6 +1294,13 @@ const ES: GameStrings = {
     rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'trato' : 'tratos'} · ${none} sin trato`,
     rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
     rivalPointsNone: 'Sin puntos registrados para estos duelos (nuestra base de datos no los guarda)',
+    tactic: (id) => TACTICS_ES[id] ?? id.replace(/_/g, ' '),
+    tacticTitle: 'La táctica que eligió nuestro agente para estas palabras',
+    worked: 'Qué funcionó',
+    workedSub: 'tácticas de nuestros hilos terminados, por puesto',
+    workedDealer: (threads, deals) => `${plural(threads, 'hilo', 'hilos')} · ${plural(deals, 'trato', 'tratos')}`,
+    workedTally: (deals, threads) => `${deals}/${threads}`,
+    workedTallyTitle: 'hilos que cerraron trato / hilos donde la usamos',
   },
   album: {
     album: 'Álbum',

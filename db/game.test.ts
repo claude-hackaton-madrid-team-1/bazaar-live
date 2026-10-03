@@ -27,6 +27,8 @@ const TABLES = `
     closed_tick int, closed_reason text, ours boolean, updated_tick int, until_tick int);
   create table messages (id bigint primary key, thread_id bigint, sender text, tick int, text text, price int, offer jsonb, final boolean,
     embedding text, ours boolean, tactic text);
+  create table decisions (id bigint primary key, intent_id bigint, thread_id bigint, tick int, state_digest text, rag_context jsonb,
+    candidates jsonb, jev jsonb, jev_digest text, policy_checks jsonb, chosen jsonb, status text, reason text, agent text, kind text, dry_run boolean);
   create table tape (settlement_id bigint primary key, tick int, venue text, persona text, buyer text, seller text, items jsonb,
     card_id text, price int, fee int);
 `
@@ -70,7 +72,11 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
     await adminDb.connect()
     await adminDb.query(TABLES)
     await adminDb.query(`insert into feed_events (id, tick, type, actor, payload) values
-      (10940, 160, 'round.started', '', '{"name": "Saturday · Gran Vía"}'), (21155, 401, 'offer.listed', 't04', '{"offer": {"id": 1}}')`)
+      (10940, 160, 'round.started', '', '{"name": "Saturday · Gran Vía"}'), (21155, 401, 'offer.listed', 't04', '{"offer": {"id": 1}}'),
+      (21156, 159, 'thread.message', 't01', '{"thread": 316, "message": 1, "sender": "t01", "team": "t01", "text": null, "offer": {"id": 7}}'),
+      (21157, 160, 'thread.message', 'chato', '{"thread": 316, "message": 4, "sender": "chato", "team": "t01", "text": "97. Así funciona conmigo."}'),
+      (21158, 160, 'thread.message', 't05', '{"thread": 317, "message": 2, "sender": "t05", "team": "t05", "text": null}'),
+      (21159, 161, 'thread.message', 't01', '"not an object"')`)
     await adminDb.query(`insert into me_snapshots (world, team, tick, affinity, me) values ('real', 't01', 401, $1, $2), ('sim', 't01', 402, null, $2), ('real', 't07', 403, null, $2)`,
       [JSON.stringify({ LAV: SECRET }), JSON.stringify(ME)])
     await adminDb.query(`insert into duels (duel, session, tick, status, role, item, your_limit, rival, deadline_tick, price, days, result, payload)
@@ -78,7 +84,19 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
       [SECRET_LIMIT, JSON.stringify(DUEL_PAYLOAD)])
     await adminDb.query(`insert into threads (id, counterpart, kind, topic, status, opened_tick, ours) values (316, 'abuela', 'persona', '{"buy": {"card": "LAV-08"}}', 'deal', 159, true), (317, 'chato', 'persona', '{}', 'open', 160, false)`)
     await adminDb.query(`insert into messages (id, thread_id, sender, tick, text, price, final, embedding, ours, tactic) values
-      (1, 316, 't01', 159, 'buenas', 17, false, '${SECRET}', true, '${SECRET}'), (2, 317, 'chato', 160, 'not our thread', 9, false, null, false, null)`)
+      (1, 316, 't01', 159, 'buenas', 17, false, '${SECRET}', true, '${SECRET}'), (2, 317, 'chato', 160, 'not our thread', 9, false, null, false, null),
+      (3, 316, 't01', 161, '¿cómo voy a pagar eso?', 19, false, null, true, 'mirror'), (4, 316, 'chato', 160, '97. Así funciona conmigo.', 97, false, null, false, null),
+      (5, 316, 't01', 162, 'gracias', 20, false, null, true, null)`)
+    // the decisions that sent them: the tactic is the one word that leaves; a dry run, another price or 'none' never match
+    const why = JSON.stringify({ tactic_why: SECRET, recalled: [SECRET], our_bids: [SECRET_LIMIT] })
+    await adminDb.query(`insert into decisions (id, thread_id, tick, kind, agent, rag_context, candidates, jev, policy_checks, chosen, status, dry_run) values
+      (1, 316, 159, 'dealer_bid', 'taker', $1, $2, $1, $1, '{"kind": "bid", "price": 17}', 'done', false),
+      (2, 316, 159, 'dealer_bid', 'taker', null, '{"tactic": "walk_threat"}', null, null, '{"kind": "bid", "price": 17}', 'done', true),
+      (3, 316, 159, 'dealer_bid', 'taker', null, '{"tactic": "fake_demand"}', null, null, '{"kind": "bid", "price": 18}', 'done', false),
+      (4, 316, 161, 'dealer_bid', 'taker', null, '{"tactic": "scarcity"}', null, null, '{"kind": "bid", "price": 19}', 'done', false),
+      (5, 316, 162, 'dealer_bid', 'taker', null, '{"tactic": "none"}', null, null, '{"kind": "bid", "price": 20}', 'done', false),
+      (6, 317, 160, 'dealer_bid', 'taker', null, '{"tactic": "Bad Label!"}', null, null, '{"kind": "bid", "price": 9}', 'done', false)`,
+      [JSON.stringify({ secret: SECRET }), JSON.stringify({ ...JSON.parse(why), tactic: 'scarcity', our_limit: SECRET_LIMIT })])
     await adminDb.query(`insert into tape (settlement_id, tick, persona, buyer, seller, items, card_id, price, fee) values (478, 400, 'abuela', 't09', 'abuela', '{"n": 1, "ref": "RET-07"}', 'RET-07', 21, 0)`)
     // The order the coordinator applies them in, then again: show.sql's re-run drops these grants, game.sql's puts them back.
     await adminDb.query(SHOW_SQL)
@@ -101,7 +119,22 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
 
   it('reads the feed with numeric ids', async () => {
     const r = await reader.query('select * from show.game_feed order by id')
-    expect(r.rows.map((x) => x.id)).toEqual([10940, 21155])
+    expect(r.rows.map((x) => x.id)).toEqual([10940, 21155, 21156, 21157, 21158, 21159])
+    expect(Object.keys(r.rows[0])).toEqual(['id', 'tick', 'type', 'actor', 'payload'])
+  })
+
+  it('adds our words and their tactic to our thread.message rows only', async () => {
+    const r = await reader.query('select id, payload from show.game_feed order by id')
+    const by = new Map(r.rows.map((x) => [x.id, x.payload]))
+    expect(by.get(21156)).toEqual({ thread: 316, message: 1, sender: 't01', team: 't01', text: 'buenas', tactic: 'scarcity', offer: { id: 7 } })
+    // the dealer's words stay theirs; another team's thread is untouched; an odd payload is left as it is
+    expect(by.get(21157)).toEqual({ thread: 316, message: 4, sender: 'chato', team: 't01', text: '97. Así funciona conmigo.' })
+    expect(by.get(21158)).toEqual({ thread: 317, message: 2, sender: 't05', team: 't05', text: null })
+    expect(by.get(21159)).toBe('not an object')
+    expect(by.get(21155)).toEqual({ offer: { id: 1 } })
+    const text = JSON.stringify(r.rows)
+    expect(text).not.toContain(SECRET)
+    expect(text).not.toContain(String(SECRET_LIMIT))
   })
 
   it('reads only our team in the real world, and only the allow-listed fields of /me', async () => {
@@ -125,12 +158,17 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
     expect(text).not.toContain('29.2')
   })
 
-  it('reads our threads and their messages, without embedding or tactic', async () => {
+  it('reads our threads and their messages, without embedding, with the tactic of ours', async () => {
     const t = await reader.query('select * from show.game_threads')
-    const m = await reader.query('select * from show.game_messages')
+    const m = await reader.query('select * from show.game_messages order by id')
     expect(t.rows.map((x) => x.id)).toEqual([316])
-    expect(m.rows.map((x) => x.id)).toEqual([1])
-    expect(JSON.stringify(m.rows)).not.toContain(SECRET)
+    expect(Object.keys(m.rows[0])).toEqual(['id', 'thread_id', 'sender', 'tick', 'text', 'price', 'offer', 'final', 'ours', 'tactic'])
+    // 1: the column holds no id, so the decision's (not the dry run's, not another price's); 3: the column's own;
+    // 4: the dealer's words carry none; 5: 'none' is no tactic
+    expect(m.rows.map((x) => [x.id, x.tactic])).toEqual([[1, 'scarcity'], [3, 'mirror'], [4, null], [5, null]])
+    const text = JSON.stringify(m.rows)
+    expect(text).not.toContain(SECRET)
+    expect(text).not.toContain(String(SECRET_LIMIT))
   })
 
   it('reads the tape', async () => {
@@ -138,7 +176,7 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
     expect(r.rows[0]).toMatchObject({ settlement_id: 478, card_id: 'RET-07', price: 21 })
   })
 
-  it.each(['public.me_snapshots', 'public.duels', 'public.messages', 'public.threads', 'public.tape', 'public.feed_events'])('cannot read %s directly', async (table) => {
+  it.each(['public.me_snapshots', 'public.duels', 'public.messages', 'public.threads', 'public.tape', 'public.feed_events', 'public.decisions'])('cannot read %s directly', async (table) => {
     await expect(reader.query(`select 1 from ${table} limit 1`)).rejects.toMatchObject({ code: '42501' })
   })
 })

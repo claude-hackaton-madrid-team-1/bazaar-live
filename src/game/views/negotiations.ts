@@ -28,6 +28,8 @@ export type ThreadRow = {
   suspicious: boolean
   lastEventId: number | null
   lastTick: number | null
+  /** The tactics our messages used, in the order we first used them (`plain`: our usual words). */
+  tactics: string[]
 }
 
 export type Bubble = {
@@ -45,6 +47,8 @@ export type Bubble = {
   final: boolean
   assets: number[]
   text: string | null
+  /** The tactic our agent picked for these words; null for theirs, or when nobody recorded one. */
+  tactic: string | null
   suspicious: boolean
 }
 
@@ -295,9 +299,11 @@ function row(s: State, th: Thread, ended: boolean): ThreadRow {
     gap: gapOf(th.theirPrice, th.ourPrice), rounds: th.rounds, final: th.final,
     expiresIn: !ended && th.expiresTick != null ? th.expiresTick - s.tick : null,
     status: ended ? 'closed' : 'open', lastText: th.lastText, suspicious: isSuspicious(th.lastText),
-    lastEventId: last?.eventId ?? null, lastTick: last?.tick ?? null,
+    lastEventId: last?.eventId ?? null, lastTick: last?.tick ?? null, tactics: tacticsOf(th),
   }
 }
+
+const tacticsOf = (th: Thread): string[] => [...new Set(th.offers.flatMap((o) => (o.side === 'us' && o.tactic ? [o.tactic] : [])))]
 
 export function negRow(s: State, th: Thread): NegRow {
   const own = threadDecisions(s, th)
@@ -344,10 +350,45 @@ export function conversation(s: State, id: number): Conversation | null {
       round: i + 1, eventId: o.eventId, tick: o.tick ?? null, side: o.side, price: o.price,
       offerId: o.offerId, messageId: o.messageId, maker: o.maker, to: o.to,
       createdTick: o.createdTick, expiresTick: o.expiresTick, final: o.final, assets: o.assets,
-      text, suspicious: o.side === 'them' && isSuspicious(text),
+      text, tactic: o.side === 'us' ? o.tactic : null, suspicious: o.side === 'them' && isSuspicious(text),
     }
   })
   return { thread: negRow(s, th), bubbles, lastText: th.lastText }
+}
+
+// ---------------------------------------------------------------- what worked, per dealer
+
+export type TacticTally = { readonly tactic: string; readonly threads: number; readonly deals: number }
+
+/** Per counterparty, the tactics of our ended threads: in how many we used each, and how many of those closed a deal. */
+export type DealerTactics = { readonly with: string; readonly threads: number; readonly deals: number; readonly tactics: TacticTally[] }
+
+/**
+ * What worked with whom: the ended threads that used any tactic, grouped by counterparty (most threads first), each
+ * tactic with its threads and deals (most deals, then most used, first). A thread counts once per tactic it used.
+ */
+export function dealerTactics(s: State, rows: readonly NegRow[] = negRows(s)): DealerTactics[] {
+  const by = new Map<string, { threads: number; deals: number; tactics: Map<string, { threads: number; deals: number }> }>()
+  for (const r of rows) {
+    if (r.ended == null || !r.tactics.length) continue
+    const deal = r.ended.how === 'deal' ? 1 : 0
+    const d = by.get(r.with) ?? { threads: 0, deals: 0, tactics: new Map() }
+    d.threads += 1
+    d.deals += deal
+    for (const tactic of r.tactics) {
+      const t = d.tactics.get(tactic) ?? { threads: 0, deals: 0 }
+      t.threads += 1
+      t.deals += deal
+      d.tactics.set(tactic, t)
+    }
+    by.set(r.with, d)
+  }
+  return [...by]
+    .map(([who, d]) => ({
+      with: who, threads: d.threads, deals: d.deals,
+      tactics: [...d.tactics].map(([tactic, t]) => ({ tactic, ...t })).sort((a, b) => b.deals - a.deals || b.threads - a.threads || a.tactic.localeCompare(b.tactic)),
+    }))
+    .sort((a, b) => b.threads - a.threads || a.with.localeCompare(b.with))
 }
 
 // ---------------------------------------------------------------- duels
