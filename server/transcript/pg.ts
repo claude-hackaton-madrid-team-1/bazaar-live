@@ -36,7 +36,7 @@ export function readShowDatabase(env: Readonly<Record<string, string | undefined
   }
 }
 
-/** A tiny pool: two connections (the role may hold four in all), and no statement may run longer than 2 s. */
+/** A tiny pool: two connections (the role may hold eight in all), and no statement may run longer than 2 s. */
 export function poolOptions(url: string, max = 2): pg.PoolConfig {
   return {
     connectionString: url,
@@ -77,14 +77,14 @@ export function createShowPool(url: string, onError: (error: unknown) => void, m
   }
 }
 
-/** The one pool the transcript, /api/learn, /api/history and the game screens share: the role may hold four connections in all. */
+/** The one pool the transcript, /api/learn, /api/history and the game screens share: the role may hold eight connections in all (two servers overlap during a redeploy). */
 export interface SharedShowPool {
   readonly pool: ShowPool
   /** What any logged error text must not contain (`secretsOf(url)`). */
   readonly secrets: readonly string[]
 }
 
-/** Three connections for everyone (one of the role's four left over); null when SHOW_DATABASE_URL is absent or refused. */
+/** Three connections for everyone (the role's eight cover two servers overlapping in a redeploy); null when SHOW_DATABASE_URL is absent or refused. */
 export function startShowPool(env: Readonly<Record<string, string | undefined>>, log: (entry: Record<string, unknown>) => void): SharedShowPool | null {
   const config = readShowDatabase(env)
   if (!config.enabled) return null
