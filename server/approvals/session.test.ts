@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mcpBaseOf, readApprovalsConfig } from './config.ts'
-import { cookieOf, secretEquals, SessionStore } from './session.ts'
+import { cookieOf, deviceIdOf, newDevice, secretEquals, SessionStore } from './session.ts'
 
 describe('secretEquals', () => {
   it('compares in constant time and never throws on unequal lengths', () => {
@@ -39,6 +39,17 @@ describe('SessionStore', () => {
   })
 })
 
+describe('device cookies', () => {
+  it('prove their id only under the password that made them', () => {
+    const value = newDevice('the-approver-password-1')
+    expect(deviceIdOf(value, 'the-approver-password-1')).toBe(value.split('.')[0])
+    expect(deviceIdOf(value, 'another-password-entirely')).toBeNull()
+    expect(deviceIdOf(`${value}.x`, 'the-approver-password-1')).toBeNull()
+    expect(deviceIdOf('nonsense', 'the-approver-password-1')).toBeNull()
+    expect(deviceIdOf(null, 'the-approver-password-1')).toBeNull()
+  })
+})
+
 describe('cookieOf', () => {
   it('finds our cookie among others', () => {
     expect(cookieOf('a=1; bz_approver=abc; b=2')).toBe('abc')
@@ -49,7 +60,7 @@ describe('cookieOf', () => {
 
 describe('readApprovalsConfig', () => {
   const env = {
-    APPROVER_PASSWORD: 'sixteen-chars-ok!',
+    APPROVER_PASSWORD: 'Gx7-mQ2pL9vZ4kR8tW1yB',
     BAZAAR_MCP_URL: 'https://bazaar-mcp-production.up.railway.app/',
     BAZAAR_MCP_TOKEN: 'bearer-value-123',
     BAZAAR_APPROVER_TOKEN: 'approver-value-456',
@@ -70,11 +81,15 @@ describe('readApprovalsConfig', () => {
     expect(readApprovalsConfig({})).toBeNull()
   })
 
-  it('treats a password shorter than 16 characters as unset', () => {
+  it('treats a password shorter than 20 characters, or with fewer than 12 different ones, as unset', () => {
     const logs: unknown[] = []
-    expect(readApprovalsConfig({ ...env, APPROVER_PASSWORD: 'fifteen-chars!!' }, (e) => logs.push(e))).toBeNull()
-    expect(JSON.stringify(logs)).not.toContain('fifteen')
-    expect(logs).toEqual([{ event: 'approvals', enabled: false, reason: 'password_too_short', min: 16 }])
+    expect(readApprovalsConfig({ ...env, APPROVER_PASSWORD: 'nineteen-characters' }, (e) => logs.push(e))).toBeNull()
+    expect(readApprovalsConfig({ ...env, APPROVER_PASSWORD: 'abababababababababababab' }, (e) => logs.push(e))).toBeNull()
+    expect(JSON.stringify(logs)).not.toMatch(/nineteen|abab/)
+    expect(logs).toEqual([
+      { event: 'approvals', enabled: false, reason: 'password_too_short', min: 20 },
+      { event: 'approvals', enabled: false, reason: 'password_too_weak', min_distinct: 12 },
+    ])
   })
 
   it('sends the tokens only over https, or http that never leaves the machine or Railway\'s private network', () => {

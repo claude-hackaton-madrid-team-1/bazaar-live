@@ -2,7 +2,7 @@
  * The approver's sessions and the login's lockout, both in memory (a restart logs everyone out and forgets the
  * failures, which errs on the safe side for the first and is bounded by the global cap for the second).
  */
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
 export const COOKIE = 'bz_approver'
 export const SESSION_TTL_MS = 2 * 60 * 60 * 1000
@@ -94,8 +94,6 @@ export interface LoginGuardOptions {
   readonly global?: number
   readonly windowMs?: number
   readonly lockMs?: number
-  /** How long an address that logged in stays exempt from the global lock (never from its own). */
-  readonly trustMs?: number
   readonly maxKeys?: number
 }
 
@@ -104,21 +102,18 @@ export interface LoginGuardOptions {
  * addresses together lock everyone for 15 minutes (a guess spread over many addresses stays bounded). A locked
  * caller is refused before its password is even compared, so the right password does not open it either.
  *
- * An address that logged in within the last 24 hours is exempt from the global lock (never from its own): a stranger's
- * 20 wrong guesses must not lock the approver out of the veto. The maps are bounded caches, updated in place (a copy
- * per failure would cost O(addresses) on every guess).
+ * The same class counts per device (a device cookie, see `deviceIdOf`) with `global: Infinity`: a device that logged in
+ * before is checked only against its own failures, so strangers behind the same venue NAT cannot lock the approver out.
+ * The maps are bounded caches, updated in place (a copy per failure would cost O(keys) on every guess).
  */
 export class LoginGuard {
   private readonly byAddress = new Map<string, Failures>()
-  /** When each address last logged in. */
-  private readonly trusted = new Map<string, number>()
   private everyone: Failures = NONE
   private readonly now: () => number
   private readonly perAddress: number
   private readonly global: number
   private readonly windowMs: number
   private readonly lockMs: number
-  private readonly trustMs: number
   private readonly maxKeys: number
 
   constructor(opts: LoginGuardOptions = {}) {
@@ -127,34 +122,27 @@ export class LoginGuard {
     this.global = opts.global ?? 20
     this.windowMs = opts.windowMs ?? 15 * 60 * 1000
     this.lockMs = opts.lockMs ?? 15 * 60 * 1000
-    this.trustMs = opts.trustMs ?? 24 * 60 * 60 * 1000
     this.maxKeys = opts.maxKeys ?? 10_000
   }
 
   /** Seconds until `address` may try again, 0 when it may now. */
   lockedFor(address: string): number {
-    const now = this.now()
-    const lastIn = this.trusted.get(address)
-    const global = lastIn !== undefined && now - lastIn < this.trustMs ? 0 : this.everyone.lockedUntil
-    const left = Math.max(this.byAddress.get(address)?.lockedUntil ?? 0, global) - now
+    const left = Math.max(this.byAddress.get(address)?.lockedUntil ?? 0, this.everyone.lockedUntil) - this.now()
     return left > 0 ? Math.ceil(left / 1000) : 0
   }
 
   fail(address: string): void {
     const now = this.now()
-    this.everyone = this.counted(this.everyone, now, this.global)
+    if (Number.isFinite(this.global)) this.everyone = this.counted(this.everyone, now, this.global)
     const prev = this.byAddress.get(address) ?? NONE
     this.byAddress.delete(address)
     this.byAddress.set(address, this.counted(prev, now, this.perAddress))
     bound(this.byAddress, this.maxKeys)
   }
 
-  /** A right password clears that address's count (never the global one) and trusts it for a day. */
+  /** A right password clears that address's count (never the global one). */
   succeed(address: string): void {
     this.byAddress.delete(address)
-    this.trusted.delete(address)
-    this.trusted.set(address, this.now())
-    bound(this.trusted, 100)
   }
 
   private counted(prev: Failures, now: number, limit: number): Failures {
@@ -172,14 +160,42 @@ function bound(map: Map<string, unknown>, max: number): void {
   }
 }
 
-/** The session cookie's value from a Cookie header, or null. */
-export function cookieOf(header: string | undefined): string | null {
+/** A cookie's value from a Cookie header (the session's by default), or null. */
+export function cookieOf(header: string | undefined, cookie: string = COOKIE): string | null {
   if (!header) return null
   for (const part of header.split(';')) {
     const [name, ...rest] = part.split('=')
-    if (name?.trim() === COOKIE) return rest.join('=').trim() || null
+    if (name?.trim() === cookie) return rest.join('=').trim() || null
   }
   return null
+}
+
+/**
+ * Device cookies (OWASP "device cookies"): a browser that logged in once carries `<id>.<mac>`, the MAC an HMAC of the
+ * id keyed from APPROVER_PASSWORD (so a new password voids every device). Its logins are counted per device, never
+ * against the address or global locks. HttpOnly, Secure, SameSite=Strict, Path=/api/approver, 30 days.
+ */
+export const DEVICE_COOKIE = 'bz_device'
+const DEVICE_MAX_AGE_S = 30 * 24 * 60 * 60
+
+const deviceMac = (id: string, password: string): string =>
+  createHmac('sha256', createHash('sha256').update(`bazaar-live approver device|${password}`, 'utf8').digest()).update(id).digest('base64url')
+
+/** A new device's cookie value. */
+export function newDevice(password: string): string {
+  const id = token()
+  return `${id}.${deviceMac(id, password)}`
+}
+
+/** The device id a cookie value proves, or null (absent, malformed, forged, or made under another password). */
+export function deviceIdOf(value: string | null, password: string): string | null {
+  const [id, mac, ...rest] = value?.split('.') ?? []
+  if (!id || !mac || rest.length > 0 || !ID_PATTERN.test(id)) return null
+  return secretEquals(mac, deviceMac(id, password)) ? id : null
+}
+
+export function deviceCookie(value: string): string {
+  return `${DEVICE_COOKIE}=${value}; ${COOKIE_ATTRIBUTES}; Max-Age=${DEVICE_MAX_AGE_S}`
 }
 
 const COOKIE_ATTRIBUTES = 'HttpOnly; Secure; SameSite=Strict; Path=/api/approver'

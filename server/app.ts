@@ -83,7 +83,7 @@ export interface AppDeps {
   readonly dealerNames?: () => Promise<DealerNames>
   /** The Approvals screen (server/approvals); absent → every /api/approver/* path answers like an unknown /api path. */
   readonly approvals?: Pick<ApprovalsRouteDeps, 'config'> &
-    Partial<Pick<ApprovalsRouteDeps, 'fetchImpl' | 'timeoutMs' | 'sessions' | 'guard' | 'writeLimiter' | 'sessionWriteLimiter' | 'readLimiter' | 'pollLimiter'>>
+    Partial<Pick<ApprovalsRouteDeps, 'fetchImpl' | 'timeoutMs' | 'sessions' | 'guard' | 'writeLimiter' | 'sessionWriteLimiter' | 'readLimiter' | 'pollLimiter' | 'loginLimiter' | 'deviceGuard' | 'now' | 'snapshotMs'>>
 }
 
 const CSP = [

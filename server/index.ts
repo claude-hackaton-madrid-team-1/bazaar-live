@@ -16,7 +16,7 @@
  * forces the API); views missing → the API relay. One pool for all of them: the role holds four connections.
  * With SHOW_DATABASE_URL the server also listens to the agents' /events sockets and reads at once on a live event
  * (the 3 s poll stays): AGENTS_WS=off turns that off, =watch only logs; AGENT_TAKER_WS_URL / _MAKER_WS_URL override.
- * The Approvals screen: APPROVER_PASSWORD (16+ characters), BAZAAR_MCP_URL, BAZAAR_MCP_TOKEN and BAZAAR_APPROVER_TOKEN,
+ * The Approvals screen: APPROVER_PASSWORD (20+ characters, 12+ different), BAZAAR_MCP_URL, BAZAAR_MCP_TOKEN and BAZAAR_APPROVER_TOKEN,
  * all four, or it is off and /api/approver/* answers like any unknown /api path. It never touches the database.
  */
 import { createServer } from 'node:http'

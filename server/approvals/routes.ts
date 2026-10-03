@@ -23,7 +23,9 @@ import {
 import { RateLimiter } from '../limits.ts'
 import type { ApprovalsConfig } from './config.ts'
 import { createMcpClient, McpToolError, type HumanTool } from './mcp.ts'
-import { clearedCookie, cookieOf, LoginGuard, secretEquals, sessionCookie, SessionStore, type Session } from './session.ts'
+import {
+  clearedCookie, cookieOf, DEVICE_COOKIE, deviceCookie, deviceIdOf, LoginGuard, newDevice, secretEquals, sessionCookie, SessionStore, type Session,
+} from './session.ts'
 
 export const PREFIX = '/api/approver/'
 const MAX_BODY = 1024
@@ -57,9 +59,22 @@ export interface ApprovalsRouteDeps {
   readonly readLimiter?: RateLimiter
   /** GET /approvals, per session: the page polls every 10 s; a stranger at the same address cannot drain it. */
   readonly pollLimiter?: RateLimiter
+  /** POST /login without a device cookie, per address, before the lock is even checked. */
+  readonly loginLimiter?: RateLimiter
+  /** Failures per device cookie (no global lock). */
+  readonly deviceGuard?: LoginGuard
+  readonly now?: () => number
+  /** How long one `approvals` answer serves every session (bazaar-mcp allows 30 calls a minute per bearer). */
+  readonly snapshotMs?: number
 }
 
-type Reply = (status: number, body: unknown, extra?: Record<string, string>) => void
+type Headers = Record<string, string | string[]>
+type Reply = (status: number, body: unknown, extra?: Headers) => void
+interface Answer {
+  readonly status: number
+  readonly body: unknown
+  readonly extra?: Headers
+}
 
 export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingMessage, res: ServerResponse, path: string) => Promise<boolean> {
   const log = deps.log ?? (() => undefined)
@@ -69,30 +84,50 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
   const sessionWrites = deps.sessionWriteLimiter ?? new RateLimiter({ capacity: 10, refillPerSecond: 10 / 60 })
   const reads = deps.readLimiter ?? new RateLimiter({ capacity: 30, refillPerSecond: 0.5 })
   const polls = deps.pollLimiter ?? new RateLimiter({ capacity: 20, refillPerSecond: 0.5 })
+  const logins = deps.loginLimiter ?? new RateLimiter({ capacity: 20, refillPerSecond: 20 / 60 })
+  const deviceGuard = deps.deviceGuard ?? new LoginGuard({ global: Number.POSITIVE_INFINITY })
+  const now = deps.now ?? (() => Date.now())
+  const snapshotMs = deps.snapshotMs ?? 10_000
   const call = createMcpClient({ config: deps.config, fetchImpl: deps.fetchImpl ?? fetch, timeoutMs: deps.timeoutMs })
+  /** When a locked attempt was last logged, per address or device: at most one line a minute each. */
+  const lockLogged = new Map<string, number>()
 
   const sessionOf = (req: IncomingMessage): Session | null => sessions.get(cookieOf(req.headers.cookie))
 
-  /** The tool's answer through `check`, or the reply that says why not. */
-  async function tool<T>(reply: Reply, name: HumanTool, args: Record<string, unknown>, check: (body: unknown) => T | null): Promise<void> {
-    let status = 200
+  /** The tool's answer through `check`, or the answer that says why not. */
+  async function tool<T>(name: HumanTool, args: Record<string, unknown>, check: (body: unknown) => T | null): Promise<Answer> {
+    let answer: Answer = { status: 502, body: UNAVAILABLE }
     try {
       const checked = check(await call(name, args))
-      if (checked === null) {
-        status = 502
-        return reply(502, UNAVAILABLE)
-      }
-      return reply(200, checked)
+      if (checked !== null) answer = { status: 200, body: checked }
     } catch (error: unknown) {
       if (error instanceof McpToolError) {
-        status = error.rateLimited ? 429 : 502
-        return error.rateLimited ? reply(429, { error: 'rate_limited' }, { 'Retry-After': '60' }) : reply(502, { error: 'tool_error' })
+        answer = error.rateLimited ? { status: 429, body: { error: 'rate_limited' }, extra: { 'Retry-After': '60' } } : { status: 502, body: { error: 'tool_error' } }
       }
-      status = 502
-      return reply(502, UNAVAILABLE)
-    } finally {
-      log({ event: 'approvals.mcp', ok: status === 200, status, tool: name })
     }
+    log({ event: 'approvals.mcp', ok: answer.status === 200, status: answer.status, tool: name })
+    return answer
+  }
+
+  // One `approvals` answer serves every session for `snapshotMs`, and one call is in flight at a time. A write moves
+  // the generation: an answer read before it is never kept, and the next read asks again.
+  let generation = 0
+  let snapshot: { readonly at: number; readonly generation: number; readonly answer: Answer } | null = null
+  let flight: { readonly generation: number; readonly answer: Promise<Answer> } | null = null
+  function readApprovals(): Promise<Answer> {
+    if (snapshot && snapshot.generation === generation && now() - snapshot.at < snapshotMs) return Promise.resolve(snapshot.answer)
+    if (flight && flight.generation === generation) return flight.answer
+    const asked = generation
+    const answer = tool('approvals', {}, approvalsOf).then((a) => {
+      if (a.status === 200 && asked === generation) snapshot = { at: now(), generation: asked, answer: a }
+      return a
+    })
+    const mine = { generation: asked, answer }
+    flight = mine
+    void answer.finally(() => {
+      if (flight === mine) flight = null
+    })
+    return answer
   }
 
   /** A JSON body of at most MAX_BODY bytes, parsed; or the reply already sent. */
@@ -122,38 +157,58 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     return taken.ok
   }
 
-  /** The lockout's answer when `address` may not try now (logged), else false. */
-  function lockedOut(address: string, reply: Reply): boolean {
-    const locked = guard.lockedFor(address)
+  /** Who a login is counted as: its device when it carries a valid device cookie, else its address. */
+  type Caller = { readonly kind: 'device'; readonly key: string; readonly cookie: string } | { readonly kind: 'address'; readonly key: string }
+  const guardOf = (caller: Caller): LoginGuard => (caller.kind === 'device' ? deviceGuard : guard)
+
+  /** The lockout's answer when `caller` may not try now, else false. Logged at most once a minute per caller. */
+  function lockedOut(caller: Caller, reply: Reply): boolean {
+    const locked = guardOf(caller).lockedFor(caller.key)
     if (locked === 0) return false
-    log({ event: 'approvals.login', ok: false, status: 429 })
+    const key = `${caller.kind}:${caller.key}`
+    const last = lockLogged.get(key)
+    if (last === undefined || now() - last >= 60_000) {
+      lockLogged.delete(key)
+      lockLogged.set(key, now())
+      while (lockLogged.size > 1000) {
+        const oldest = lockLogged.keys().next().value
+        if (oldest === undefined) break
+        lockLogged.delete(oldest)
+      }
+      log({ event: 'approvals.login', ok: false, status: 429 })
+    }
     reply(429, { error: 'locked' }, { 'Retry-After': String(locked) })
     return true
   }
 
   async function login(req: IncomingMessage, res: ServerResponse, reply: Reply): Promise<void> {
     if (!deps.sameOrigin(req)) return reply(403, { error: 'cross_origin' })
-    const address = deps.address(req)
-    if (lockedOut(address, reply)) return
+    const deviceValue = cookieOf(req.headers.cookie, DEVICE_COOKIE)
+    const device = deviceIdOf(deviceValue, deps.config.password)
+    const caller: Caller = device && deviceValue ? { kind: 'device', key: device, cookie: deviceValue } : { kind: 'address', key: deps.address(req) }
+    // a known device is never charged to its address: strangers behind the same NAT cannot spend its room
+    if (caller.kind === 'address' && !allowed(logins, caller.key, reply)) return
+    if (lockedOut(caller, reply)) return
     const parsed = await body(req, res, reply)
     if (!parsed.ok) return
     // Again, now that the body is here: logins that all sent their headers before the lock and their bodies after
-    // it must not each get a compare. From here to guard.fail() nothing awaits, so no other login can interleave.
-    if (lockedOut(address, reply)) return
+    // it must not each get a compare. From here to fail() nothing awaits, so no other login can interleave.
+    if (lockedOut(caller, reply)) return
     const password = typeof parsed.value === 'object' && parsed.value !== null ? (parsed.value as Record<string, unknown>).password : undefined
     if (typeof password !== 'string' || password.length === 0 || password.length > MAX_PASSWORD) {
       return reply(400, { error: 'bad_request', message: 'password must be text' })
     }
     // wrong and right take the same path: two hashes and one constant-time compare
     if (!secretEquals(password, deps.config.password)) {
-      guard.fail(address)
+      guardOf(caller).fail(caller.key)
       log({ event: 'approvals.login', ok: false, status: 401 })
       return reply(401, { error: 'unauthorized' })
     }
-    guard.succeed(address)
+    guardOf(caller).succeed(caller.key)
     const session = sessions.create()
     log({ event: 'approvals.login', ok: true, status: 200 })
-    return reply(200, { csrf: session.csrf }, { 'Set-Cookie': sessionCookie(session.id) })
+    const deviceSet = deviceCookie(caller.kind === 'device' ? caller.cookie : newDevice(deps.config.password))
+    return reply(200, { csrf: session.csrf }, { 'Set-Cookie': [sessionCookie(session.id), deviceSet] })
   }
 
   /** The checks every write passes before its body is even read: origin, session, CSRF. */
@@ -197,7 +252,11 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     if (typeof input === 'string') return reply(400, { error: 'bad_request', message: input })
     if (!writeAllowed(session, reply)) return
     const args = { ...input, via: VIA }
-    return route === 'approve' ? tool(reply, 'approve', args, approveResultOf) : tool(reply, 'revoke', args, revokeResultOf)
+    const answer = route === 'approve' ? await tool('approve', args, approveResultOf) : await tool('revoke', args, revokeResultOf)
+    // whatever it answered, the next read asks bazaar-mcp again: never a cached list from before a write
+    generation += 1
+    snapshot = null
+    reply(answer.status, answer.body, answer.extra)
   }
 
   return async (req, res, path) => {
@@ -215,8 +274,9 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     }
     switch (route) {
       case 'session': {
-        if (!allowed(reads, deps.address(req), reply)) return true
         const session = sessionOf(req)
+        // a live session is never charged to its address: strangers at the same NAT cannot lock the approver's page
+        if (!session && !allowed(reads, deps.address(req), reply)) return true
         // a cookie that names no live session (expired, or the server restarted) is cleared
         const stale = !session && cookieOf(req.headers.cookie) !== null ? { 'Set-Cookie': clearedCookie() } : undefined
         reply(200, session ? { authenticated: true, csrf: session.csrf } : { authenticated: false }, stale)
@@ -242,7 +302,8 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
           return true
         }
         if (!allowed(polls, session.id, reply)) return true
-        await tool(reply, 'approvals', {}, approvalsOf)
+        const answer = await readApprovals()
+        reply(answer.status, answer.body, answer.extra)
         return true
       }
       case 'approve':

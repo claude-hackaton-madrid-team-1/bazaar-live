@@ -66,12 +66,16 @@ async function start(approvals?: Parameters<typeof createApp>[0]['approvals']): 
 const post = (base: string, path: string, body: unknown, headers: Record<string, string> = {}) =>
   fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) })
 
-async function login(base: string, address = '203.0.113.7'): Promise<{ cookie: string; csrf: string }> {
-  const res = await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': address })
+/** name=value of each Set-Cookie, by name. */
+const setCookies = (res: Response): Record<string, string> =>
+  Object.fromEntries(res.headers.getSetCookie().map((c) => [c.split('=')[0], c.split(';')[0] ?? '']))
+
+async function login(base: string, address = '203.0.113.7', extra: Record<string, string> = {}): Promise<{ cookie: string; csrf: string; device: string }> {
+  const res = await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': address, ...extra })
   expect(res.status).toBe(200)
-  const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
+  const cookies = setCookies(res)
   const { csrf } = (await res.json()) as { csrf: string }
-  return { cookie, csrf }
+  return { cookie: cookies.bz_approver ?? '', csrf, device: cookies.bz_device ?? '' }
 }
 
 const APPROVED = {
@@ -125,10 +129,12 @@ describe('the approver login', () => {
     const res = await post(base, '/api/approver/login', { password: PASSWORD })
     expect(res.status).toBe(200)
     expect(res.headers.get('cache-control')).toBe('no-store')
-    const cookie = res.headers.get('set-cookie') ?? ''
+    const [cookie = '', device = ''] = res.headers.getSetCookie()
     expect(cookie).toMatch(/^bz_approver=[A-Za-z0-9_-]{43}; /)
     const flags = cookie.split(';').slice(1).map((s) => s.trim())
     expect(flags).toEqual(expect.arrayContaining(['HttpOnly', 'Secure', 'SameSite=Strict', 'Path=/api/approver', 'Max-Age=7200']))
+    expect(device).toMatch(/^bz_device=[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}; /)
+    expect(device.split(';').slice(1).map((s) => s.trim())).toEqual(expect.arrayContaining(['HttpOnly', 'Secure', 'SameSite=Strict', 'Path=/api/approver', 'Max-Age=2592000']))
     const { csrf } = (await res.json()) as { csrf: string }
     expect(csrf).toMatch(/^[A-Za-z0-9_-]{43}$/)
     expect(cookie).not.toContain(csrf)
@@ -187,15 +193,58 @@ describe('the approver login', () => {
     expect(wrongStatuses.filter((s) => s === 429)).toHaveLength(7)
   })
 
-  it('lets an address that logged in recently past the global lock, never past its own', async () => {
+  it('lets a device that logged in before past the address and global locks strangers behind the same NAT caused', async () => {
     const { base } = await start({ config: CONFIG })
-    const approver = { 'X-Real-IP': '203.0.113.50' }
-    expect((await post(base, '/api/approver/login', { password: PASSWORD }, approver)).status).toBe(200)
-    for (let i = 0; i < 20; i++) expect((await post(base, '/api/approver/login', { password: 'nope-nope' }, { 'X-Real-IP': `192.0.2.${i + 1}` })).status).toBe(401)
-    expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': '192.0.2.200' })).status).toBe(429)
-    expect((await post(base, '/api/approver/login', { password: PASSWORD }, approver)).status).toBe(200)
-    for (let i = 0; i < 5; i++) expect((await post(base, '/api/approver/login', { password: `bad-${i}` }, approver)).status).toBe(401)
-    expect((await post(base, '/api/approver/login', { password: PASSWORD }, approver)).status).toBe(429)
+    const nat = '203.0.113.50'
+    const { device } = await login(base, nat)
+    // strangers on the venue NAT lock the shared address, and everyone else too
+    for (let i = 0; i < 5; i++) expect((await post(base, '/api/approver/login', { password: `guess-${i}` }, { 'X-Real-IP': nat })).status).toBe(401)
+    // (those 5 count toward the global 20 too)
+    for (let i = 0; i < 15; i++) expect((await post(base, '/api/approver/login', { password: 'nope-nope' }, { 'X-Real-IP': `192.0.2.${i + 1}` })).status).toBe(401)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': nat })).status).toBe(429)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': '192.0.2.99' })).status).toBe(429)
+    // the approver's browser still gets in, and keeps its device cookie
+    const again = await login(base, nat, { Cookie: device })
+    expect(again.device).toBe(device)
+  })
+
+  it('counts a device\'s failures on its own: 5 lock that device, never its address', async () => {
+    const { base } = await start({ config: CONFIG })
+    const { device } = await login(base, '203.0.113.60')
+    for (let i = 0; i < 5; i++) expect((await post(base, '/api/approver/login', { password: `bad-${i}` }, { 'X-Real-IP': '203.0.113.60', Cookie: device })).status).toBe(401)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': '203.0.113.60', Cookie: device })).status).toBe(429)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': '203.0.113.60' })).status).toBe(200)
+  })
+
+  it('treats a forged device cookie as no device', async () => {
+    const { base } = await start({ config: CONFIG })
+    const { device } = await login(base, '203.0.113.70')
+    const forged = `${device.slice(0, -4)}AAAA`
+    for (let i = 0; i < 5; i++) expect((await post(base, '/api/approver/login', { password: `bad-${i}` }, { 'X-Real-IP': '203.0.113.71' })).status).toBe(401)
+    expect((await post(base, '/api/approver/login', { password: PASSWORD }, { 'X-Real-IP': '203.0.113.71', Cookie: forged })).status).toBe(429)
+  })
+
+  it('charges logins without a device to a per-address bucket before the lock, and logs a locked caller once a minute', async () => {
+    const limited = await start({ config: CONFIG, loginLimiter: new RateLimiter({ capacity: 2, refillPerSecond: 0.0001 }) })
+    const from = { 'X-Real-IP': '198.51.100.30' }
+    expect((await post(limited.base, '/api/approver/login', { password: 'x-one' }, from)).status).toBe(401)
+    expect((await post(limited.base, '/api/approver/login', { password: 'x-two' }, from)).status).toBe(401)
+    const third = await post(limited.base, '/api/approver/login', { password: PASSWORD }, from)
+    expect(third.status).toBe(429)
+    expect(await third.json()).toEqual({ error: 'rate_limited' })
+
+    const { base, logs } = await start({ config: CONFIG })
+    for (let i = 0; i < 5; i++) await post(base, '/api/approver/login', { password: `bad-${i}` }, from)
+    for (let i = 0; i < 4; i++) expect((await post(base, '/api/approver/login', { password: PASSWORD }, from)).status).toBe(429)
+    expect(logs.filter((l) => l.event === 'approvals.login' && l.status === 429)).toHaveLength(1)
+  })
+
+  it('never charges a live session\'s /session reads to its address', async () => {
+    const { base } = await start({ config: CONFIG, readLimiter: new RateLimiter({ capacity: 1, refillPerSecond: 0.0001 }) })
+    const { cookie } = await login(base)
+    for (let i = 0; i < 3; i++) expect((await fetch(`${base}/api/approver/session`, { headers: { Cookie: cookie } })).status).toBe(200)
+    expect((await fetch(`${base}/api/approver/session`)).status).toBe(200)
+    expect((await fetch(`${base}/api/approver/session`)).status).toBe(429)
   })
 
   it('unlocks after the lock time', () => {
@@ -374,6 +423,32 @@ describe('reading approvals through bazaar-mcp', () => {
       const res = await fetch(`${base}/api/approver/approvals`, { headers: { Cookie: cookie } })
       expect(res.status).toBe(502)
     }
+  })
+
+  it('serves one approvals answer to every session for 10 s, one call at a time, and asks again after a write', async () => {
+    let clock = 0
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((r) => (release = r))
+    const mcp = fakeMcp(async (call) => {
+      if (call.body.params.name === 'approvals') await gate
+      return toolReply(call, call.body.params.name === 'approvals' ? SNAPSHOT : REVOKED)
+    })
+    const { base } = await start({ config: CONFIG, fetchImpl: mcp.fetchImpl, now: () => clock })
+    const [a, b] = [await login(base, '203.0.113.81'), await login(base, '203.0.113.82')]
+    const read = (s: { cookie: string }) => fetch(`${base}/api/approver/approvals`, { headers: { Cookie: s.cookie } })
+    const parallel = Promise.all([read(a), read(b), read(a)])
+    await new Promise((r) => setTimeout(r, 30))
+    release()
+    expect((await parallel).map((r) => r.status)).toEqual([200, 200, 200])
+    expect((await read(b)).status).toBe(200)
+    const tools = () => mcp.calls.map((c) => c.body.params.name)
+    expect(tools()).toEqual(['approvals'])
+    await post(base, '/api/approver/revoke', { card: 'SAL-09', side: 'buy' }, { Cookie: a.cookie, 'x-csrf-token': a.csrf })
+    await read(a)
+    expect(tools()).toEqual(['approvals', 'revoke', 'approvals'])
+    clock += 10_000
+    await read(b)
+    expect(tools()).toEqual(['approvals', 'revoke', 'approvals', 'approvals'])
   })
 
   it('reads the Streamable HTTP SSE form of a reply too', async () => {

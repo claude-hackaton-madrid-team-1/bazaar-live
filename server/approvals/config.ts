@@ -1,7 +1,8 @@
 /**
  * The Approvals screen's configuration, from the environment. The feature is on only when all four are set:
  *
- *   APPROVER_PASSWORD      the screen's own login (16 characters or more; a shorter one counts as unset)
+ *   APPROVER_PASSWORD      the screen's own login: 20 characters or more, 12 of them different (generate it);
+ *                          a shorter or low-variety one counts as unset
  *   BAZAAR_MCP_URL         bazaar-mcp's base URL, without /mcp (https, or http on localhost / *.railway.internal)
  *   BAZAAR_MCP_TOKEN       the bearer bazaar-mcp asks for
  *   BAZAAR_APPROVER_TOKEN  the human tools' own token (x-approver-token)
@@ -10,7 +11,9 @@
  * are missing or wrong.
  */
 
-export const MIN_PASSWORD = 16
+export const MIN_PASSWORD = 20
+/** Distinct characters a password needs: `aaaa…` or `abababab…` is long but guessable. */
+export const MIN_DISTINCT = 12
 
 export interface ApprovalsConfig {
   readonly password: string
@@ -64,6 +67,10 @@ export function readApprovalsConfig(env: Env, log: (entry: Record<string, unknow
   }
   if (password.length < MIN_PASSWORD) {
     log({ event: 'approvals', enabled: false, reason: 'password_too_short', min: MIN_PASSWORD })
+    return null
+  }
+  if (new Set(password).size < MIN_DISTINCT) {
+    log({ event: 'approvals', enabled: false, reason: 'password_too_weak', min_distinct: MIN_DISTINCT })
     return null
   }
   const mcpUrl = mcpBaseOf(rawUrl)
