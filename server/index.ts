@@ -6,7 +6,8 @@
 import { createServer } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createApp, readLimits } from './app.ts'
+import { createApp } from './app.ts'
+import { readLimits } from './limits.ts'
 import { availableProviders, readProviderConfig } from './providers.ts'
 
 const DEFAULT_PORT = 8080

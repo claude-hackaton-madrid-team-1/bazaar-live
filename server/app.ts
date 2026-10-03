@@ -13,36 +13,14 @@
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
+import { isShowLine } from '../shared/lines.ts'
 import { isSpeaker } from '../shared/tags.ts'
-import { LruCache, RateLimiter } from './limits.ts'
+import { DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
 import { createStatic } from './static.ts'
 
 export const MAX_TEXT = 300
 const MAX_BODY = 2048
-
-/** Rate limits for /api/tts, overridable from the environment (ElevenLabs bills per character). */
-export interface TtsLimits {
-  readonly perAddressBurst: number
-  readonly perAddressPerMinute: number
-  readonly globalBurst: number
-  readonly globalPerMinute: number
-}
-
-export const DEFAULT_LIMITS: TtsLimits = { perAddressBurst: 40, perAddressPerMinute: 30, globalBurst: 120, globalPerMinute: 30 }
-
-export function readLimits(env: Readonly<Record<string, string | undefined>>): TtsLimits {
-  const read = (name: string, fallback: number) => {
-    const n = Number(env[name])
-    return Number.isFinite(n) && n > 0 ? n : fallback
-  }
-  return {
-    perAddressBurst: read('TTS_PER_ADDRESS_BURST', DEFAULT_LIMITS.perAddressBurst),
-    perAddressPerMinute: read('TTS_PER_ADDRESS_PER_MINUTE', DEFAULT_LIMITS.perAddressPerMinute),
-    globalBurst: read('TTS_GLOBAL_BURST', DEFAULT_LIMITS.globalBurst),
-    globalPerMinute: read('TTS_GLOBAL_PER_MINUTE', DEFAULT_LIMITS.globalPerMinute),
-  }
-}
 
 export interface AppDeps {
   readonly config: ProviderConfig
@@ -52,6 +30,7 @@ export interface AppDeps {
   readonly perClient?: RateLimiter
   readonly global?: RateLimiter
   readonly cache?: LruCache<Audio>
+  readonly budget?: DailyBudget
   readonly log?: (entry: Record<string, unknown>) => void
 }
 
@@ -105,19 +84,20 @@ function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
   })
 }
 
-/** The caller's address as Railway's edge reports it. */
-export function clientAddress(req: IncomingMessage): string {
-  const real = req.headers['x-real-ip']
-  if (typeof real === 'string' && real) return real
-  const forwarded = req.headers['x-forwarded-for']
-  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim()
+/**
+ * The caller's address: the header Railway's edge sets (X-Real-IP, as bazaar-sim trusts), else the
+ * socket. X-Forwarded-For is never read: its first entry is whatever the client wrote.
+ */
+export function clientAddress(req: IncomingMessage, header = DEFAULT_LIMITS.clientIpHeader): string {
+  const value = req.headers[header]
+  const first = (Array.isArray(value) ? value[0] : value)?.trim()
   return first || req.socket.remoteAddress || 'unknown'
 }
 
-/** A browser on another site may not spend our credits. */
+/** Browsers send Origin on every POST; ours must name this host (a missing one is refused too). */
 function sameOrigin(req: IncomingMessage): boolean {
   const origin = req.headers.origin
-  if (!origin) return true
+  if (!origin) return false
   try {
     return new URL(origin).host === req.headers.host
   } catch {
@@ -146,6 +126,7 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[]): 
   // eslint-disable-next-line no-control-regex
   const clean = typeof text === 'string' ? text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : ''
   if (!clean || clean.length > MAX_TEXT) return `text must be 1 to ${MAX_TEXT} characters`
+  if (!isShowLine(speaker, clean)) return 'only the show\'s own lines are spoken here'
   return { provider, speaker, text: clean }
 }
 
@@ -156,6 +137,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
   const perClient = deps.perClient ?? new RateLimiter({ capacity: limits.perAddressBurst, refillPerSecond: limits.perAddressPerMinute / 60 })
   const global = deps.global ?? new RateLimiter({ capacity: limits.globalBurst, refillPerSecond: limits.globalPerMinute / 60 })
   const cache = deps.cache ?? new LruCache<Audio>(24 * 1024 * 1024)
+  const budget = deps.budget ?? new DailyBudget(limits.dailyChars)
   // Every viewer hears the same line for the same event: one upstream call serves them all.
   const inFlight = new Map<string, Promise<Audio>>()
   const available = availableProviders(deps.config)
@@ -184,10 +166,22 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     const shared = inFlight.get(key)
     const hit = audio !== undefined || shared !== undefined
     if (!audio) {
-      const limited = shared ? undefined : [perClient.take(clientAddress(req)), global.take('*')].find((r) => !r.ok)
-      if (limited && !limited.ok) {
-        log({ route: 'tts', status: 429, provider: parsed.provider })
-        return json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(limited.retryAfterSeconds) })
+      if (!shared) {
+        // The address is checked before the global bucket, and nothing is spent unless both allow it:
+        // a caller over its own limit cannot drain the tokens everyone else shares.
+        const address = clientAddress(req, limits.clientIpHeader)
+        const limited = [perClient.peek(address), global.peek('*')].find((r) => !r.ok)
+        if (limited && !limited.ok) {
+          log({ route: 'tts', status: 429, provider: parsed.provider })
+          return json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(limited.retryAfterSeconds) })
+        }
+        if (!budget.allows(parsed.text.length)) {
+          log({ route: 'tts', status: 429, provider: parsed.provider, budget: 'daily_chars' })
+          return json(res, 429, { error: 'daily_budget' }, { 'Retry-After': '3600' })
+        }
+        perClient.take(address)
+        global.take('*')
+        budget.spend(parsed.text.length)
       }
       try {
         const pending = shared ?? synthesize(parsed).finally(() => inFlight.delete(key))

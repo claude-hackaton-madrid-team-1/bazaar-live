@@ -118,12 +118,24 @@ Model names, checked against the official docs on 2026-10-03:
   account.
 
 **No key in the browser.** Keys are read from the server's environment and never sent to the page,
-logged or committed. The proxy is public, so it only speaks the show's own lines: same-origin
-requests, one of the five speakers, at most 300 characters, and token-bucket rate limits on new
-lines (ElevenLabs bills per character): per address a burst of 40 then 30 a minute, in total a burst
-of 120 then 30 a minute. Every viewer hears the same line for the same event, so a 24 MB cache and
-shared in-flight requests make a repeated line free. The limits are env-tunable:
-`TTS_PER_ADDRESS_BURST`, `TTS_PER_ADDRESS_PER_MINUTE`, `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`.
+logged or committed. The proxy is public, so it guards what it speaks and what it spends:
+
+- **Only the show's own lines.** The dialogue templates live in `shared/lines.ts`; the page fills
+  their `{slots}` from public event fields, and the proxy accepts a line only when it matches one of
+  those templates for that speaker, with every slot restricted to the words the show can produce (card
+  names, primas, dealer names, short labels). Anything else is a `400`; a test checks that every line
+  the show can produce passes and arbitrary text does not.
+- **Only this page.** A request must carry an `Origin` naming this host (browsers always send it on a
+  `POST`); others get `403`. Text is capped at 300 characters.
+- **Limits.** Per address (Railway's `X-Real-IP`; `X-Forwarded-For` is never trusted) a burst of 40
+  then 24 lines a minute; all callers together a burst of 160 then 72 a minute. The address is checked
+  before the shared bucket, so one caller over its limit cannot drain it for everyone. A daily budget of
+  40,000 characters sent to a provider (UTC day) caps the cost. Env: `TTS_PER_ADDRESS_BURST`,
+  `TTS_PER_ADDRESS_PER_MINUTE`, `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`, `TTS_DAILY_CHARS`,
+  `TTS_CLIENT_IP_HEADER`. Also set a credit limit on the provider key itself.
+- **Cache.** Every viewer hears the same line for the same event: a 24 MB cache and shared in-flight
+  requests make a repeated line free.
+
 A refused or failed line falls back to the browser's voice.
 
 ## Deploy (Railway)
@@ -146,10 +158,10 @@ With neither key set, the show still speaks with the browser's voice.
 src/model     the event model and the public allow-list (sanitize.ts)
 src/net       WebSocket feed (backoff, dedupe, replay) and /health, /state fetches
 src/mock      fixtures.json (written by scripts/make-fixtures.py) and the looping player
-src/show      dialogue templates, the director, the engine that plays beats
+src/show      event → dialogue, the director, the engine that plays beats
 src/tts       speech queue, Web Speech, the proxy client, provider choice
 src/stage     Motion components: characters, board, dealers, effects, bubbles
 src/ui        header, transcript, start gate, React hooks
-shared/       tag conversion and endpoints, used by the browser and the server
+shared/       dialogue templates (lines.ts), tag conversion, endpoints: browser and server
 server/       the Node server: static files, /health, /api/tts
 ```

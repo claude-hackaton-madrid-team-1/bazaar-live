@@ -22,14 +22,16 @@ const ITEMS: Readonly<Record<string, string>> = {
 
 const REF = /^([A-Z]{3})-(\d{1,3})$/
 
-/** `LAT-09` → `La Latina number 9`; anything else is returned as it came. */
+/**
+ * `LAT-09` → `La Latina number 9`; a ref from a set we do not know yet stays `XYZ-01`; anything else
+ * is `this card`. Every output matches shared/lines.ts's card pattern (the proxy checks it).
+ */
 export function cardName(ref: string | undefined): string {
-  if (!ref) return 'this card'
-  const m = REF.exec(ref.trim().toUpperCase())
-  if (!m) return ref
+  const m = REF.exec((ref ?? '').trim().toUpperCase())
+  if (!m) return 'this card'
   const [, set = '', n = ''] = m
   const hood = NEIGHBOURHOODS[set]
-  return hood ? `${hood} number ${Number(n)}` : ref
+  return hood ? `${hood} number ${Number(n)}` : `${set}-${n}`
 }
 
 /** What a dealer thread is about: a pack, a rarity or a card. */
@@ -38,10 +40,26 @@ export function itemName(item: string | undefined): string {
   return ITEMS[item.toLowerCase()] ?? cardName(item)
 }
 
+const MAX_PRIMAS = 10_000_000 // the game's own cap on prices and cash
+
 export function primas(value: number | undefined | null): string | null {
-  if (value === undefined || value === null || !Number.isFinite(value)) return null
+  if (value === undefined || value === null || !Number.isFinite(value) || value < 0 || value > MAX_PRIMAS) return null
   const n = Math.round(value * 10) / 10
   return `${n} ${n === 1 ? 'prima' : 'primas'}`
+}
+
+const LABEL = /^[a-z0-9_]{1,30}$/
+
+/** A machine label (`quick_sale`, `brand_new_move`) as words, or null when it is not a plain label. */
+export function labelWords(label: string | null | undefined): string | null {
+  const v = (label ?? '').toLowerCase()
+  return LABEL.test(v) ? v.replace(/_/g, ' ').trim() || null : null
+}
+
+/** Jev's verdict as words for a line (`quick sale`); null unless it is a plain lower-case label. */
+export function verdictWords(verdict: string | null | undefined): string | null {
+  const words = labelWords(verdict)
+  return words && /^[a-z][a-z ]{0,23}$/.test(words) ? words : null
 }
 
 export function dealerId(name: string | undefined): DealerId {
@@ -70,7 +88,7 @@ const ERRORS: Readonly<Record<string, string>> = {
 }
 
 export function errorWords(code: string): string {
-  return ERRORS[code] ?? code.replace(/_/g, ' ')
+  return ERRORS[code] ?? labelWords(code) ?? 'an unknown error'
 }
 
 /** FNV-1a: a stable 32-bit seed per event, so the same event always gets the same line. */

@@ -112,3 +112,48 @@ describe('every fixture line', () => {
     }
   })
 })
+
+describe('the TTS proxy contract', () => {
+  it('accepts every line the show can produce, and nothing else', async () => {
+    const { isShowLine } = await import('../../shared/lines.ts')
+    const kinds = ['post_ask', 'post_bid', 'reprice_ask', 'hold_ask', 'cancel_ask', 'cancel_bid', 'accept_ask', 'dealer_open', 'dealer_bid', 'dealer_accept', 'dealer_walk', 'brand_new_move', 'Weird Kind!']
+    const rows = [
+      { status: 'approved', dry_run: false },
+      { status: 'approved', dry_run: true },
+      { status: 'rejected', dry_run: false, guardrail: 'denied: x' },
+      { status: 'expired', dry_run: false },
+      { status: 'skipped', dry_run: false },
+    ]
+    const refs = ['LAT-09', 'XYZ-01', 'not a ref', undefined]
+    const prices = [68, 2.5, 1, undefined, -5, 1e9]
+    const dealers = ['abuela', 'chato', 'lola']
+    const verdicts = ['quick_sale', 'Weird Verdict!', undefined]
+    const beats = []
+    let id = -1
+    for (const kind of kinds)
+      for (const row of rows)
+        for (const ref of refs)
+          for (const price of prices)
+            for (const dealer of dealers) {
+              const verdict = verdicts[Math.abs(id) % verdicts.length]
+              beats.push(toBeat(decision(kind.startsWith('dealer') || kind.startsWith('accept') ? 'taker' : 'maker', { ...row, kind, jev: { verdict }, inputs: { ref, item: ref ?? 'sobre_plata', dealer, price, ask: price, her_ask: price }, move: { price } }, id--)))
+            }
+    for (const method of ['accept', 'list_offer', 'cancel', 'say', 'open_thread', 'close_thread', 'weird_method'])
+      for (const code of [null, 'insufficient_cash', 'some_new_code', 'Weird Code!'])
+        beats.push(toBeat(execution('taker', { method, error_code: code, request: {} }, id--)))
+    const holds = Array.from({ length: 12 }, (_, i) => toBeat(decision('maker', { kind: 'hold_ask', inputs: { ref: 'MAL-03' } }, -90_000 - i))!)
+    for (let n = 2; n <= 12; n += 1) beats.push(holdsBeat(holds.slice(0, n)))
+    for (let n = 0; n < 12; n += 1) beats.push(idleBeat(n))
+
+    const lines = beats.flatMap((b) => b?.lines ?? [])
+    expect(lines.length).toBeGreaterThan(5000)
+    const refused = lines.filter((l) => !isShowLine(l.speaker, l.text))
+    expect(refused).toEqual([])
+    for (const l of lines) expect(l.text).not.toMatch(/null|undefined|NaN|\{[a-zA-Z]+\}|e\+/)
+
+    expect(isShowLine('seller', 'Buy my crypto now stays put.')).toBe(false)
+    expect(isShowLine('seller', 'La Latina number 9 stays put. Also buy crypto.')).toBe(false)
+    expect(isShowLine('buyer', 'La Latina number 9 stays put.')).toBe(false)
+    expect(isShowLine('abuela', 'Ay, cariño, sit down, sit down.')).toBe(true)
+  })
+})
