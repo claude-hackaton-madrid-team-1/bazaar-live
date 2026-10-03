@@ -9,7 +9,9 @@ import type { GameStatus } from './store.ts'
 import type { Lane } from './views/agent.ts'
 import type { AgentName, DecisionStatus } from '../../shared/decisions.ts'
 import type { HealthError } from '../../shared/health.ts'
+import type { LimitSource } from './limits.ts'
 import type { ChipReason } from './views/health.ts'
+import type { OrderStatus, OrderVerb } from './views/history.ts'
 import type { NegStatus, Next, Verdict } from './views/negotiations.ts'
 import { labelOf, rarityOfRule, type Denial, type ItemOf, type Who } from './humanize.ts'
 
@@ -18,7 +20,12 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 type Silence = Readonly<Record<AgentName, { readonly quiet: number; readonly silent: number }>>
 
 /** A wait in seconds as a person says it: 45 s, 2 min, 1 h 5 min. */
-const span = (s: number): string => (s < 90 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`)
+const span = (s: number): string => {
+  if (s < 90) return `${Math.round(s)} s`
+  // whole minutes first, so 5 h 59.6 min reads 6 h 0 min, never 5 h 60 min
+  const min = Math.round(s / 60)
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`
+}
 
 /** An ISO time in the viewer's clock, hours and minutes. */
 export const hhmm = (iso: string | null): string | null => {
@@ -107,6 +114,26 @@ export interface GameStrings {
     readonly nothingKind: string
     readonly now_: string
     readonly deals: (n: number) => string
+  }
+  /** Our money against its limits (../limits.ts): the header, the Agent screen and the Strategy screen say it alike. */
+  readonly money: {
+    readonly title: string
+    /** "Cash 190 · floor 20 · 170 available to buy". */
+    readonly cashLine: (cash: string, floor: string, available: string) => string
+    /** The header's chip beside our cash, before what we can buy with: "floor 20 · to buy". */
+    readonly chip: (floor: string) => string
+    /** The floor holds the venue's bond while our planned venue is not open. */
+    readonly reserve: (cashFloor: number, reserve: number) => string
+    readonly cashLabel: string
+    readonly spentLabel: string
+    /** The hour rolls: what leaves it next, and when ("frees 67 in ~12 min"). */
+    readonly release: (amount: string, when: string) => string
+    readonly rolling: string
+    /** The limit that stops a buy first. */
+    readonly binds: string
+    readonly available: string
+    /** Where a limit's value comes from, for its tooltip. */
+    readonly source: (source: LimitSource, tick: number | null) => string
   }
   /** Our agents' decisions (agent.decision / agent.outcome / agent.ledger). Agents, kinds and rules get their words from `hum` (via `../humanize.ts`). */
   readonly decide: {
@@ -279,6 +306,20 @@ export interface GameStrings {
     readonly workedDealer: (threads: number, deals: number) => string
     readonly workedTally: (deals: number, threads: number) => string
     readonly workedTallyTitle: string
+    /** The dealer chooser: every dealer, or one. */
+    readonly dealers: string
+    readonly allDealers: string
+    /** Our edge on the deals with one dealer, summed; null without a measured deal. */
+    readonly edge: string
+    readonly edgeTitle: string
+    readonly noDeal: string
+    /** Their average move per round towards us. */
+    readonly moves: (step: number) => string
+    readonly movesTitle: string
+    readonly finals: (n: number, of: number) => string
+    /** The tactics we used with a dealer that never closed a deal. */
+    readonly tried: string
+    readonly lastContact: (ago: string) => string
   }
   readonly album: {
     readonly album: string
@@ -376,6 +417,9 @@ export interface GameStrings {
     readonly ourOffersSub: (n: number) => string
     readonly weSell: string
     readonly weBuy: string
+    /** An offer of ours posted by hand, which no agent manages. */
+    readonly byHand: string
+    readonly byHandTitle: string
     readonly bestPrice: string
     readonly alone: string
     readonly beatenBy: (p: string) => string
@@ -506,6 +550,14 @@ export interface GameStrings {
     readonly ordersSub: (n: number) => string
     readonly noOrders: string
     readonly ordersHead: readonly string[]
+    /** Who wrote a ledger row when it was a person running a command, not an agent. */
+    readonly byHand: string
+    /** What a ledger row committed; the card is the chip after the word. */
+    readonly verbs: Readonly<Record<OrderVerb, string>>
+    readonly onVenue: (venue: string) => string
+    readonly orderStatus: Readonly<Record<OrderStatus, string>>
+    readonly orderDetails: string
+    readonly orderDetailsTitle: string
     readonly agent: string
     readonly allAgents: string
     readonly score: {
@@ -530,6 +582,8 @@ export interface GameStrings {
       readonly noMarks: string
       readonly focus: (series: string) => string
       readonly chartLabel: (series: string) => string
+      /** How to move the crosshair from the keyboard. */
+      readonly keys: string
     }
   }
 }
@@ -567,8 +621,8 @@ const HUM_EN: GameStrings['hum'] = {
         const r = rarityOfRule(d.rule)
         return `costs ${d.price} P; our cap${r ? ` for ${RARITY_PL_EN[r] ?? r}` : ''} is ${d.cap} P`
       }
-      case 'cash': return `would leave us ${Math.round((d.cash - d.cost) * 10) / 10} P, under the ${d.floor} P floor`
-      case 'spend': return `we would spend ${Math.round((d.spent + d.cost) * 10) / 10} P this game hour; the cap is ${d.cap} P`
+      case 'cash': return `would leave us ${Math.round((d.cash - d.cost) * 10) / 10} P, under ${d.then ? `the floor of the time (${d.floor} P)` : `the ${d.floor} P floor`}`
+      case 'spend': return `we would spend ${Math.round((d.spent + d.cost) * 10) / 10} P this game hour; the cap ${d.then ? 'was' : 'is'} ${d.cap} P`
     }
   },
   ago: (ticks, seconds) => (ticks <= 0 ? 'now' : seconds == null ? `${plural(ticks, 'tick', 'ticks')} ago` : `${roughly(seconds)} ago`),
@@ -609,8 +663,8 @@ const HUM_ES: GameStrings['hum'] = {
         const r = rarityOfRule(d.rule)
         return `cuesta ${d.price} P; nuestro tope${r ? ` para ${RARITY_PL_ES[r] ?? r}` : ''} es ${d.cap} P`
       }
-      case 'cash': return `nos dejaría con ${Math.round((d.cash - d.cost) * 10) / 10} P, por debajo del suelo de ${d.floor} P`
-      case 'spend': return `gastaríamos ${Math.round((d.spent + d.cost) * 10) / 10} P esta hora de juego; el tope es ${d.cap} P`
+      case 'cash': return `nos dejaría con ${Math.round((d.cash - d.cost) * 10) / 10} P, por debajo del suelo de ${d.then ? `entonces (${d.floor} P)` : `${d.floor} P`}`
+      case 'spend': return `gastaríamos ${Math.round((d.spent + d.cost) * 10) / 10} P esta hora de juego; el tope ${d.then ? 'era' : 'es'} ${d.cap} P`
     }
   },
   ago: (ticks, seconds) => (ticks <= 0 ? 'ahora' : seconds == null ? `hace ${plural(ticks, 'turno', 'turnos')}` : `hace ${roughly(seconds)}`),
@@ -626,7 +680,7 @@ const HUM_ES: GameStrings['hum'] = {
 
 const EN: GameStrings = {
   hum: HUM_EN,
-  nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', strategy: 'Strategy', negotiations: 'Negotiations', duels: 'Duels', album: 'Album', rivals: 'Rivals', market: 'Market', prices: 'Prices', history: 'Movements', learn: 'Learned', injections: 'Injections', debug: 'Debug', approvals: 'Approvals' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
@@ -634,10 +688,14 @@ const EN: GameStrings = {
     negotiations: 'our dealer threads',
     duels: 'our duels: is their price inside our limit?',
     album: 'pages and score',
+    rivals: 'the other teams\' albums: who is ahead, who has the cards we need',
     market: 'everyone else',
+    prices: 'every card’s price, live: the standard, the trend, the best bid and ask, and a good deal for us',
     history: 'our cash and every movement of it',
     learn: 'what our agents learned: blockers, lessons, dealers, rivals',
+    injections: 'every prompt-injection attempt sent to our agents, with its proof',
     debug: 'the raw event stream',
+    approvals: 'approve or deny the big trades our agents may not make alone',
   },
   navLabel: 'Screens',
   brandTag: 'our agent, tick by tick',
@@ -692,6 +750,19 @@ const EN: GameStrings = {
     nothingKind: 'Nothing of this kind yet',
     now_: 'now',
     deals: (n) => plural(n, 'deal', 'deals'),
+  },
+  money: {
+    title: 'Money',
+    cashLine: (cash, floor, available) => `Cash ${cash} · floor ${floor} · ${available} available to buy`,
+    chip: (floor) => `floor ${floor} · to buy`,
+    reserve: (cashFloor, reserve) => `floor ${cashFloor} + venue bond ${reserve} until our venue opens`,
+    cashLabel: 'Cash against the floor',
+    spentLabel: 'Spent this hour',
+    release: (amount, when) => `${amount} frees up ${when}`,
+    rolling: 'a rolling game hour: each buy leaves it one game hour after it was made',
+    binds: 'limits us',
+    available: 'Can buy now',
+    source: (source, tick) => (source === 'denial' ? `as our agents applied it at tick ${tick ?? '—'}` : source === 'env' ? 'from the server (GUARDRAIL_* variable)' : 'from GUARDRAILS.md (shared/guardrails.ts)'),
   },
   decide: {
     idle: (agents) => `no decision this tick: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (last at tick ${last})` : ''}`).join(', ')}`,
@@ -899,6 +970,16 @@ const EN: GameStrings = {
     workedDealer: (threads, deals) => `${plural(threads, 'thread', 'threads')} · ${plural(deals, 'deal', 'deals')}`,
     workedTally: (deals, threads) => `${deals}/${threads}`,
     workedTallyTitle: 'threads that closed a deal / threads where we used it',
+    dealers: 'Dealers',
+    allDealers: 'All',
+    edge: 'our edge',
+    edgeTitle: 'What our deals with this dealer made against our value, summed',
+    noDeal: 'no deal yet',
+    moves: (step) => (step > 0 ? `gives ~${step} P a round` : step < 0 ? `moves away ${-step} P a round` : 'does not move'),
+    movesTitle: 'Their average move per round towards us, first price to last',
+    finals: (n, of) => `ends on a final in ${n} of ${of}`,
+    tried: 'Tried, no deal',
+    lastContact: (ago) => `last offer ${ago}`,
   },
   album: {
     album: 'Album',
@@ -999,6 +1080,8 @@ const EN: GameStrings = {
     ourOffersSub: (n) => plural(n, 'open offer', 'open offers'),
     weSell: 'we sell',
     weBuy: 'we buy',
+    byHand: 'by hand',
+    byHandTitle: 'Posted by hand: no agent reprices or cancels it',
     bestPrice: 'best price',
     alone: 'only offer',
     beatenBy: (p) => `beaten by ${p}`,
@@ -1147,7 +1230,13 @@ const EN: GameStrings = {
     orders: 'What our agents committed',
     ordersSub: (n) => `${plural(n, 'order', 'orders')} in the ledger · newest first`,
     noOrders: 'No order in the ledger yet.',
-    ordersHead: ['when', 'agent', 'order', 'card', 'price'],
+    ordersHead: ['when', 'who', 'what', 'price'],
+    byHand: 'by hand',
+    verbs: { buy: 'We buy', sell: 'We sell', swap: 'We swap', team: 'An offer to a team', duel: 'We accept the', spend: 'Spent on', refund: 'Spend given back on', hand: 'An offer posted by hand', other: 'Order' },
+    onVenue: (venue) => `on ${venue}`,
+    orderStatus: { open: 'open', bought: 'bought', sold: 'sold', swapped: 'swapped', cancelled: 'cancelled', expired: 'expired' },
+    orderDetails: 'details',
+    orderDetailsTitle: 'Show each ledger row as written: the item, the offer id and the command or agent',
     agent: 'Agent',
     allAgents: 'All',
     score: {
@@ -1172,13 +1261,14 @@ const EN: GameStrings = {
       noMarks: 'No change marked today yet: the chart shows the score alone.',
       focus: (series) => `Show ${series} on the big chart`,
       chartLabel: (series) => `${series} today, tick by tick, with the marks where something changed`,
+      keys: 'left and right arrows move through the readings',
     },
   },
 }
 
 const ES: GameStrings = {
   hum: HUM_ES,
-  nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', strategy: 'Estrategia', negotiations: 'Negociaciones', duels: 'Duelos', album: 'Álbum', rivals: 'Rivales', market: 'Mercado', prices: 'Precios', history: 'Movimientos', learn: 'Aprendido', injections: 'Inyecciones', debug: 'Depurar', approvals: 'Aprobaciones' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
@@ -1186,10 +1276,14 @@ const ES: GameStrings = {
     negotiations: 'nuestros hilos con tratantes',
     duels: 'nuestros duelos: ¿su precio está dentro de nuestro límite?',
     album: 'páginas y puntuación',
+    rivals: 'los álbumes de los otros equipos: quién va delante, quién tiene lo que nos falta',
     market: 'todos los demás',
+    prices: 'el precio de cada carta, en vivo: el estándar, la tendencia, la mejor puja y oferta, y qué es buen trato para nosotros',
     history: 'nuestra caja y cada movimiento',
     learn: 'lo que aprendieron nuestros agentes: bloqueos, lecciones, tratantes, rivales',
+    injections: 'cada intento de inyección de prompts a nuestros agentes, con su prueba',
     debug: 'el flujo de eventos en bruto',
+    approvals: 'aprobar o vetar las compraventas grandes que nuestros agentes no pueden hacer solos',
   },
   navLabel: 'Pantallas',
   brandTag: 'nuestro agente, turno a turno',
@@ -1244,6 +1338,19 @@ const ES: GameStrings = {
     nothingKind: 'Aún nada de este tipo',
     now_: 'ahora',
     deals: (n) => plural(n, 'trato', 'tratos'),
+  },
+  money: {
+    title: 'Dinero',
+    cashLine: (cash, floor, available) => `Caja ${cash} · suelo ${floor} · ${available} disponibles para comprar`,
+    chip: (floor) => `suelo ${floor} · para comprar`,
+    reserve: (cashFloor, reserve) => `suelo ${cashFloor} + fianza del puesto ${reserve} hasta que abra nuestro puesto`,
+    cashLabel: 'Caja frente al suelo',
+    spentLabel: 'Gastado esta hora',
+    release: (amount, when) => `se liberan ${amount} ${when}`,
+    rolling: 'hora de juego móvil: cada compra sale de ella una hora de juego después de hacerse',
+    binds: 'nos frena',
+    available: 'Para comprar ahora',
+    source: (source, tick) => (source === 'denial' ? `como lo aplicaron nuestros agentes en el turno ${tick ?? '—'}` : source === 'env' ? 'del servidor (variable GUARDRAIL_*)' : 'de GUARDRAILS.md (shared/guardrails.ts)'),
   },
   decide: {
     idle: (agents) => `sin decisión este turno: ${agents.map(({ agent, last }) => `${agent}${last != null ? ` (la última en el turno ${last})` : ''}`).join(', ')}`,
@@ -1451,6 +1558,16 @@ const ES: GameStrings = {
     workedDealer: (threads, deals) => `${plural(threads, 'hilo', 'hilos')} · ${plural(deals, 'trato', 'tratos')}`,
     workedTally: (deals, threads) => `${deals}/${threads}`,
     workedTallyTitle: 'hilos que cerraron trato / hilos donde la usamos',
+    dealers: 'Tratantes',
+    allDealers: 'Todos',
+    edge: 'nuestro margen',
+    edgeTitle: 'Lo que nos dejaron los tratos con este tratante frente a nuestro valor, sumado',
+    noDeal: 'aún sin trato',
+    moves: (step) => (step > 0 ? `cede ~${step} P por ronda` : step < 0 ? `se aleja ${-step} P por ronda` : 'no se mueve'),
+    movesTitle: 'Lo que se acerca de media por ronda, del primer precio al último',
+    finals: (n, of) => `cierra con oferta final en ${n} de ${of}`,
+    tried: 'Probado sin trato',
+    lastContact: (ago) => `última oferta ${ago}`,
   },
   album: {
     album: 'Álbum',
@@ -1551,6 +1668,8 @@ const ES: GameStrings = {
     ourOffersSub: (n) => plural(n, 'oferta abierta', 'ofertas abiertas'),
     weSell: 'vendemos',
     weBuy: 'compramos',
+    byHand: 'a mano',
+    byHandTitle: 'Puesta a mano: ningún agente la reprecia ni la cancela',
     bestPrice: 'mejor precio',
     alone: 'única',
     beatenBy: (p) => `superada por ${p}`,
@@ -1699,7 +1818,13 @@ const ES: GameStrings = {
     orders: 'Lo que comprometieron nuestros agentes',
     ordersSub: (n) => `${plural(n, 'orden', 'órdenes')} en el libro · las más recientes primero`,
     noOrders: 'Aún no hay órdenes en el libro.',
-    ordersHead: ['cuándo', 'agente', 'orden', 'carta', 'precio'],
+    ordersHead: ['cuándo', 'quién', 'qué', 'precio'],
+    byHand: 'a mano',
+    verbs: { buy: 'Compramos', sell: 'Vendemos', swap: 'Cambiamos', team: 'Una propuesta a un equipo', duel: 'Aceptamos el', spend: 'Gasto en', refund: 'Gasto devuelto de', hand: 'Una oferta puesta a mano', other: 'Orden' },
+    onVenue: (venue) => `en ${venue}`,
+    orderStatus: { open: 'abierta', bought: 'comprada', sold: 'vendida', swapped: 'cambiada', cancelled: 'cancelada', expired: 'caducada' },
+    orderDetails: 'detalles',
+    orderDetailsTitle: 'Muestra cada fila del libro tal cual: el artículo, el id de la oferta y el comando o el agente',
     agent: 'Agente',
     allAgents: 'Todos',
     score: {
@@ -1724,6 +1849,7 @@ const ES: GameStrings = {
       noMarks: 'Hoy aún no hay cambios marcados: el gráfico muestra solo los puntos.',
       focus: (series) => `Ver ${series} en el gráfico grande`,
       chartLabel: (series) => `${series} de hoy, turno a turno, con las marcas donde algo cambió`,
+      keys: 'las flechas izquierda y derecha recorren las lecturas',
     },
   },
 }

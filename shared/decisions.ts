@@ -69,14 +69,20 @@ export interface LedgerTick {
   readonly listings: number
 }
 
-/** The caps of GUARDRAILS.md the ledger is held to. */
+/** The caps of GUARDRAILS.md the ledger is held to, as the server knows them: a GUARDRAIL_* variable, else the docs. */
 export interface GuardrailLimits {
   readonly spendPerHour: number
   readonly cashFloor: number
   readonly acceptsPerTick: number
+  /** `venue_bond_reserve`, held on top of the floor while our planned venue is not open; 0 when no venue is planned. */
+  readonly bondReserve?: number
+  /** The values a GUARDRAIL_* variable set (the rest are the docs'). */
+  readonly fromEnv?: readonly ('spendPerHour' | 'cashFloor' | 'acceptsPerTick')[]
 }
 
 export interface LedgerPayload {
   readonly ticks: readonly LedgerTick[]
   readonly limits: GuardrailLimits
+  /** We run our own venue now (the bond reserve no longer applies); null when the server does not know. */
+  readonly venue?: boolean | null
 }

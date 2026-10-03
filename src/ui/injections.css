@@ -1,0 +1,179 @@
+/* The "Injection attempts" panel (src/ui/InjectionsPanel.tsx), on the show, /debug and /injections. */
+
+.inj {
+  min-width: 0;
+  padding: var(--s-4);
+  border-radius: var(--r-lg);
+  color: var(--text);
+  /* nothing a row draws (a stack of combining marks, a tall glyph) may paint outside the panel */
+  contain: paint;
+}
+
+.inj-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+}
+
+.inj-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.inj-sub {
+  color: var(--text-2);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.inj-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--text-2);
+  font-size: 0.85rem;
+}
+
+.inj-note,
+.inj-status,
+.inj-empty {
+  margin: var(--s-2) 0 0;
+  color: var(--text-2);
+  font-size: 0.85rem;
+}
+
+.inj-list {
+  display: grid;
+  gap: var(--s-3);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inj-row {
+  min-width: 0;
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 1px var(--hairline);
+  contain: paint;
+}
+
+.inj-row[data-severity='weak'] {
+  opacity: 0.8;
+}
+
+.inj-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.inj-from {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.inj-tag,
+.inj-pill {
+  padding: 1px var(--s-2);
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+
+.inj-pill {
+  font-family: inherit;
+}
+
+.inj-weak {
+  color: var(--text-2);
+}
+
+.inj-said {
+  margin-top: var(--s-2);
+}
+
+/* their words: plain text, kept as they were sent (line breaks too), isolated from the page's direction */
+.inj-raw {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-left: 3px solid var(--danger-ink);
+  border-radius: var(--r-sm);
+  background: var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: isolate;
+  direction: ltr;
+  /* their glyphs stay inside the box: a mark stack or an oversized glyph is clipped, never drawn over the page */
+  overflow: hidden;
+  contain: paint;
+}
+
+.inj-hidden {
+  padding: 0 2px;
+  border-radius: 4px;
+  color: var(--danger-ink);
+  background: rgb(196 30 20 / 0.12);
+  font-weight: 600;
+}
+
+.inj-flag {
+  display: inline-block;
+  margin-top: var(--s-1);
+  color: var(--danger-ink);
+  font-size: 0.8rem;
+}
+
+.inj-more {
+  margin: var(--s-1) 0 0 var(--s-2);
+  padding: 2px var(--s-2);
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.inj-more:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.inj-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s-2) var(--s-3);
+  margin: var(--s-2) 0 0;
+  font-size: 0.8rem;
+}
+
+.inj-facts dt {
+  color: var(--text-2);
+}
+
+.inj-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* on the show: a link to every row on the Injections screen */
+.inj-all {
+  display: inline-block;
+  margin-top: var(--s-3);
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+/* on the show, under the stage and the captions */
+.inj-show {
+  margin-top: var(--s-4);
+}

@@ -11,6 +11,10 @@
  *   GET  /api/learn            what our agents learned, JSON (db/learn.sql; GAME_VIEW_TOKEN as ?token= when set)
  *   GET  /api/history          our cash over the day and what moved it, JSON (db/history.sql; the same token)
  *   GET  /api/strategy         what we aim for, why we hold and why we do not buy, JSON (db/strategy.sql; the same token)
+ *   GET  /api/rivals           what each rival holds by the public feed, its rank and what it chases, JSON (db/rival_albums.sql; the same token)
+ *   GET  /api/injections       the prompt-injection attempts our agents recorded, JSON (db/injections.sql; public, never voiced)
+ *   /api/approver/*            the Approvals screen (server/approvals): a password login, then bazaar-mcp's human tools,
+ *                              called from here; without its four variables these paths answer like any unknown /api path
  *   GET  /*                    dist/ (SPA)
  *
  * The proxy is public, so it only speaks the show's own short lines: same-origin requests, one of
@@ -19,20 +23,28 @@
  */
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Duplex } from 'node:stream'
+import { cleanQuote, MAX_QUOTE } from '../shared/clean.ts'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isLang, LANGS, type Lang } from '../shared/lang.ts'
 import { EMPTY_HISTORY } from '../shared/history.ts'
+import { EMPTY_INJECTIONS, looksLikeInjection } from '../shared/injections.ts'
 import { EMPTY_LEARN } from '../shared/learn.ts'
+import { EMPTY_RIVALS } from '../shared/rivals.ts'
 import { EMPTY_STRATEGY } from '../shared/strategy.ts'
 import { isShowLine } from '../shared/lines.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { isRealLine } from '../shared/real-lines.ts'
 import { isSpeaker, type Speaker } from '../shared/tags.ts'
+import type { DealerNames } from './dealers.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
 import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
+import { createApprovalsRoutes, type ApprovalsRouteDeps } from './approvals/routes.ts'
 import { createGameRoutes, type GameRouteDeps } from './game/routes.ts'
 import { createHistoryRoutes, type HistoryRouteDeps } from './history/routes.ts'
+import { createInjectionsRoutes, type InjectionsRouteDeps } from './injections/routes.ts'
 import { createLearnRoutes, type LearnRouteDeps } from './learn/routes.ts'
+import { createRivalsRoutes, type RivalsRouteDeps } from './rivals/routes.ts'
 import { createStatic } from './static.ts'
 import { createStrategyRoutes, type StrategyRouteDeps } from './strategy/routes.ts'
 import { createTranscriptRoutes, type TranscriptRouteDeps } from './transcript/routes.ts'
@@ -64,6 +76,15 @@ export interface AppDeps {
   readonly history?: Pick<HistoryRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<HistoryRouteDeps, 'limiter'>>
   /** What we aim for and why we hold or do not buy (server/strategy); absent → /api/strategy answers `enabled: false`. */
   readonly strategy?: Pick<StrategyRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<StrategyRouteDeps, 'limiter'>>
+  /** The rivals' albums by the public feed (server/rivals); absent → /api/rivals answers `enabled: false`. */
+  readonly rivals?: Pick<RivalsRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<RivalsRouteDeps, 'limiter'>>
+  /** The injection attempts our agents recorded (server/injections); absent → /api/injections answers `enabled: false`. */
+  readonly injections?: Pick<InjectionsRouteDeps, 'enabled' | 'snapshot'> & Partial<Pick<InjectionsRouteDeps, 'limiter'>>
+  /** The dealers' display names (server/dealers.ts); absent → /api/dealers answers an empty list. */
+  readonly dealerNames?: () => Promise<DealerNames>
+  /** The Approvals screen (server/approvals); absent → every /api/approver/* path answers like an unknown /api path. */
+  readonly approvals?: Pick<ApprovalsRouteDeps, 'config'> &
+    Partial<Pick<ApprovalsRouteDeps, 'fetchImpl' | 'timeoutMs' | 'sessions' | 'guard' | 'writeLimiter' | 'sessionWriteLimiter' | 'readLimiter' | 'pollLimiter' | 'loginLimiter' | 'deviceGuard' | 'now' | 'snapshotMs'>>
 }
 
 const CSP = [
@@ -159,7 +180,12 @@ interface TtsRequest {
  * templates, a line generated from a real conversation's structure, or a quote the server itself read
  * from the database (`vouches`). Nothing a caller invents is ever voiced.
  */
-export function parseTtsRequest(raw: string, available: readonly ProviderId[], vouches: (text: string, speaker: Speaker) => boolean = () => false): TtsRequest | string {
+export function parseTtsRequest(
+  raw: string,
+  available: readonly ProviderId[],
+  vouches: (text: string, speaker: Speaker) => boolean = () => false,
+  recorded: (text: string) => boolean = () => false,
+): TtsRequest | string {
   let body: unknown
   try {
     body = JSON.parse(raw)
@@ -179,8 +205,9 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[], v
   const own = (l: Lang) => isShowLine(speaker, clean, l) || isRealLine(clean, l)
   const lang = rawLang ?? LANGS.find(own)
   if (lang && own(lang)) return { provider, speaker, lang, text: clean }
-  // A quote the server read from the database itself: voiced only in the language it is actually in.
-  if (vouches(clean, speaker)) {
+  // A quote the server read from the database itself: voiced only in the language it is actually in, and never
+  // when it has an injection's shape or our agents recorded it as one (it stays a caption).
+  if (vouches(clean, speaker) && !looksLikeInjection(clean) && !recorded(clean)) {
     const detected = detectLang(clean)
     const quoteLang = rawLang ?? (detected === 'unknown' ? undefined : detected)
     if (quoteLang && detected === quoteLang) return { provider, speaker, lang: quoteLang, text: clean }
@@ -188,7 +215,46 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[], v
   return 'only the show\'s own lines are spoken here'
 }
 
-export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+/** The recorded texts as the proxy compares them: cleaned once per snapshot (the poller keeps its rows while they hold). */
+interface RecordedIndex {
+  readonly exact: ReadonlySet<string>
+  readonly cleaned: readonly string[]
+}
+
+const recordedIndexes = new WeakMap<readonly { readonly raw: string }[], RecordedIndex>()
+
+function recordedIndex(rows: readonly { readonly raw: string }[]): RecordedIndex {
+  let index = recordedIndexes.get(rows)
+  if (!index) {
+    const cleaned = rows.flatMap((r) => cleanQuote(r.raw, Number.POSITIVE_INFINITY) ?? [])
+    index = { exact: new Set(cleaned), cleaned }
+    recordedIndexes.set(rows, index)
+  }
+  return index
+}
+
+/**
+ * The TTS proxy's last wall: a quote that IS one of the recorded attempts. The quote is `cleanQuote`'s output (hidden
+ * characters, tags and links stripped, cut at 280 with "…"), so the recorded text goes through the same cleaning and
+ * must be equal, or, for a quote cleanQuote cut (longer than half the cap, ending in "…"), start with it. Never a loose
+ * substring match: one short recorded text must not silence every dealer, nor a recorded "Bueno" every "Bueno…".
+ */
+export function isRecordedInjection(rows: readonly { readonly raw: string }[], text: string): boolean {
+  const said = cleanQuote(text, Number.POSITIVE_INFINITY)
+  if (!said) return false
+  const index = recordedIndex(rows)
+  if (index.exact.has(said)) return true
+  if (!said.endsWith('…') || said.length <= MAX_QUOTE / 2) return false
+  const cut = said.slice(0, -1).trimEnd()
+  return index.cleaned.some((raw) => raw.startsWith(cut))
+}
+
+/** The request handler, plus `upgrade` for the server's 'upgrade' event (the game stream's WebSocket, GET /api/game/ws). */
+export type AppHandler = ((req: IncomingMessage, res: ServerResponse) => Promise<void>) & {
+  readonly upgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void
+}
+
+export function createApp(deps: AppDeps): AppHandler {
   const log = deps.log ?? defaultLog
   const fetchImpl = deps.fetchImpl ?? fetch
   const limits = deps.limits ?? DEFAULT_LIMITS
@@ -236,6 +302,33 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     address: (req) => clientAddress(req, limits.clientIpHeader),
   })
 
+  const rivals = createRivalsRoutes({
+    enabled: () => false, snapshot: () => EMPTY_RIVALS, token: null,
+    ...deps.rivals,
+    headers: SECURITY_HEADERS,
+    address: (req) => clientAddress(req, limits.clientIpHeader),
+  })
+
+  const injections = createInjectionsRoutes({
+    enabled: () => false, snapshot: () => EMPTY_INJECTIONS,
+    ...deps.injections,
+    headers: SECURITY_HEADERS,
+    address: (req) => clientAddress(req, limits.clientIpHeader),
+  })
+
+  // Off: never mounted, so /api/approver/* falls through to the unknown-/api answer below, byte for byte.
+  const approvals = deps.approvals
+    ? createApprovalsRoutes({
+        fetchImpl,
+        log,
+        ...deps.approvals,
+        headers: SECURITY_HEADERS,
+        address: (req) => clientAddress(req, limits.clientIpHeader),
+        sameOrigin,
+        readBody,
+      })
+    : null
+
   async function synthesize(req: TtsRequest): Promise<Audio> {
     if (req.provider === 'elevenlabs' && deps.config.elevenlabs) return elevenLabs(deps.config.elevenlabs, req.speaker, req.lang, req.text, fetchImpl)
     if (req.provider === 'gemini' && deps.config.gemini) return gemini(deps.config.gemini, req.speaker, req.lang, req.text, fetchImpl)
@@ -252,7 +345,12 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       res.on('finish', () => req.socket.destroy())
       return json(res, 413, { error: 'too_large' }, { Connection: 'close' })
     }
-    const parsed = parseTtsRequest(raw, available, (text, speaker) => deps.transcript?.vouchQuotes === true && transcriptStore.quote(text)?.speaker === speaker)
+    const parsed = parseTtsRequest(
+      raw,
+      available,
+      (text, speaker) => deps.transcript?.vouchQuotes === true && transcriptStore.quote(text)?.speaker === speaker,
+      (text) => isRecordedInjection(deps.injections?.snapshot().rows ?? [], text),
+    )
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
     const key = `${parsed.provider}|${parsed.lang}|${parsed.speaker}|${parsed.text}`
     const started = Date.now()
@@ -297,17 +395,39 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     res.end(audio.body)
   }
 
-  return async (req, res) => {
+  /** Only the game stream upgrades to a WebSocket; any other path is answered 404 and closed. */
+  function upgradePath(req: IncomingMessage): string {
+    try {
+      return new URL(req.url ?? '/', 'http://local').pathname
+    } catch {
+      return ''
+    }
+  }
+
+  function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    if (game.upgrade(req, socket, head, upgradePath(req))) return
+    socket.on('error', () => socket.destroy())
+    socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
+  }
+
+  const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
       const path = new URL(req.url ?? '/', 'http://local').pathname
       if (path === '/health') return json(res, 200, { ok: true, service: 'bazaar-live', tts: available })
       if (path === '/api/tts/providers') return json(res, 200, { providers: available })
       if (path === '/api/tts') return await tts(req, res)
+      if (path === '/api/dealers') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'GET, HEAD' })
+        return json(res, 200, { names: deps.dealerNames ? await deps.dealerNames() : {} })
+      }
       if (transcript(req, res, path)) return
       if (game(req, res, path)) return
       if (learn(req, res, path)) return
       if (history(req, res, path)) return
       if (strategy(req, res, path)) return
+      if (rivals(req, res, path)) return
+      if (injections(req, res, path)) return
+      if (approvals && (await approvals(req, res, path))) return
       if (path.startsWith('/api/')) return json(res, 404, { error: 'not_found' })
       if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' })
       await serveStatic(req, res, SECURITY_HEADERS)
@@ -317,4 +437,5 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       else res.end()
     }
   }
+  return Object.assign(handler, { upgrade })
 }

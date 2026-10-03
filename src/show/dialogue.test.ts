@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PACKS } from '../../shared/lines.ts'
-import { KNOWN_TAGS, tagsOf } from '../../shared/tags.ts'
+import { guestSpeaker, KNOWN_TAGS, tagsOf } from '../../shared/tags.ts'
 import type { ShowEvent } from '../model/events'
 import { parseEnvelope } from '../model/sanitize'
 import { MOCK_STEPS, shiftEnvelope } from '../mock/player'
@@ -66,6 +66,17 @@ describe('toBeat', () => {
       expect(beat?.cue).toMatchObject({ kind: 'dealer', dealer: 'chato', move })
     }
     expect(toBeat(decision('taker', { kind: 'dealer_open', inputs: { dealer: 'abuela', item: 'sobre_barrio' } }))?.cue).toMatchObject({ dealer: 'abuela' })
+  })
+
+  it("gives a dealer move's lines to that dealer's own voice: Pilar, or a guest voice for a new dealer, never the narrator", () => {
+    const speakers = (dealer: string) =>
+      (toBeat(decision('taker', { kind: 'dealer_open', inputs: { dealer, item: 'sobre_barrio' } }))?.lines ?? []).filter((l) => l.speaker !== 'buyer' && l.speaker !== 'seller')
+    const pilar = speakers('pilar')
+    expect(pilar.length).toBeGreaterThan(0)
+    for (const l of pilar) expect(l.speaker).toBe('pilar')
+    const picaros = speakers('picaros')
+    expect(picaros.length).toBeGreaterThan(0)
+    for (const l of picaros) expect(l).toMatchObject({ speaker: guestSpeaker('picaros'), dealer: 'picaros' })
   })
 
   it('celebrates an accepted execution and grumbles at a refused one', () => {

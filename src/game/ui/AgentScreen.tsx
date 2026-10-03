@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { createContext, useContext, useMemo, useState } from 'react'
 import type { OutcomeRow } from '../decisions.ts'
 import { fmtP, signed } from '../game.ts'
 import { agentName, ago, agoText, denialText, kindName, percent, ruleName, whoName } from '../humanize.ts'
@@ -11,6 +11,7 @@ import {
   type AgentState, type AgentStatus, type Blocks, type Deal, type DealTally, type Ledger, type Run,
 } from '../views/decisions.ts'
 import { Badge, Empty, EventLink, Panel, Seg, type Tone } from './bits.tsx'
+import { MoneyLevers } from './Money.tsx'
 import { toneOf } from './tone.ts'
 import { Ago, ItemName } from './words.tsx'
 
@@ -28,9 +29,13 @@ function because(t: GameStrings, st: AgentStatus, chip: HealthChip | undefined):
 const priceText = (run: Run): string | null =>
   run.minPrice == null || run.maxPrice == null ? null : run.minPrice === run.maxPrice ? fmtP(run.minPrice) : `${run.minPrice}–${fmtP(run.maxPrice)}`
 
+/** The floor and the hour's cap now, so an old money denial says its value was the value then. */
+const LimitsNow = createContext<{ readonly floor: number; readonly maxSpend: number } | undefined>(undefined)
+
 /** What a run of decisions was and how it ended: kind · item · counterparty · price, then why a guardrail said no, or its status. */
 function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
   const t = useGameStrings()
+  const now = useContext(LimitsNow)
   const price = priceText(run)
   return (
     <>
@@ -41,7 +46,7 @@ function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
       {price && <b className="gm-dec-price">{price}</b>}
       {run.verdict === 'denied' ? (
         <span className="agt-rule" title={ruleName(t, run.rule)}>
-          <span className="gm-bad">✖</span> <b>{denialText(t, run.rule, run.last.text)}</b>
+          <span className="gm-bad">✖</span> <b>{denialText(t, run.rule, run.last.text, now)}</b>
         </span>
       ) : isWrite(run.kind) ? (
         <Badge tone={STATUS_TONE[run.status]}>{t.decide.status[run.status]}</Badge>
@@ -147,38 +152,14 @@ function AgentsPanel({ statuses, chips }: { statuses: AgentStatus[]; chips: Heal
   )
 }
 
-/** A meter against a cap: `warn` once it is nearly used up, `bad` once it is. */
-function Meter({ label, value, cap, text, invert = false }: { label: string; value: number; cap: number; text: string; invert?: boolean }) {
-  // invert: cash is good ABOVE its floor, so the meter shows how close the floor is.
-  const used = invert ? share(cap, value) : share(value, cap)
-  const tone = used >= 1 ? 'bad' : used >= 0.8 ? 'warn' : 'ok'
-  return (
-    <div className="gm-meter" data-level={tone}>
-      <dt className="eyebrow">{label}</dt>
-      <dd>
-        <span className="gm-meter-num">{text}</span>
-        <span className="gm-track" aria-hidden="true">
-          <span className="gm-fill" style={{ width: `${Math.round(used * 100)}%` }} />
-        </span>
-      </dd>
-    </div>
-  )
-}
-
 function MoneyPanel({ ledger }: { ledger: Ledger | null }) {
   const t = useGameStrings()
   return (
     <Panel title={t.agt.money} sub={t.decide.ledgerSub}>
       {ledger ? (
         <>
-          <dl className="gm-meters">
-            <Meter label={t.decide.spent} value={ledger.spent} cap={ledger.limits.spendPerHour} text={`${fmtP(ledger.spent)} / ${fmtP(ledger.limits.spendPerHour)}`} />
-            <Meter label={t.decide.cashFloor} value={ledger.cash} cap={ledger.limits.cashFloor} text={`${fmtP(ledger.cash)} / ${fmtP(ledger.limits.cashFloor)}`} invert />
-          </dl>
-          <p className="agt-headroom" data-zero={ledger.headroom <= 0 || undefined}>
-            {t.decide.headroom(fmtP(ledger.headroom))}
-          </p>
-          <p className="agt-small gm-muted">{t.agt.acceptsTick(ledger.accepts, ledger.limits.acceptsPerTick)}</p>
+          <MoneyLevers money={ledger.money} release={ledger.release} />
+          <p className="agt-small gm-muted">{t.agt.acceptsTick(ledger.accepts, ledger.acceptsPerTick)}</p>
         </>
       ) : (
         <Empty>{t.decide.noLedger}</Empty>
@@ -410,6 +391,9 @@ export function AgentScreen() {
     [state, version, nowMs],
   )
   const newer = frozenAt == null ? 0 : Math.max(0, state.tick - frozenAt)
+  const floor = top.ledger?.money.floor
+  const maxSpend = top.ledger?.money.maxSpend.value
+  const limitsNow = useMemo(() => (floor !== undefined && maxSpend !== undefined ? { floor, maxSpend } : undefined), [floor, maxSpend])
   const controls = (
     <>
       <Seg
@@ -436,7 +420,7 @@ export function AgentScreen() {
     </>
   )
   return (
-    <>
+    <LimitsNow.Provider value={limitsNow}>
       <div className="agt-top">
         <AgentsPanel statuses={top.statuses} chips={top.chips} />
         <MoneyPanel ledger={top.ledger} />
@@ -456,7 +440,7 @@ export function AgentScreen() {
           <Empty>{filter === 'all' ? t.agt.waiting : t.agent.nothingKind}</Empty>
         )}
       </Panel>
-    </>
+    </LimitsNow.Provider>
   )
 }
 

@@ -211,3 +211,12 @@ describe('Web Speech and a real line that names its language (the browser object
     expect(spoken).toEqual([])
   })
 })
+
+describe('every dealer sounds like itself in the browser voice too', () => {
+  it('gives each speaker its own pitch and rate', () => {
+    const plain = (s: Speaker) => paramsFor(u(s, 'Hola', 'en'))
+    const speakers: Speaker[] = ['buyer', 'seller', 'abuela', 'chato', 'pilar', 'guest1', 'guest2', 'guest3', 'narrator']
+    const voicings = speakers.map((s) => `${plain(s).pitch}|${plain(s).rate}`)
+    expect(new Set(voicings).size).toBe(speakers.length)
+  })
+})

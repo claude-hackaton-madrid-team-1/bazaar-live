@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto'
 import { detectLang } from '../../shared/detect-lang.ts'
 import type { Lang } from '../../shared/lang.ts'
-import type { Speaker } from '../../shared/tags.ts'
+import { dealerSpeaker, type Speaker } from '../../shared/tags.ts'
 import type { Draft, TranscriptItem } from '../../shared/transcript.ts'
 
 export interface StoreOptions {
@@ -95,7 +95,8 @@ export class TranscriptStore {
   private indexQuotes(item: TranscriptItem): void {
     const speaker = item.kind === 'thread_line' && item.who === 'them' ? dealerSpeaker(item.counterpart) : null
     const text = item.text
-    if (!speaker || !text || this.quotes.has(text)) return
+    // a quote whose raw words had an injection's shape is never vouched for a voice (rows.ts sets `muted`)
+    if (!speaker || !text || item.muted || this.quotes.has(text)) return
     const lang = detectLang(text)
     if (lang === 'unknown') return
     this.quotes.set(text, { lang, speaker })
@@ -104,11 +105,4 @@ export class TranscriptStore {
       if (oldest !== undefined) this.quotes.delete(oldest)
     }
   }
-}
-
-/** The stage character of a dealer: only the two organiser-hosted dealers have a voice of their own. */
-export function dealerSpeaker(counterpart: string | null): 'abuela' | 'chato' | null {
-  const id = (counterpart ?? '').toLowerCase()
-  if (id.includes('abuela') || id.includes('carmen')) return 'abuela'
-  return id.includes('chato') ? 'chato' : null
 }

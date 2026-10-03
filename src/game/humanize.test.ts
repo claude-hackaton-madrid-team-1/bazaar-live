@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { nameOfRef } from './cards.ts'
 import { GAME_STRINGS } from './strings.ts'
 import sql from '../../db/agent_decisions.sql?raw'
-import { ago, itemOf, labelOf, parseDenial, percent, rarityOfRule, whoOf } from './humanize.ts'
+import { ago, denialText, itemOf, labelOf, parseDenial, percent, rarityOfRule, whoOf } from './humanize.ts'
 
 describe('parseDenial', () => {
   it('reads the three shapes guardrails.check() prints', () => {
@@ -24,6 +24,7 @@ describe('whoOf', () => {
   it('names dealers, rivals, teams and venues', () => {
     expect(whoOf('abuela')).toEqual({ kind: 'dealer', name: 'Abuela Carmen' })
     expect(whoOf('chato')).toEqual({ kind: 'dealer', name: 'El Chato' })
+    expect(whoOf('picaros')).toEqual({ kind: 'dealer', name: 'Los Pícaros' })
     expect(whoOf('pilar')).toEqual({ kind: 'dealer', name: 'Doña Pilar' })
     expect(whoOf('rival_sol')).toEqual({ kind: 'rival', name: 'Rival Sol' })
     expect(whoOf('Rival Verde')).toEqual({ kind: 'rival', name: 'Rival Verde' })
@@ -80,6 +81,13 @@ describe('the words in both languages', () => {
     expect(en.denial(cash)).toBe('would leave us 2 P, under the 50 P floor')
     expect(es.denial(parseDenial('price 27 > max_price_uncommon 26')!)).toBe('cuesta 27 P; nuestro tope para poco comunes es 26 P')
     expect(en.denial(parseDenial('spend 128 + 24 > max_spend_per_game_hour 150')!)).toBe('we would spend 152 P this game hour; the cap is 150 P')
+  })
+  it('reads the floor with the bond reserve as their sum, and says an old money limit was the value then', () => {
+    expect(parseDenial('cash 300 - 40 < cash_floor 11 + venue_bond_reserve 280')).toEqual({ shape: 'cash', cash: 300, cost: 40, floor: 291 })
+    const g = GAME_STRINGS.es
+    expect(denialText(g, 'cash_floor', 'cash 81 - 79 < cash_floor 50', { floor: 20, maxSpend: 250 })).toBe('nos dejaría con 2 P, por debajo del suelo de entonces (50 P)')
+    expect(denialText(g, 'cash_floor', 'cash 30 - 15 < cash_floor 20', { floor: 20, maxSpend: 250 })).toBe('nos dejaría con 15 P, por debajo del suelo de 20 P')
+    expect(denialText(GAME_STRINGS.en, 'max_spend_per_game_hour', 'spend 128 + 24 > max_spend_per_game_hour 150', { floor: 20, maxSpend: 250 })).toBe('we would spend 152 P this game hour; the cap was 150 P')
   })
   it('names every agent, and says time as minutes', () => {
     expect([es.agents.taker, es.agents.maker, es.agents.duels]).toEqual(['Comprador', 'Vendedor', 'Duelos'])

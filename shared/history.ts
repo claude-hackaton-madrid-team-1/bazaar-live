@@ -39,7 +39,20 @@ export interface Order {
   readonly kind: string
   readonly price: number | null
   readonly item: string | null
+  /** The ledger's source: an agent (taker, maker, duels) or a command run by hand (sell, dealer-sell, ...). */
   readonly agent: string
+  /** A listing posted by hand (item `hands-off:<offer>`): that offer, as the feed has it; null otherwise. */
+  readonly offer?: OrderOffer | null
+}
+
+/** A board offer of ours and what became of it (db/game.sql's show.game_our_offers). */
+export interface OrderOffer {
+  readonly id: number
+  readonly side: 'ask' | 'bid' | 'swap'
+  readonly card: string | null
+  readonly venue: string | null
+  readonly expiresTick: number | null
+  readonly status: 'open' | 'settled' | 'cancelled' | 'expired'
 }
 
 /** A feed event of ours that can move cash or stock other than a trade. */
@@ -91,6 +104,30 @@ export interface ScoreMark {
   readonly at: string | null
 }
 
+/**
+ * One team's public leaderboard read (db/teams_score.sql), kept when something moved for it (and its first and latest
+ * of the day). score = negotiating + market, in points, every team the same way: these compare like with like.
+ * pages, deals and level score nothing by themselves. Our private parts (ScorePoint's duel, neg, ...) are not here.
+ */
+export interface TeamScore {
+  readonly day: string
+  readonly tick: number
+  /** `t05`. */
+  readonly team: string
+  readonly rank: number
+  readonly score: number
+  readonly negotiating: number | null
+  readonly market: number | null
+  readonly level: number | null
+  /** Complete album pages. */
+  readonly pages: number | null
+  readonly deals: number | null
+  /** When the board was read (ISO), or null. */
+  readonly at: string | null
+  /** The team's venue at that read (`v07`), or null without one. */
+  readonly venue: string | null
+}
+
 /** Which views answered on the last poll (a view the admin has not applied yet is `false`). */
 export interface HistoryParts {
   readonly points: boolean
@@ -99,6 +136,7 @@ export interface HistoryParts {
   readonly events: boolean
   readonly scores: boolean
   readonly marks: boolean
+  readonly board: boolean
 }
 
 export interface HistorySnapshot {
@@ -111,15 +149,18 @@ export interface HistorySnapshot {
   readonly events: readonly TeamEvent[]
   readonly scores: readonly ScorePoint[]
   readonly marks: readonly ScoreMark[]
+  /** Every team's board reads (db/teams_score.sql), in day and tick order. */
+  readonly board: readonly TeamScore[]
 }
 
 export const EMPTY_HISTORY: HistorySnapshot = {
   at: null,
-  parts: { points: false, trades: false, orders: false, events: false, scores: false, marks: false },
+  parts: { points: false, trades: false, orders: false, events: false, scores: false, marks: false, board: false },
   points: [],
   trades: [],
   orders: [],
   events: [],
   scores: [],
   marks: [],
+  board: [],
 }

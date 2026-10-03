@@ -9,8 +9,10 @@
  * are. Spanish never reaches an English voice, nor the reverse.
  */
 import { detectLang, type QuoteLang } from '../../shared/detect-lang.ts'
+import { looksLikeInjection } from '../../shared/injections.ts'
 import type { Lang } from '../../shared/lang.ts'
 import { duelEndLine, duelOfferLine, offerLine, openedLine, settlementLine } from '../../shared/real-lines.ts'
+import { dealerSpeaker, isGuest } from '../../shared/tags.ts'
 import type { DuelLine, OfferView, TranscriptItem, Who } from '../../shared/transcript.ts'
 import { PRIORITY, type Beat, type Cue, type Line, type Speaker } from './beat'
 import { dealerId } from './words'
@@ -34,18 +36,21 @@ export interface QuotePlan {
   readonly lang: QuoteLang
 }
 
+/** A quote with an injection's shape is never voiced, whatever its language: it stays a caption. */
 export function planQuote(text: string, selected: Lang): QuotePlan {
   const lang = detectLang(text)
-  return { speak: lang === selected, lang }
+  return { speak: lang === selected && !looksLikeInjection(text), lang }
 }
 
 /** The most duel lines one replay plays: the end of a haggle is the story. */
 const MAX_REPLAY_LINES = 6
 
-const speakerOfDealer = (counterpart: string | null): Speaker => {
-  const id = dealerId(counterpart ?? undefined)
-  return id === 'other' ? 'narrator' : id
-}
+/** Every dealer speaks with its own voice: a known one by id, any other dealer with a guest voice. */
+const speakerOfDealer = (counterpart: string | null): Speaker => dealerSpeaker(counterpart) ?? 'narrator'
+
+/** A guest voice's lines carry the dealer's id, so the captions can show its name, not the voice's slot. */
+const dealerLines = (counterpart: string | null, lines: readonly Line[]): Line[] =>
+  lines.map((l) => (isGuest(l.speaker) && counterpart ? { ...l, dealer: counterpart.trim().toLowerCase() } : l))
 
 /** Our agent speaks as the buyer when it pays and as the seller when it asks. */
 const ourChair = (offer: OfferView): Speaker => (offer.verb === 'bid' ? 'buyer' : 'seller')
@@ -88,8 +93,9 @@ function threadLine(item: TranscriptItem, lang: Lang, opts: RealOptions): Beat |
     agent: item.offer?.verb === 'bid' ? 'maker' : 'taker',
     priority: item.offer?.final ? PRIORITY.dealer : PRIORITY.dealerBid,
     cue,
-    // Only the two hosted dealers have a voice for their own words; any other dealer is a caption.
-    lines: quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, { speakQuotes: opts.speakQuotes && speakerOfDealer(item.counterpart) !== 'narrator' }),
+    // A dealer's words are voiced by its own voice; a counterpart with no dealer voice (a team) is a caption, and so
+    // is a quote the server muted (its raw words had an injection's shape).
+    lines: dealerLines(item.counterpart, quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, { speakQuotes: opts.speakQuotes && speakerOfDealer(item.counterpart) !== 'narrator' && item.muted !== true })),
   })
 }
 

@@ -3,7 +3,7 @@
  * every field is checked, a row in an odd shape loses that field or is skipped when it lacks what makes it
  * a row (a day, a tick, an amount), it never breaks the snapshot.
  */
-import type { CashPoint, Order, ScoreMark, ScorePoint, TeamEvent, Trade } from '../../shared/history.ts'
+import type { CashPoint, Order, OrderOffer, ScoreMark, ScorePoint, TeamEvent, TeamScore, Trade } from '../../shared/history.ts'
 import { line, num } from '../learn/rows.ts'
 
 type Row = Record<string, unknown>
@@ -61,7 +61,20 @@ export function orderOf(raw: unknown): Order | null {
   const tick = int(r.tick)
   const kind = word(r.kind)
   if (id === null || !day || tick === null || !kind) return null
-  return { id, day, tick, kind, price: int(r.price), item: word(r.item), agent: word(r.agent) ?? '?' }
+  return { id, day, tick, kind, price: int(r.price), item: word(r.item), agent: word(r.agent) ?? '?', offer: orderOfferOf(r) }
+}
+
+const SIDES = ['ask', 'bid', 'swap'] as const
+const STATUSES = ['open', 'settled', 'cancelled', 'expired'] as const
+const oneOf = <T extends string>(list: readonly T[], raw: unknown): T | null => (list as readonly unknown[]).includes(raw) ? (raw as T) : null
+
+/** The offer a hand listing carries (the view's offer_* columns), or null when it has none (or the view predates them). */
+function orderOfferOf(r: Row): OrderOffer | null {
+  const id = int(r.offer)
+  const side = oneOf(SIDES, r.offer_side)
+  const status = oneOf(STATUSES, r.offer_status)
+  if (id === null || !side || !status) return null
+  return { id, side, card: line(r.offer_card, 16), venue: line(r.offer_venue, 32), expiresTick: int(r.offer_expires), status }
 }
 
 export function teamEventOf(raw: unknown): TeamEvent | null {
@@ -110,4 +123,30 @@ export function scoreMarkOf(raw: unknown): ScoreMark | null {
   const agent = line(r.agent, 24)
   if (r.kind === 'start' && !agent) return null
   return { kind: r.kind, id, day, tick, agent, action: line(r.action, 16), note: line(r.note, 120), at: isoOf(r.at) }
+}
+
+const TEAM = /^t\d{1,3}$/
+
+export function teamScoreOf(raw: unknown): TeamScore | null {
+  const r = asRow(raw)
+  const day = dayOf(r.day)
+  const tick = int(r.tick)
+  const team = typeof r.team === 'string' && TEAM.test(r.team) ? r.team : null
+  const rank = int(r.rank)
+  const score = num(r.score)
+  if (!day || tick === null || !team || rank === null || rank < 1 || score === null) return null
+  return {
+    day,
+    tick,
+    team,
+    rank,
+    score,
+    negotiating: num(r.negotiating),
+    market: num(r.market),
+    level: int(r.level),
+    pages: int(r.pages),
+    deals: int(r.deals),
+    at: isoOf(r.read_at),
+    venue: typeof r.venue === 'string' && /^[a-z0-9_-]{1,24}$/.test(r.venue) ? r.venue : null,
+  }
 }

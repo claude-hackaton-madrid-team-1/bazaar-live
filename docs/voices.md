@@ -1,8 +1,8 @@
 # The paid voices: ElevenLabs settings per role (for the pitch)
 
-Nothing here was run: **no ElevenLabs or Gemini call was made to write or test this.** The ElevenLabs key
-is not on the Railway service and stays off until the pitch. Every fact below comes from ElevenLabs' own
-documentation (pages read on 2026-10-03, linked under "Sources"); the request the server will send is built
+The settings below come from ElevenLabs' own documentation; the dealer voices ("One voice per dealer") were
+chosen with the ElevenLabs API on 2026-10-03 (six short test lines, nothing else). Every other fact comes from
+the documentation (pages read on 2026-10-03, linked under "Sources"); the request the server will send is built
 by `elevenRequest()` in `server/providers.ts` and pinned by a test that sends nothing
 (`server/app.test.ts`, "builds the ElevenLabs request…").
 
@@ -39,9 +39,47 @@ December 31, 2026", so they work for the pitch.
 |---|---|---|---|---|---|---|
 | `seller` | the maker: a theatrical broker, loud and charming | `s3TPKV1kjDlVtZbl4Ksh` | 0.40 | 0.75 | `[excited]`, `[mischievously]`, `[whispers]`, `[laughs]` | `ELEVENLABS_VOICE_SELLER` |
 | `buyer` | the taker: a cheeky, quick bargain hunter | `IKne3meq5aSn9XLyUdCD` | 0.35 | 0.75 | `[sarcastic]`, `[excited]`, `[sighs]`, `[curious]` | `ELEVENLABS_VOICE_BUYER` |
-| `abuela` | Abuela Carmen: warm, slow, affectionate | `XB0fDUnXU5powFXDhCwa` | 0.55 | 0.80 | `[laughs]`, `[sighs]` | `ELEVENLABS_VOICE_ABUELA` |
-| `chato` | El Chato: gruff, laconic, never kind | `N2lVS1w4EtoT3dr4eOWO` | 0.50 | 0.80 | `[snorts]`, `[sighs]`, `[sarcastic]` | `ELEVENLABS_VOICE_CHATO` |
+| `abuela` | Abuela Carmen: warm, slow, affectionate | `RTuKyXJgRGAQSx8Qz8Mf` | 0.55 | 0.80 | `[laughs]`, `[sighs]` | `ELEVENLABS_VOICE_ABUELA` |
+| `chato` | El Chato: gruff, laconic, never kind | `RnKqZYEeVQciORlpiCz0` | 0.50 | 0.80 | `[snorts]`, `[sighs]`, `[sarcastic]` | `ELEVENLABS_VOICE_CHATO` |
+| `pilar` | Doña Pilar: elegant, formal, from the Salamanca district | `9oWKy782oltLmeuOUdq7` | 0.60 | 0.80 | `[sighs]` | `ELEVENLABS_VOICE_PILAR` |
+| `guest1` | the first guest dealer voice (deep, mysterious man) | `5egO01tkUjEzu7xSSE8M` | 0.45 | 0.75 | any | `ELEVENLABS_VOICE_GUEST1`, or the 1st id of `ELEVENLABS_VOICE_POOL` |
+| `guest2` | the second guest dealer voice (young, bright woman) | `1eHrpOW5l98cxiSRjbzJ` | 0.45 | 0.75 | any | `ELEVENLABS_VOICE_GUEST2`, or the 2nd id of `ELEVENLABS_VOICE_POOL` |
+| `guest3` | the third guest dealer voice (old, theatrical man) | `orF2qy9215xjwqqxqsWW` | 0.50 | 0.75 | any | `ELEVENLABS_VOICE_GUEST3`, or the 3rd id of `ELEVENLABS_VOICE_POOL` |
 | `narrator` | the radio host for "something new" | `onwK4e9ZLuTAKqWW03F9` | 0.60 | 0.75 | none (calm) | `ELEVENLABS_VOICE_NARRATOR` |
+
+### One voice per dealer (chosen 2026-10-03 with the ElevenLabs API)
+
+Every dealer speaks and captions as itself, never as the narrator. The three dealers we know have their own
+voices; a dealer that arrives later (L4, L5) gets one of the three guest voices, picked by a hash of its id
+(`guestSpeaker()` in `shared/tags.ts`), so the same dealer always sounds the same and never takes the
+narrator's or a known dealer's voice. Its caption shows its display name from the game's `GET /api/dealers`
+(read keyless by the server, `server/dealers.ts`, served to the page as `/api/dealers`).
+
+The account library has a single Spanish voice (Carmelo), so the others come from the shared Voice Library,
+filtered on Spanish with a peninsular (Spain) accent. On a paid tier a shared voice is used by id directly,
+without adding it to the account; each returned HTTP 200 on one short `eleven_v4` test line. The shared voices
+carry a 730-day notice period.
+
+| Dealer | Voice | Voice id | Labels | Why |
+|---|---|---|---|---|
+| Abuela Carmen (`abuela`) | Tete – Slow, Reflexive and Soft | `RTuKyXJgRGAQSx8Qz8Mf` | peninsular, old, female, calm | "tenderness and memory": a warm, patient grandmother |
+| El Chato (`chato`) | Baldo – Husky, Mature and Alluring | `RnKqZYEeVQciORlpiCz0` | peninsular, middle-aged, male, serious | husky and serious: a gruff stallholder |
+| Doña Pilar (`pilar`) | Alegria Sana – Diplomatic and Confident | `9oWKy782oltLmeuOUdq7` | peninsular, old, female, classy | old, classy and diplomatic: a formal Salamanca lady |
+| guest 1 | Carmelo – Mysterious & Deep | `5egO01tkUjEzu7xSSE8M` | peninsular, middle-aged, male, deep | smooth and deep, unlike Baldo's husk |
+| guest 2 | Raquel – Young, Bright and Cheerful | `1eHrpOW5l98cxiSRjbzJ` | peninsular, young, female | the only young voice in the cast |
+| guest 3 | Rafael – Expressive and Theatrical | `orF2qy9215xjwqqxqsWW` | peninsular, old, male, a little raspy | a theatrical older man, like an auctioneer |
+
+Alternatives, in case a voice sounds wrong when auditioned: El Chato → Marcos Vidal `BMHmZiBmdOZuKlbiqBOk` (rough,
+firm) or Johnny `HMCmDsbKeaSZp5LMOYKR` (mocking); Doña Pilar → Marisa `OTsv82NplloP7M5TyIJ3` (serene, classy) or
+Bárbara `oE9b8jFugLgWaRosYzRh` (posh Madrid, but middle-aged); Abuela Carmen → Rosa `ypIbR1aohyRSdDv25DPr`.
+
+**Unverified:** the voices were chosen from their labels and descriptions, not by ear, and none is tagged
+Madrid specifically (the Madrid-tagged ones found did not fit an older woman or a gruff man). Audition each with
+`?tts=elevenlabs&lang=es` before the pitch. On Railway only `ELEVENLABS_VOICE_SELLER` is set today
+(`JBFqnCBsd6RMkjVDRZzb`), so the dealers use these defaults unless a variable overrides them.
+
+The browser fallback (Web Speech) gives each dealer and guest voice its own pitch and rate
+(`src/tts/webspeech.ts`) and a voice of its gender when the browser has one (`src/tts/voices.ts`).
 
 Reasoning: the two leads trade jokes all day, so they get the lowest stability (widest range); the dealers
 repeat a few stock reactions, so they sit near the middle with a higher similarity so each stays recognisably

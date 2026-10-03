@@ -67,6 +67,10 @@ describe('WAKES', () => {
     expect(WAKES.strategy(tick('taker'))).toEqual([250, 2_500, 5_000])
     expect(WAKES.strategy(tick('maker'))).toEqual([])
     expect(WAKES.strategy(exec('cancel', 'maker'))).toEqual([250, 2_500])
+    // the rivals come from the feed archive, caught up a few seconds after the taker's tick
+    expect(WAKES.rivals(tick('taker'))).toEqual([5_000])
+    expect(WAKES.rivals(tick('maker'))).toEqual([])
+    expect(WAKES.rivals(exec('accept'))).toEqual([])
   })
 })
 

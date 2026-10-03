@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react'
-import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { LANGS, type Lang } from '../../../shared/lang.ts'
 import { setLang, useLang, useStrings } from '../../ui/lang'
 import { Nav } from '../../ui/Nav'
@@ -7,8 +7,10 @@ import { hrefOf, navigate } from '../../ui/route'
 import { fmtP, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame, useNow, type GameStatus } from '../store.ts'
+import { ledger } from '../views/decisions.ts'
 import { lastCashChange } from '../views/history.ts'
 import { HealthStrip } from './HealthStrip.tsx'
+import { MoneyChip } from './Money.tsx'
 import '../../ui/header.css'
 
 const LANG_NAME: Readonly<Record<Lang, string>> = { es: 'Castellano', en: 'English' }
@@ -94,6 +96,16 @@ export function CashDock() {
   return away && store.state.team ? <Cash dock /> : null
 }
 
+/** Beside our cash: the floor and what the next buy may cost (the agents' ledger, once it came). */
+function Room() {
+  const store = useGame()
+  const { state: s, version } = store
+  // the state is mutated in place: the version is what changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const money = useMemo(() => (s.team ? (ledger(s)?.money ?? null) : null), [s, version])
+  return money ? <MoneyChip money={money} /> : null
+}
+
 /** Day and tick, with a bar that fills until the next tick. */
 function Clock() {
   const store = useGame()
@@ -152,7 +164,10 @@ export function GameHeader() {
           </span>
         )}
         <Clock />
-        <Cash />
+        <span className="gm-money-chips">
+          <Cash />
+          <Room />
+        </span>
         <Kpi label={t.score}>{s.score.score ?? '—'}</Kpi>
         <Kpi label={t.rank}>{s.score.rank != null ? `#${s.score.rank}` : '—'}</Kpi>
       </div>

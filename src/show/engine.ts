@@ -40,6 +40,8 @@ export interface TranscriptEntry {
   readonly tick: number | null
   readonly speaker: Line['speaker']
   readonly text: string
+  /** The dealer a guest voice speaks for (see Line.dealer). */
+  readonly dealer?: string
   /** played: acted out; history: replayed on join; skipped: dropped on a busy tick. */
   readonly kind: 'played' | 'history' | 'skipped'
 }
@@ -418,7 +420,7 @@ export class ShowEngine {
 
   private appendLines(beat: Beat, kind: TranscriptEntry['kind'], only?: Line): readonly TranscriptEntry[] {
     const lines = only ? [only] : beat.lines
-    const added = lines.map((l, i) => ({ id: `${beat.id}#${only ? beat.lines.indexOf(only) : i}`, tick: beat.tick, speaker: l.speaker, text: l.text, kind }))
+    const added = lines.map((l, i) => ({ id: `${beat.id}#${only ? beat.lines.indexOf(only) : i}`, tick: beat.tick, speaker: l.speaker, text: l.text, kind, ...(l.dealer ? { dealer: l.dealer } : {}) }))
     return [...this.state.transcript, ...added].slice(-MAX_TRANSCRIPT)
   }
 

@@ -13,17 +13,17 @@ import { AGENTS, type AgentName } from '../../shared/decisions.ts'
 /** A guardrail's denial taken apart: the three shapes guardrails.check() prints, numbers kept. */
 export type Denial =
   | { readonly shape: 'price'; readonly rule: string; readonly price: number; readonly cap: number }
-  | { readonly shape: 'cash'; readonly cash: number; readonly cost: number; readonly floor: number }
-  | { readonly shape: 'spend'; readonly rule: string; readonly spent: number; readonly cost: number; readonly cap: number }
+  | { readonly shape: 'cash'; readonly cash: number; readonly cost: number; readonly floor: number; readonly then?: boolean }
+  | { readonly shape: 'spend'; readonly rule: string; readonly spent: number; readonly cost: number; readonly cap: number; readonly then?: boolean }
 
 const NUM = '(-?\\d+(?:\\.\\d+)?)'
 const PRICE = new RegExp(`price ${NUM} > (?:[a-z ]*?cap ${NUM} \\(([a-z_]+) [^)]*\\)|([a-z_]+) ${NUM})`)
-const CASH = new RegExp(`cash ${NUM} - ${NUM} < cash_floor ${NUM}`)
+const CASH = new RegExp(`cash ${NUM} - ${NUM} < cash_floor ${NUM}(?: \\+ venue_bond_reserve ${NUM})?`)
 const SPEND = new RegExp(`spend ${NUM} \\+ ${NUM} > ([a-z_]+) ${NUM}`)
 
 /**
- * `price 27 > max_price_uncommon 26`, `cash 81 - 79 < cash_floor 50`, `spend 128 + 24 > max_spend_per_game_hour 150`,
- * and the dealer's lifted cap (`price 97 > dealer final cap 96 (max_price_rare 80 lifted)`); null for anything else,
+ * `price 27 > max_price_uncommon 26`, `cash 81 - 79 < cash_floor 20` (with ` + venue_bond_reserve 270` while the
+ * venue's bond is held: the floor is their sum), `spend 128 + 24 > max_spend_per_game_hour 250`, and the dealer's lifted cap (`price 97 > dealer final cap 96 (max_price_rare 80 lifted)`); null for anything else,
  * so the caller falls back to the rule's name.
  */
 export function parseDenial(text: string | null | undefined): Denial | null {
@@ -34,7 +34,7 @@ export function parseDenial(text: string | null | undefined): Denial | null {
     return { shape: 'price', rule: liftedRule ?? rule ?? 'max_price', price: Number(price), cap: Number(liftedCap ?? cap) }
   }
   const c = CASH.exec(text)
-  if (c) return { shape: 'cash', cash: Number(c[1]), cost: Number(c[2]), floor: Number(c[3]) }
+  if (c) return { shape: 'cash', cash: Number(c[1]), cost: Number(c[2]), floor: Number(c[3]) + Number(c[4] ?? 0) }
   const s = SPEND.exec(text)
   if (s) return { shape: 'spend', rule: s[3] ?? 'max_spend_per_game_hour', spent: Number(s[1]), cost: Number(s[2]), cap: Number(s[4]) }
   return null
@@ -43,8 +43,8 @@ export function parseDenial(text: string | null | undefined): Denial | null {
 /** The rarity a `max_price_<rarity>` rule caps, or null. */
 export const rarityOfRule = (rule: string): string | null => /^max_price_([a-z]+)$/.exec(rule)?.[1] ?? null
 
-/** The game's three dealers by their stall names: proper nouns, the same in both languages. */
-const DEALERS: Readonly<Record<string, string>> = { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar' }
+/** The game's dealers by their stall names: proper nouns, the same in both languages. Los Pícaros open at level 4. */
+const DEALERS: Readonly<Record<string, string>> = { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar', picaros: 'Los Pícaros' }
 
 /** Who an id names: a dealer, a rival of the duels, a team (`t06`), a venue (`v03`), or something we keep as written. */
 export type Who =
@@ -121,9 +121,16 @@ export const kindName = (t: GameStrings, kind: string): string => labelOf(t.hum.
 export const whoName = (t: GameStrings, id: string): string => t.hum.who(whoOf(id))
 
 /** Why a guardrail said no, as a sentence when its text has numbers we read, else the rule's name. */
-export const denialText = (t: GameStrings, rule: string | null, text: string | null): string => {
+/**
+ * A denial as one sentence. `now`: the floor and the hour's cap today; a money denial that printed another value says it
+ * was the value then, so an old `cash_floor 50` never reads as today's floor.
+ */
+export const denialText = (t: GameStrings, rule: string | null, text: string | null, now?: { readonly floor: number; readonly maxSpend: number }): string => {
   const d = parseDenial(text)
-  return d ? t.hum.denial(d) : ruleName(t, rule)
+  if (!d) return ruleName(t, rule)
+  if (now && d.shape === 'cash') return t.hum.denial({ ...d, then: d.floor !== now.floor })
+  if (now && d.shape === 'spend' && d.rule === 'max_spend_per_game_hour') return t.hum.denial({ ...d, then: d.cap !== now.maxSpend })
+  return t.hum.denial(d)
 }
 
 /** A duel's rival by name, for a `duel:NNNN` item. */

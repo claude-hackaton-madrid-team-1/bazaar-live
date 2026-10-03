@@ -2,16 +2,20 @@ import type { MouseEvent } from 'react'
 import { hrefOf, navigate, setParam, useParam } from '../../ui/route'
 import { useDuelStrings } from '../duelStrings.ts'
 import { nameOfRef } from '../cards.ts'
-import { fmtP } from '../game.ts'
-import { ruleName, whoName } from '../humanize.ts'
+import { fmtP, signed } from '../game.ts'
+import { agoText, ruleName, whoName } from '../humanize.ts'
+import type { State } from '../state.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
-  conversation, dealerTactics, endedGroups, negRows, selectedThreadId,
-  type Bubble, type Conversation, type DealerTactics, type EndedGroup, type NegRow, type NegStatus,
+  conversation, dealerTactics, endedGroups, negRows,
+  type Bubble, type Conversation, type DealerTactics, type EndedGroup, type NegRow, type NegStatus, type TacticTally,
 } from '../views/negotiations.ts'
+import { dealerGroups, dealerOf, selectedIn, type DealerGroup } from '../views/negotiations-dealers.ts'
+import { nowTick } from '../views/decisions.ts'
 import { liveDuelCount } from '../views/duels.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
+import { Markets, OurNegotiations, TeamsWithUs, useLimitsVisible } from './NegotiationsLive.tsx'
 
 function Pill({ state }: { state: NegStatus }) {
   const t = useGameStrings()
@@ -32,7 +36,7 @@ function Fig({ label, value, tone, title, warn }: { label: string; value: number
 }
 
 /** One live negotiation: who, what, the prices against our value and cap, the verdict, and the agent's last call. */
-function NegCard({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSelect: () => void }) {
+function NegCard({ r, selected, onSelect, who = true }: { r: NegRow; selected: boolean; onSelect: () => void; who?: boolean }) {
   const t = useGameStrings()
   const n = r.next
   const blocked = n?.status === 'rejected'
@@ -42,9 +46,11 @@ function NegCard({ r, selected, onSelect }: { r: NegRow; selected: boolean; onSe
       <button type="button" className="neg-card" data-state={r.state} aria-current={selected ? 'true' : undefined} onClick={onSelect}>
         <span className="neg-head">
           <Pill state={r.state} />
-          <span className="neg-who" title={r.with}>
-            {whoName(t, r.with)}
-          </span>
+          {who && (
+            <span className="neg-who" title={r.with}>
+              {whoName(t, r.with)}
+            </span>
+          )}
           <span className="neg-side">{r.side === 'buy' ? t.neg.buying : t.neg.selling}</span>
           <RefChip topic={r.topic} />
           {r.set && <span className="gm-muted neg-set">{r.set.name}</span>}
@@ -103,7 +109,7 @@ function Tactic({ id }: { id: string }) {
  * Ended threads on one dealer and card in one line: how the newest ended against our value, how far the dealer came
  * down, the tactics we used, and ×N when we tried more than once. Selecting it opens the newest.
  */
-function EndedLine({ g, selected, onSelect }: { g: EndedGroup; selected: number | null; onSelect: (id: number) => void }) {
+function EndedLine({ g, selected, onSelect, who = true }: { g: EndedGroup; selected: number | null; onSelect: (id: number) => void; who?: boolean }) {
   const t = useGameStrings()
   const r = g.latest
   const first = r.ended?.firstAsk
@@ -112,9 +118,11 @@ function EndedLine({ g, selected, onSelect }: { g: EndedGroup; selected: number 
     <li>
       <button type="button" className="neg-ended" aria-current={g.rows.some((x) => x.id === selected) ? 'true' : undefined} onClick={() => onSelect(r.id)}>
         <Pill state={r.state} />
-        <span className="neg-who" title={r.with}>
-          {whoName(t, r.with)}
-        </span>
+        {who && (
+          <span className="neg-who" title={r.with}>
+            {whoName(t, r.with)}
+          </span>
+        )}
         <RefChip topic={r.topic} />
         {many && (
           <Badge tone="neutral">
@@ -183,6 +191,16 @@ function ConversationView({ convo }: { convo: Conversation | null }) {
   )
 }
 
+/** Each tactic with the threads that closed a deal out of the ones that used it, the ones that closed first. */
+function Tallies({ tactics }: { tactics: readonly TacticTally[] }) {
+  const t = useGameStrings()
+  return tactics.map((x) => (
+    <span key={x.tactic} className="neg-tactic" data-good={x.deals > 0 || undefined} title={t.neg.workedTallyTitle}>
+      {t.neg.tactic(x.tactic)} <b>{t.neg.workedTally(x.deals, x.threads)}</b>
+    </span>
+  ))
+}
+
 /** Per dealer, each tactic of our ended threads with how many of them closed a deal: what to try again. */
 function Worked({ rows }: { rows: DealerTactics[] }) {
   const t = useGameStrings()
@@ -199,11 +217,7 @@ function Worked({ rows }: { rows: DealerTactics[] }) {
               {whoName(t, d.with)}
             </span>
             <span className="neg-ended-meta">{t.neg.workedDealer(d.threads, d.deals)}</span>
-            {d.tactics.map((x) => (
-              <span key={x.tactic} className="neg-tactic" data-good={x.deals > 0 || undefined} title={t.neg.workedTallyTitle}>
-                {t.neg.tactic(x.tactic)} <b>{t.neg.workedTally(x.deals, x.threads)}</b>
-              </span>
-            ))}
+            <Tallies tactics={d.tactics} />
           </li>
         ))}
       </ul>
@@ -227,47 +241,134 @@ function DuelsLink({ live }: { live: number }) {
   )
 }
 
+/** Every dealer, or one: a chip each, with a badge of its live threads. On a phone, one row that scrolls sideways. */
+function DealerChips({ groups, value }: { groups: readonly DealerGroup[]; value: string | null }) {
+  const t = useGameStrings()
+  const choose = (dealer: string | null) => {
+    if (dealer === value) return
+    setParam('id', null)
+    setParam('dealer', dealer)
+  }
+  const chip = (key: string | null, label: string, live: number) => (
+    <button key={key ?? ''} type="button" className="neg-dealer-chip" aria-pressed={key === value} onClick={() => choose(key)}>
+      {label}
+      {live > 0 && (
+        <span className="neg-dealer-live" title={t.neg.liveSub(live)}>
+          {live}
+        </span>
+      )}
+    </button>
+  )
+  return (
+    <nav className="neg-dealers" aria-label={t.neg.dealers}>
+      {chip(null, t.neg.allDealers, groups.reduce((n, g) => n + g.live.length, 0))}
+      {groups.map((g) => chip(g.with, whoName(t, g.with), g.live.length))}
+    </nav>
+  )
+}
+
+/** How it goes with one dealer: our edge on the deals, how they move, the tactics that closed, and when we last spoke. */
+function DealerSummary({ g, state }: { g: DealerGroup; state: State }) {
+  const t = useGameStrings()
+  const worked = g.tactics.filter((x) => x.deals > 0)
+  const tried = g.tactics.filter((x) => x.deals === 0)
+  const finals = g.finals.n > 0
+  const sub = [t.neg.workedDealer(g.threads, g.deals), g.lastTick != null && t.neg.lastContact(agoText(t, state, g.lastTick, nowTick(state)))].filter(Boolean).join(' · ')
+  return (
+    <Panel title={whoName(t, g.with)} sub={sub} className="neg-dealer">
+      <div className="neg-dealer-body">
+        <div className="neg-dealer-edge" title={t.neg.edgeTitle} data-tone={g.edge == null ? undefined : g.edge >= 0 ? 'good' : 'bad'}>
+          <b>{g.edge == null ? t.neg.noDeal : signed(g.edge)}</b>
+          {g.edge != null && <span className="neg-fig-label">{t.neg.edge}</span>}
+        </div>
+        <div className="neg-dealer-how">
+          {(g.step != null || finals) && (
+            <p className="neg-dealer-moves">
+              {g.step != null && <span title={t.neg.movesTitle}>{t.neg.moves(g.step)}</span>}
+              {g.step != null && finals && ' · '}
+              {finals && t.neg.finals(g.finals.n, g.finals.of)}
+            </p>
+          )}
+          {worked.length > 0 && (
+            <p className="neg-dealer-tactics">
+              <span className="eyebrow" title={t.neg.workedSub}>
+                {t.neg.worked}
+              </span>
+              <Tallies tactics={worked} />
+            </p>
+          )}
+          {tried.length > 0 && (
+            <p className="neg-dealer-tactics">
+              <span className="eyebrow" title={t.neg.workedSub}>
+                {t.neg.tried}
+              </span>
+              <Tallies tactics={tried} />
+            </p>
+          )}
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
 export function NegotiationsScreen() {
   const { state } = useGame()
   const t = useGameStrings()
   const requested = useParam('id')
-  const rows = negRows(state)
+  const requestedDealer = useParam('dealer')
+  // our caps only with GAME_VIEW_TOKEN (or the mock): without it no card, verdict or sentence shows one
+  const all = negRows(state, { caps: useLimitsVisible() })
+  const groups = dealerGroups(state, all)
+  const dealer = dealerOf(groups, requestedDealer)
+  const rows = dealer ? [...dealer.live, ...dealer.ended] : all
   const live = rows.filter((r) => r.status === 'open')
   const ended = rows.filter((r) => r.status !== 'open')
-  const selected = selectedThreadId(state, requested)
+  const selected = selectedIn(rows, requested)
   const convo = selected == null ? null : conversation(state, selected)
   const select = (id: number) => setParam('id', String(id))
   const won = ended.filter((r) => r.state === 'won').length
+  // in a dealer's view the dealer is in the title above: the card says enough
+  const convoSub = (c: Conversation) => {
+    const topic = nameOfRef(c.thread.topic) ?? c.thread.topic
+    return dealer ? topic : t.neg.with(whoName(t, c.thread.with), topic)
+  }
   return (
     <>
-      <Panel title={t.neg.live} sub={t.neg.liveSub(live.length)} actions={<DuelsLink live={liveDuelCount(state)} />}>
-        {!rows.length ? (
-          <Empty>{t.neg.noThreads}</Empty>
-        ) : live.length ? (
-          <ul className="neg-list" aria-label={t.neg.ourThreads}>
-            {live.map((r) => (
-              <NegCard key={r.id} r={r} selected={r.id === selected} onSelect={() => select(r.id)} />
-            ))}
-          </ul>
-        ) : (
-          <Empty>{t.neg.noLive}</Empty>
-        )}
-      </Panel>
-      <div className="gm-split neg-split">
-        <Panel title={t.neg.conversation} sub={convo ? t.neg.with(whoName(t, convo.thread.with), nameOfRef(convo.thread.topic) ?? convo.thread.topic) : undefined}>
+      {groups.length > 0 && <DealerChips groups={groups} value={dealer?.with ?? null} />}
+      {dealer && <DealerSummary g={dealer} state={state} />}
+      <OurNegotiations rows={all} dealer={dealer?.with ?? null} />
+      {(!dealer || live.length > 0) && (
+        <Panel title={t.neg.live} sub={t.neg.liveSub(live.length)} actions={dealer ? undefined : <DuelsLink live={liveDuelCount(state)} />}>
+          {!rows.length ? (
+            <Empty>{t.neg.noThreads}</Empty>
+          ) : live.length ? (
+            <ul className="neg-list" aria-label={t.neg.ourThreads}>
+              {live.map((r) => (
+                <NegCard key={r.id} r={r} selected={r.id === selected} onSelect={() => select(r.id)} who={!dealer} />
+              ))}
+            </ul>
+          ) : (
+            <Empty>{t.neg.noLive}</Empty>
+          )}
+        </Panel>
+      )}
+      <div className="gm-split neg-split" data-dealer={dealer ? true : undefined}>
+        <Panel title={t.neg.conversation} sub={convo ? convoSub(convo) : undefined}>
           <ConversationView convo={convo} />
         </Panel>
         {ended.length > 0 && (
           <Panel title={t.neg.ended} sub={t.neg.endedSub(won, ended.length - won)}>
-            <Worked rows={dealerTactics(state, rows)} />
+            {!dealer && <Worked rows={dealerTactics(state, rows)} />}
             <ul className="neg-ended-list">
               {endedGroups(ended).map((g) => (
-                <EndedLine key={g.key} g={g} selected={selected} onSelect={select} />
+                <EndedLine key={g.key} g={g} selected={selected} onSelect={select} who={!dealer} />
               ))}
             </ul>
           </Panel>
         )}
       </div>
+      {!dealer && <TeamsWithUs />}
+      {!dealer && <Markets />}
     </>
   )
 }

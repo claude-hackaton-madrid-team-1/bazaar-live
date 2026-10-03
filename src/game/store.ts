@@ -7,6 +7,7 @@ import { createContext, useContext, useEffect, useState, useSyncExternalStore } 
 import { GameFeed, type GameFeedSource, type GameFeedStatus } from './feed.ts'
 import { MOCK_STEP_MS, MockGame } from './mock.ts'
 import { apply, createState, type GameEvent, type State } from './state.ts'
+import { gameTransport, type Transport } from './wsSource.ts'
 
 export type GameStatus = GameFeedStatus | 'mock'
 
@@ -16,6 +17,8 @@ export interface GameSource {
   readonly speed: number
   /** GAME_VIEW_TOKEN, from `?token=`. */
   readonly token: string | null
+  /** The stream's socket: WebSocket unless `?transport=sse` (absent: WebSocket). */
+  readonly transport?: Transport
 }
 
 export class GameStore {
@@ -24,6 +27,8 @@ export class GameStore {
   status: GameStatus = 'connecting'
   /** Where the server reads the game: our database or the game's API (null for the mock, or not known yet). */
   source: GameFeedSource | null = null
+  /** The socket the open stream uses (null for the mock, or before the first open). */
+  transport: Transport | null = null
   paused = false
   selected: number | null = null
   /** performance.now() of the last clock event, and the seconds it said were left in the tick. */
@@ -53,6 +58,14 @@ export class GameStore {
     const feed = new GameFeed({
       url: '/api/game',
       token: source.token,
+      createSource: gameTransport({
+        prefer: source.transport ?? 'ws',
+        onTransport: (transport) => {
+          if (transport === this.transport) return
+          this.transport = transport
+          this.notify(true)
+        },
+      }),
       onEvents: (events, replay) => this.take(events, replay),
       onStatus: (status) => {
         this.status = status

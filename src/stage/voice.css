@@ -27,6 +27,30 @@
   --v-ink: var(--chato-ink);
 }
 
+.stage [data-voice='pilar'] {
+  --v1: var(--pilar-1);
+  --v2: var(--pilar-2);
+  --v-ink: var(--pilar-ink);
+}
+
+.stage [data-voice='guest1'] {
+  --v1: var(--guest1-1);
+  --v2: var(--guest1-2);
+  --v-ink: var(--guest1-ink);
+}
+
+.stage [data-voice='guest2'] {
+  --v1: var(--guest2-1);
+  --v2: var(--guest2-2);
+  --v-ink: var(--guest2-ink);
+}
+
+.stage [data-voice='guest3'] {
+  --v1: var(--guest3-1);
+  --v2: var(--guest3-2);
+  --v-ink: var(--guest3-ink);
+}
+
 .stage [data-voice='narrator'] {
   --v1: var(--text-3);
   --v2: var(--text-2);

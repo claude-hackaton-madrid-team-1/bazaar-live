@@ -13,9 +13,11 @@ export interface Line {
   readonly silent?: boolean
   /** The language this line is spoken in; a voice that has none for it stays quiet rather than read it in another. */
   readonly lang?: Lang
+  /** The dealer's id when a guest voice speaks for it: the captions name it from the game's dealer list. */
+  readonly dealer?: string
 }
 
-export type DealerId = 'abuela' | 'chato' | 'other'
+export type DealerId = 'abuela' | 'chato' | 'pilar' | 'other'
 export type Side = 'ask' | 'bid'
 
 /** What the stage acts out for one beat. */
