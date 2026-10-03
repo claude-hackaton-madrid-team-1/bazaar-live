@@ -17,6 +17,7 @@ export interface GameStrings {
   readonly navLabel: string
   readonly brandTag: string
   readonly status: Readonly<Record<GameStatus, string>>
+  readonly source: { readonly db: string; readonly api: string; readonly dbTitle: string; readonly apiTitle: string }
   readonly notice: { readonly off: string; readonly locked: string; readonly mock: string; readonly noTeam: string; readonly tryMock: string }
   readonly day: string
   readonly tick: string
@@ -268,6 +269,7 @@ const EN: GameStrings = {
   navLabel: 'Screens',
   brandTag: 'our agent, tick by tick',
   status: { connecting: 'CONNECTING', live: 'LIVE', reconnecting: 'RECONNECTING', off: 'NO FEED', locked: 'LOCKED', mock: 'MOCK GAME' },
+  source: { db: 'DB', api: 'GAME API', dbTitle: 'Read from our database, where our agents record the game', apiTitle: 'Read from the game\'s API with the team key' },
   notice: {
     off: 'The server has no team key (BAZAAR_KEY), so the game screens have no feed. Want a preview? Try',
     locked: 'This view is private: open it with ?token=… (the GAME_VIEW_TOKEN of the server).',
@@ -538,6 +540,7 @@ const ES: GameStrings = {
   navLabel: 'Pantallas',
   brandTag: 'nuestro agente, turno a turno',
   status: { connecting: 'CONECTANDO', live: 'EN VIVO', reconnecting: 'RECONECTANDO', off: 'SIN FEED', locked: 'BLOQUEADO', mock: 'PARTIDA FALSA' },
+  source: { db: 'BD', api: 'API DEL JUEGO', dbTitle: 'Leído de nuestra base de datos, donde nuestros agentes registran la partida', apiTitle: 'Leído de la API del juego con la clave del equipo' },
   notice: {
     off: 'El servidor no tiene la clave del equipo (BAZAAR_KEY), así que las pantallas del juego no tienen feed. ¿Una vista previa? Prueba',
     locked: 'Esta vista es privada: ábrela con ?token=… (el GAME_VIEW_TOKEN del servidor).',

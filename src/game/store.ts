@@ -4,7 +4,7 @@
  * (the view freezes, the state keeps up) and the event the inspector shows.
  */
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react'
-import { GameFeed, type GameFeedStatus } from './feed.ts'
+import { GameFeed, type GameFeedSource, type GameFeedStatus } from './feed.ts'
 import { MOCK_STEP_MS, MockGame } from './mock.ts'
 import { apply, createState, type GameEvent, type State } from './state.ts'
 
@@ -22,6 +22,8 @@ export class GameStore {
   state: State = createState()
   version = 0
   status: GameStatus = 'connecting'
+  /** Where the server reads the game: our database or the game's API (null for the mock, or not known yet). */
+  source: GameFeedSource | null = null
   paused = false
   selected: number | null = null
   /** performance.now() of the last clock event, and the seconds it said were left in the tick. */
@@ -54,6 +56,11 @@ export class GameStore {
       onEvents: (events, replay) => this.take(events, replay),
       onStatus: (status) => {
         this.status = status
+        this.notify(true)
+      },
+      onSource: (source) => {
+        if (source === this.source) return
+        this.source = source
         this.notify(true)
       },
     })

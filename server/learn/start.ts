@@ -4,7 +4,7 @@
  * one, the route answers `enabled: false` and everything else runs as before.
  */
 import { EMPTY_LEARN, type LearnSnapshot } from '../../shared/learn.ts'
-import { createShowPool, readShowDatabase, secretsOf, type ShowPool } from '../transcript/pg.ts'
+import { createShowPool, readShowDatabase, secretsOf, type SharedShowPool, type ShowPool } from '../transcript/pg.ts'
 import { LearnPoller } from './poller.ts'
 
 export interface Learn {
@@ -14,7 +14,8 @@ export interface Learn {
   readonly stop: () => Promise<void>
 }
 
-export function startLearn(env: Readonly<Record<string, string | undefined>>, log: (entry: Record<string, unknown>) => void): Learn {
+/** `shared`: the server's one pool (`startShowPool`), never ended here; without it, a one-connection pool of its own. */
+export function startLearn(env: Readonly<Record<string, string | undefined>>, log: (entry: Record<string, unknown>) => void, shared?: SharedShowPool | null): Learn {
   const token = env.GAME_VIEW_TOKEN?.trim() || null
   const off: Learn = { enabled: () => false, snapshot: () => EMPTY_LEARN, token, stop: () => Promise.resolve() }
   const config = readShowDatabase(env)
@@ -24,8 +25,8 @@ export function startLearn(env: Readonly<Record<string, string | undefined>>, lo
   }
   let pool: ShowPool | null = null
   try {
-    pool = createShowPool(config.url, (error) => log({ route: 'learn', event: 'pool_error', code: (error as { code?: string } | null)?.code ?? 'ERR' }), 1)
-    const poller = new LearnPoller({ db: pool, log, secrets: secretsOf(config.url) })
+    pool = shared ? shared.pool : createShowPool(config.url, (error) => log({ route: 'learn', event: 'pool_error', code: (error as { code?: string } | null)?.code ?? 'ERR' }), 1)
+    const poller = new LearnPoller({ db: pool, log, secrets: shared ? shared.secrets : secretsOf(config.url) })
     poller.start()
     if (token === null) log({ route: 'learn', event: 'open', note: 'GAME_VIEW_TOKEN unset: the agents\' learnings are readable by anyone with the URL' })
     log({ route: 'learn', event: 'on' })
@@ -36,12 +37,12 @@ export function startLearn(env: Readonly<Record<string, string | undefined>>, lo
       token,
       stop: async () => {
         poller.stop()
-        await live.end().catch(() => undefined)
+        if (!shared) await live.end().catch(() => undefined)
       },
     }
   } catch (error: unknown) {
     log({ route: 'learn', event: 'start_failed', code: (error as { code?: string } | null)?.code ?? 'ERR' })
-    void pool?.end().catch(() => undefined)
+    if (!shared) void pool?.end().catch(() => undefined)
     return off
   }
 }
