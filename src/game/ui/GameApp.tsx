@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { readConfig } from '../../config'
 import type { Route } from '../../ui/route'
 import { GameContext, GameStore } from '../store.ts'
+import { transportOf } from '../wsSource.ts'
 import { AgentScreen } from './AgentScreen.tsx'
 import { AlbumScreen } from './AlbumScreen.tsx'
 import { ApprovalsScreen } from './ApprovalsScreen.tsx'
@@ -20,6 +21,7 @@ import { Inspector } from './Inspector.tsx'
 import { LearnScreen } from './LearnScreen.tsx'
 import { MarketScreen } from './MarketScreen.tsx'
 import { NegotiationsScreen } from './NegotiationsScreen.tsx'
+import { PricesScreen } from './PricesScreen.tsx'
 import { RivalsScreen } from './RivalsScreen.tsx'
 import { StrategyScreen } from './StrategyScreen.tsx'
 import './game.css'
@@ -32,6 +34,8 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   album: () => <AlbumScreen />,
   rivals: () => <RivalsScreen />,
   market: () => <MarketScreen />,
+  // the live price guide: standard price, trend, best bid and ask, a good deal for us (the stream over a WebSocket)
+  prices: () => <PricesScreen />,
   history: () => <HistoryScreen />,
   learn: () => <LearnScreen />,
   // the judges' view: every injection attempt with its proof, full page
@@ -45,7 +49,12 @@ export default function GameApp({ route }: { route: Exclude<Route, 'show'> }) {
   const [store] = useState(() => new GameStore())
   useEffect(() => {
     const config = readConfig(window.location.search)
-    store.start({ mock: config.mock, speed: config.speed, token: new URLSearchParams(window.location.search).get('token') })
+    store.start({
+      mock: config.mock,
+      speed: config.speed,
+      token: new URLSearchParams(window.location.search).get('token'),
+      transport: transportOf(window.location.search),
+    })
     return () => store.stop()
   }, [store])
   return (

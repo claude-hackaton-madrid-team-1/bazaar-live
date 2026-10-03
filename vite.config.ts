@@ -8,6 +8,7 @@ const API_TARGET = process.env.BAZAAR_LIVE_API ?? 'http://localhost:8080'
 export default defineConfig({
   plugins: [react()],
   server: {
-    proxy: { '/api': { target: API_TARGET, changeOrigin: false } },
+    // `ws`: the game stream's WebSocket (/api/game/ws) goes through the same proxy.
+    proxy: { '/api': { target: API_TARGET, changeOrigin: false, ws: true } },
   },
 })
