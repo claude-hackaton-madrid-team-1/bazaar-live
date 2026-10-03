@@ -76,3 +76,23 @@ export function createShowPool(url: string, onError: (error: unknown) => void, m
     end: () => pool.end(),
   }
 }
+
+/** The one pool the transcript, /api/learn, /api/history and the game screens share: the role may hold four connections in all. */
+export interface SharedShowPool {
+  readonly pool: ShowPool
+  /** What any logged error text must not contain (`secretsOf(url)`). */
+  readonly secrets: readonly string[]
+}
+
+/** Three connections for everyone (one of the role's four left over); null when SHOW_DATABASE_URL is absent or refused. */
+export function startShowPool(env: Readonly<Record<string, string | undefined>>, log: (entry: Record<string, unknown>) => void): SharedShowPool | null {
+  const config = readShowDatabase(env)
+  if (!config.enabled) return null
+  try {
+    const pool = createShowPool(config.url, (error) => log({ route: 'show_pool', event: 'pool_error', code: (error as { code?: string } | null)?.code ?? 'ERR' }), 3)
+    return { pool, secrets: secretsOf(config.url) }
+  } catch (error: unknown) {
+    log({ route: 'show_pool', event: 'start_failed', code: (error as { code?: string } | null)?.code ?? 'ERR' })
+    return null
+  }
+}

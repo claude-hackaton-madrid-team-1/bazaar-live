@@ -112,6 +112,7 @@ and never hands the key to the page:
 | `BAZAAR_SIM=1`, `BAZAAR_SIM_KEY` | The simulator instead, with a `sim-…` key (default `sim-team1`). With `sim-team1` the screens show team 1 of the simulator. |
 | `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values, our album and our duel offers. |
 | `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
+| `SHOW_DATABASE_URL`, `GAME_SOURCE` | With the show's read-only url, the screens read our own database instead (`db/game.sql`'s views, every 3 s, `server/game/dbsource.ts`), no key needed; the header says `DB` or `GAME API`. `GAME_SOURCE=api` forces the relay; views not applied yet → the relay. |
 
 Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick and after a settlement
 of ours (a 429 there waits for the next tick, the loop does not slow down). It never opens the game's SSE
@@ -209,7 +210,7 @@ own `/me`, live; the screen reads Postgres through `db/history.sql`, four more r
 
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/history.sql`. The server reads
-the views every 5 s on the Learn screen's connection (the role is limited to 4) and serves `GET /api/history`,
+the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4) and serves `GET /api/history`,
 behind `GAME_VIEW_TOKEN`. `?mock=1` shows a made-up day of money.
 
 ## Real conversations (LIVE-T1)

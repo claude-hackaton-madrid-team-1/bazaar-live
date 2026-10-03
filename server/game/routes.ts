@@ -1,5 +1,6 @@
 /**
- * GET /api/game          JSON: {enabled, target, tokenRequired}: whether the game screens have a feed
+ * GET /api/game          JSON: {enabled, target, source, tokenRequired}: whether the game screens have a feed, and
+ *                        where it comes from ('db': our database's views, 'api': the game's API with the team key)
  * GET /api/game/stream   SSE: `events` with the replay (sticky first, then the backlog), then one `events`
  *                        per batch the relay publishes; `hb` every few seconds
  *
@@ -19,6 +20,8 @@ export interface GameRouteDeps {
   readonly hub: GameHub | null
   readonly enabled: () => boolean
   readonly target: GameTarget | null
+  /** Where the feed comes from now ('db' or 'api'); absent → 'api' (the relay). */
+  readonly source?: () => 'db' | 'api' | null
   /** GAME_VIEW_TOKEN, or null: the stream is open to anyone with the URL. */
   readonly token: string | null
   readonly headers: Readonly<Record<string, string>>
@@ -59,7 +62,8 @@ export function createGameRoutes(deps: GameRouteDeps): (req: IncomingMessage, re
 
   function info(res: ServerResponse): void {
     const enabled = deps.enabled() && deps.hub !== null
-    json(res, deps.headers, 200, { enabled, target: enabled ? deps.target : null, tokenRequired: deps.token !== null })
+    const source = enabled ? (deps.source?.() ?? 'api') : null
+    json(res, deps.headers, 200, { enabled, target: enabled ? deps.target : null, source, tokenRequired: deps.token !== null })
   }
 
   function stream(req: IncomingMessage, res: ServerResponse, url: URL): void {

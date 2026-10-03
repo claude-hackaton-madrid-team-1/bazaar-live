@@ -1,7 +1,7 @@
 /**
  * Reads db/history.sql's four views every few seconds and keeps the last snapshot in memory for
- * GET /api/history. It shares /api/learn's one-connection pool (the reader role has a connection limit of
- * 4), so its capped queries run one after the other. Like the learn poller: a view not applied yet (42P01)
+ * GET /api/history. It reads on the server's one shared pool (the reader role has a connection limit of
+ * 4), and its capped queries run one after the other. Like the learn poller: a view not applied yet (42P01)
  * or not granted (42501) only blanks its part, logged once; any other error keeps the last good part and
  * backs off; no exception leaves `pollOnce()`; error text is redacted.
  */

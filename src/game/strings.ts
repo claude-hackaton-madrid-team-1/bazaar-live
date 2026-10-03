@@ -17,6 +17,7 @@ export interface GameStrings {
   readonly navLabel: string
   readonly brandTag: string
   readonly status: Readonly<Record<GameStatus, string>>
+  readonly source: { readonly db: string; readonly api: string; readonly dbTitle: string; readonly apiTitle: string }
   readonly notice: { readonly off: string; readonly locked: string; readonly mock: string; readonly noTeam: string; readonly tryMock: string }
   readonly day: string
   readonly tick: string
@@ -127,6 +128,12 @@ export interface GameStrings {
     readonly noDuels: string
     readonly duelHead: readonly string[]
     readonly duelStatus: Readonly<Record<'open' | 'deal' | 'no deal', string>>
+    readonly against: string
+    readonly unknownRival: string
+    readonly rivalDuels: (duels: number, finished: number) => string
+    readonly rivalDeals: (deals: number, noDeals: number) => string
+    readonly rivalPoints: (points: number | null) => string
+    readonly rivalPointsNone: string
   }
   readonly album: {
     readonly album: string
@@ -310,6 +317,7 @@ const EN: GameStrings = {
   navLabel: 'Screens',
   brandTag: 'our agent, tick by tick',
   status: { connecting: 'CONNECTING', live: 'LIVE', reconnecting: 'RECONNECTING', off: 'NO FEED', locked: 'LOCKED', mock: 'MOCK GAME' },
+  source: { db: 'DB', api: 'GAME API', dbTitle: 'Read from our database, where our agents record the game', apiTitle: 'Read from the game\'s API with the team key' },
   notice: {
     off: 'The server has no team key (BAZAAR_KEY), so the game screens have no feed. Want a preview? Try',
     locked: 'This view is private: open it with ?token=… (the GAME_VIEW_TOKEN of the server).',
@@ -422,8 +430,14 @@ const EN: GameStrings = {
     duels: 'Duels',
     duelsSub: (live) => `${live} live`,
     noDuels: 'No duels yet.',
-    duelHead: ['duel', 'role', 'us', 'them', 'gap', 'rounds', 'status', 'deal', 'points', 'event'],
+    duelHead: ['duel', 'rival', 'role', 'us', 'them', 'gap', 'rounds', 'status', 'deal', 'points', 'event'],
     duelStatus: { open: 'open', deal: 'deal', 'no deal': 'no deal' },
+    against: 'Dueling against',
+    unknownRival: 'unknown rival',
+    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duel' : 'duels'} · ${done} finished`,
+    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'deal' : 'deals'} · ${none} no deal`,
+    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
+    rivalPointsNone: 'No points recorded for these duels (our database does not keep them)',
   },
   album: {
     album: 'Album',
@@ -627,6 +641,7 @@ const ES: GameStrings = {
   navLabel: 'Pantallas',
   brandTag: 'nuestro agente, turno a turno',
   status: { connecting: 'CONECTANDO', live: 'EN VIVO', reconnecting: 'RECONECTANDO', off: 'SIN FEED', locked: 'BLOQUEADO', mock: 'PARTIDA FALSA' },
+  source: { db: 'BD', api: 'API DEL JUEGO', dbTitle: 'Leído de nuestra base de datos, donde nuestros agentes registran la partida', apiTitle: 'Leído de la API del juego con la clave del equipo' },
   notice: {
     off: 'El servidor no tiene la clave del equipo (BAZAAR_KEY), así que las pantallas del juego no tienen feed. ¿Una vista previa? Prueba',
     locked: 'Esta vista es privada: ábrela con ?token=… (el GAME_VIEW_TOKEN del servidor).',
@@ -739,8 +754,14 @@ const ES: GameStrings = {
     duels: 'Duelos',
     duelsSub: (live) => `${live} en curso`,
     noDuels: 'Aún no hay duelos.',
-    duelHead: ['duelo', 'papel', 'nosotros', 'ellos', 'distancia', 'rondas', 'estado', 'trato', 'puntos', 'evento'],
+    duelHead: ['duelo', 'rival', 'papel', 'nosotros', 'ellos', 'distancia', 'rondas', 'estado', 'trato', 'puntos', 'evento'],
     duelStatus: { open: 'abierto', deal: 'trato', 'no deal': 'sin trato' },
+    against: 'En duelo contra',
+    unknownRival: 'rival desconocido',
+    rivalDuels: (n, done) => `${n} ${n === 1 ? 'duelo' : 'duelos'} · ${done} ${done === 1 ? 'terminado' : 'terminados'}`,
+    rivalDeals: (deals, none) => `${deals} ${deals === 1 ? 'trato' : 'tratos'} · ${none} sin trato`,
+    rivalPoints: (p) => (p == null ? 'pts —' : p === 0 ? '0 pts' : `${p > 0 ? '+' : '−'}${Math.abs(p)} pts`),
+    rivalPointsNone: 'Sin puntos registrados para estos duelos (nuestra base de datos no los guarda)',
   },
   album: {
     album: 'Álbum',

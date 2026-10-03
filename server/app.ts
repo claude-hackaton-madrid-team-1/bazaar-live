@@ -6,7 +6,7 @@
  *   POST /api/tts              {provider, speaker, text} → audio (MP3 or WAV)
  *   GET  /api/transcript       the real conversations, JSON (LIVE-T1; `enabled: false` without a database)
  *   GET  /api/transcript/stream  the same as server-sent events
- *   GET  /api/game             {enabled, target, tokenRequired}: the game screens' feed (the team key's relay)
+ *   GET  /api/game             {enabled, target, source, tokenRequired}: the game screens' feed (our database, or the team key's relay)
  *   GET  /api/game/stream      that feed as server-sent events (GAME_VIEW_TOKEN as ?token= when set)
  *   GET  /api/learn            what our agents learned, JSON (db/learn.sql; GAME_VIEW_TOKEN as ?token= when set)
  *   GET  /api/history          our cash over the day and what moved it, JSON (db/history.sql; the same token)
@@ -54,7 +54,7 @@ export interface AppDeps {
     readonly vouchQuotes?: boolean
   }
   /** The game screens' feed (server/game); absent → /api/game answers `enabled: false`. */
-  readonly game?: Pick<GameRouteDeps, 'hub' | 'enabled' | 'target' | 'token'> & Partial<Pick<GameRouteDeps, 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter' | 'maxQueuedBytes'>>
+  readonly game?: Pick<GameRouteDeps, 'hub' | 'enabled' | 'target' | 'token' | 'source'> & Partial<Pick<GameRouteDeps, 'maxStreams' | 'maxPerAddress' | 'heartbeatMs' | 'maxLifetimeMs' | 'openLimiter' | 'maxQueuedBytes'>>
   /** What our agents learned (server/learn); absent → /api/learn answers `enabled: false`. */
   readonly learn?: Pick<LearnRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<LearnRouteDeps, 'limiter'>>
   /** Our cash and what moved it (server/history); absent → /api/history answers `enabled: false`. */

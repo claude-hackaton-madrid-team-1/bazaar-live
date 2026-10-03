@@ -208,12 +208,12 @@ describe('GameRelay', () => {
 
   it('duels: read after /me on a new tick, published before the feed, each message and result once', async () => {
     const { w, batches, relay } = setup()
-    const duel = { duel: 563, status: 'live', role: 'seller', your_limit: 100, deadline_tick: 20, messages: [{ tick: 7, from: 'Rival Oro', text: 'hi', price: 106, days: 0 }] }
+    const duel = { duel: 563, status: 'live', role: 'seller', rival: 'Rival Oro', your_limit: 100, deadline_tick: 20, messages: [{ tick: 7, from: 'Rival Oro', text: 'hi', price: 106, days: 0 }] }
     w.duels = [duel]
     w.feed = [ev(1, 'duels.scheduled')]
     await relay.pollOnce()
     expect(batches[0]!.map((e) => e.type)).toEqual(['clock', 'agent.hello', 'agent.me', 'duel.message', 'duels.scheduled'])
-    expect(batches[0]![3]).toMatchObject({ tick: 7, scope: 'team', actor: '', payload: { duel: 563, role: 'seller', sender: 'Rival Oro', price: 106, days: 0 } })
+    expect(batches[0]![3]).toMatchObject({ tick: 7, scope: 'team', actor: '', payload: { duel: 563, role: 'seller', rival: 'Rival Oro', sender: 'Rival Oro', price: 106, days: 0 } })
     // Same tick: no second read.
     w.calls = []
     await relay.pollOnce()
@@ -226,8 +226,8 @@ describe('GameRelay', () => {
     await relay.pollOnce()
     const fresh = batches.at(-1)!
     expect(fresh.map((e) => e.type)).toEqual(['clock', 'agent.me', 'duel.message', 'duel.result', 'duel.closed'])
-    expect(fresh[2]?.payload).toEqual({ duel: 563, role: 'seller', sender: 't01', price: 120, days: 2 })
-    expect(fresh[3]?.payload).toEqual({ duel: 563, deal: true, price: 120, points: 3.1 })
+    expect(fresh[2]?.payload).toEqual({ duel: 563, role: 'seller', rival: 'Rival Oro', sender: 't01', price: 120, days: 2 })
+    expect(fresh[3]?.payload).toEqual({ duel: 563, rival: 'Rival Oro', deal: true, price: 120, points: 3.1 })
     expect(new Set(batches.flat().filter((e) => e.type.startsWith('duel.m')).map((e) => e.id)).size).toBe(2)
     expect(JSON.stringify(batches)).not.toMatch(/your_limit|your_gain/)
   })

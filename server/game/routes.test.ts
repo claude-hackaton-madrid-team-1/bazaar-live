@@ -53,13 +53,13 @@ describe('GET /api/game', () => {
     const { base } = await start({ hub: null, enabled: false })
     const res = await fetch(`${base}/api/game`)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ enabled: false, target: null, tokenRequired: false })
+    expect(await res.json()).toEqual({ enabled: false, target: null, source: null, tokenRequired: false })
   })
 
   it('reports the target and whether a token is needed, never the key or url', async () => {
     const { base } = await start({ token: 'tok' })
     const text = await (await fetch(`${base}/api/game`)).text()
-    expect(JSON.parse(text)).toEqual({ enabled: true, target: 'simulator', tokenRequired: true })
+    expect(JSON.parse(text)).toEqual({ enabled: true, target: 'simulator', source: 'api', tokenRequired: true })
     expect(text).not.toContain('http')
   })
 

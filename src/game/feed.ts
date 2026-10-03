@@ -14,6 +14,9 @@ import type { GameEvent } from './state.ts'
 
 export type GameFeedStatus = 'connecting' | 'live' | 'reconnecting' | 'off' | 'locked'
 
+/** Where the server's feed comes from: our database's views, or the game's API with the team key. */
+export type GameFeedSource = 'db' | 'api'
+
 export interface GameFeedOptions {
   /** `/api/game`: the JSON route; the stream is `${url}/stream`. */
   readonly url: string
@@ -22,6 +25,8 @@ export interface GameFeedOptions {
   /** A batch of events; `replay` is true for the first one after a (re)connect: start from a clean state. */
   readonly onEvents: (events: readonly GameEvent[], replay: boolean) => void
   readonly onStatus?: (status: GameFeedStatus) => void
+  /** What GET /api/game said about the source, each time it is asked (null while off or unknown). */
+  readonly onSource?: (source: GameFeedSource | null) => void
   readonly createSource?: (url: string) => SourceLike
   readonly fetchImpl?: typeof fetch
   readonly timers?: Timers
@@ -44,6 +49,7 @@ const REQUEST_TIMEOUT_MS = 8000
 interface GameInfo {
   readonly enabled?: unknown
   readonly tokenRequired?: unknown
+  readonly source?: unknown
 }
 
 /** The events in one `events` message: objects with a numeric id and a string type; anything else is dropped. */
@@ -64,7 +70,7 @@ export function parseEvents(data: unknown): GameEvent[] {
 }
 
 export class GameFeed {
-  private readonly o: Required<Omit<GameFeedOptions, 'onStatus' | 'token'>> & Pick<GameFeedOptions, 'onStatus' | 'token'>
+  private readonly o: Required<Omit<GameFeedOptions, 'onStatus' | 'onSource' | 'token'>> & Pick<GameFeedOptions, 'onStatus' | 'onSource' | 'token'>
   private source: SourceLike | null = null
   private retryTimer: unknown = null
   private idleTimer: unknown = null
@@ -123,6 +129,7 @@ export class GameFeed {
     }
     if (this.stopped) return
     if (info === null) return this.retry()
+    this.o.onSource?.(info.source === 'db' || info.source === 'api' ? info.source : null)
     if (info.enabled !== true) {
       this.setStatus('off')
       return this.later(this.o.offRecheckMs)
