@@ -46,14 +46,22 @@ function playBlob(blob: Blob, signal: AbortSignal): Promise<void> {
     const url = URL.createObjectURL(blob)
     const audio = shared ?? new Audio()
     audio.src = url
-    const done = (error?: Error) => {
-      audio.onended = audio.onerror = null
+    let settled = false
+    const onended = (): void => done()
+    const onerror = (): void => done(new Error('audio playback failed'))
+    // A line ends once. The element is shared, so a late rejection of an aborted line's play() must not
+    // clear the handlers of the line that now owns it.
+    const done = (error?: Error): void => {
+      if (settled) return
+      settled = true
+      if (audio.onended === onended) audio.onended = null
+      if (audio.onerror === onerror) audio.onerror = null
       URL.revokeObjectURL(url)
       if (error) reject(error)
       else resolve()
     }
-    audio.onended = () => done()
-    audio.onerror = () => done(new Error('audio playback failed'))
+    audio.onended = onended
+    audio.onerror = onerror
     signal.addEventListener(
       'abort',
       () => {
@@ -62,7 +70,7 @@ function playBlob(blob: Blob, signal: AbortSignal): Promise<void> {
       },
       { once: true },
     )
-    audio.play().catch((e: unknown) => done(e instanceof Error ? e : new Error('audio.play() refused')))
+    audio.play().catch((e: unknown) => done(e instanceof Error && e.name !== 'AbortError' ? e : e instanceof Error ? undefined : new Error('audio.play() refused')))
   })
 }
 

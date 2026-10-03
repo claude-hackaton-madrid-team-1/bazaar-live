@@ -258,11 +258,13 @@ describe('the idle brain: the characters know what is going on', () => {
 })
 
 describe('a gap-free voice queue', () => {
-  it('puts the next line in the queue while the current one is still being said', async () => {
+  it('fetches every line of the beat ahead and starts the next voice the moment the last one ends', async () => {
     const started: string[] = []
+    const prefetched: string[] = []
     const release: (() => void)[] = []
     const provider: SpeechProvider = {
       name: 'webspeech',
+      prefetch: (u) => void prefetched.push(u.id),
       speak: (u) => new Promise<void>((resolve) => { started.push(u.id); release.push(resolve) }),
     }
     const speech = new SpeechQueue({ provider })
@@ -271,12 +273,25 @@ describe('a gap-free voice queue', () => {
     show.ingest(event(-40, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
     await settle()
     expect(started.length).toBe(1)
-    expect(speech.backlog).toBeGreaterThanOrEqual(1) // line 2 waits in the queue, not in the stage
+    expect(prefetched.length).toBeGreaterThanOrEqual(2) // the whole beat is fetched while the first line is said
+    // A voice that was heard sets the pace; this one is released after 300 ms.
+    await new Promise((r) => setTimeout(r, 300))
     release.shift()?.()
     await settle()
-    expect(started.length).toBe(2) // and starts the moment line 1 ends
+    expect(started.length).toBe(2) // the next voice starts as the caption changes
     release.forEach((r) => r())
     show.stop()
+  })
+
+  it('a refusal that takes a while to arrive still leaves the caption its reading time', async () => {
+    const sleeps: number[] = []
+    const provider: SpeechProvider = { name: 'elevenlabs', speak: () => new Promise<void>((_r, reject) => setTimeout(() => reject(new Error('elevenlabs proxy answered 502')), 320)) }
+    const show = new ShowEngine({ speech: new SpeechQueue({ provider }), idle: false, sleep: (ms) => { sleeps.push(ms); return Promise.resolve() } })
+    show.start()
+    show.ingest(event(-44, { kind: 'accept_ask', inputs: { ref: 'SAL-05', ask: 18 } }, 'taker'), false)
+    await new Promise((r) => setTimeout(r, 900))
+    show.stop()
+    expect(sleeps.filter((ms) => ms > 1000).length).toBeGreaterThan(0) // not the 0.3 s the failure took
   })
 
   it('a voice that was heard sets the pace; one that ended at once, and a muted stage, leave the caption its reading time', async () => {

@@ -1,15 +1,15 @@
 /** React glue: one speech queue, one engine, the data sources, and the state they produce. */
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { AGENTS } from '../model/events'
 import { ENDPOINTS, POLL, type ShowConfig, type TtsChoice } from '../config'
 import { EventFeed } from '../net/feed'
 import { fetchHealth, fetchState } from '../net/http'
 import { ShowEngine, type ShowState } from '../show/engine'
 import { SpeechQueue } from '../tts/queue'
-import { fetchRemoteProviders, type RemoteName } from '../tts/remote'
+import { fetchRemoteProviders, unlockAudio, type RemoteName } from '../tts/remote'
 import { providerFactory, resolveChoice } from '../tts/select'
 import type { ProviderName } from '../tts/types'
-import { createWebSpeech, hasVoiceFor, webSpeechAvailable } from '../tts/webspeech'
+import { createWebSpeech, hasVoiceFor, unlockWebSpeech, webSpeechAvailable } from '../tts/webspeech'
 import type { Lang } from '../../shared/lang.ts'
 import { getLang, subscribeLang, useLang } from './lang'
 import { useTranscript } from './useTranscript'
@@ -44,7 +44,16 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   const engine = useMemo(() => new ShowEngine({ speech: queue, lang: getLang(), idleAfterMs: config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.idleSeconds])
   const state = useSyncExternalStore(engine.subscribe, engine.getSnapshot)
 
-  const [muted, setMuted] = useState(true)
+  const [mutedState, setMutedState] = useState(true)
+  const muted = mutedState
+  // A browser lets a page play audio only after a tap: every unmute is one, so prime the players there.
+  const setMuted = useCallback((next: boolean): void => {
+    if (!next) {
+      unlockAudio()
+      unlockWebSpeech()
+    }
+    setMutedState(next)
+  }, [])
   const [choice, setChoice] = useState<TtsChoice>(config.tts)
   // null until the server has answered which voices it has (so the header does not cry wolf at start).
   const [available, setAvailable] = useState<readonly RemoteName[] | null>(null)

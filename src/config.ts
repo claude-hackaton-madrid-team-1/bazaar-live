@@ -13,7 +13,7 @@ export const ENDPOINTS: Readonly<Record<AgentId, AgentEndpoint>> = {
 }
 
 export type TtsChoice = 'auto' | 'webspeech' | 'elevenlabs' | 'gemini' | 'off'
-/** Every value `?tts=` accepts; the header offers only the first three (ElevenLabs v4 is the show's voice). */
+/** Every value `?tts=` accepts; the header offers ElevenLabs v4 or no voice (ElevenLabs v4 is the show's voice). */
 export const TTS_CHOICES: readonly TtsChoice[] = ['auto', 'elevenlabs', 'off', 'webspeech', 'gemini']
 export const TTS_PICKER: readonly TtsChoice[] = ['elevenlabs', 'off']
 
