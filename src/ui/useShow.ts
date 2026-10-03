@@ -73,7 +73,8 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
         const refresh = () => AGENTS.forEach((a) => engine.setHealth(a, mockPlayer.health(a)))
         AGENTS.forEach((a) => engine.setFeed(a, 'open'))
         refresh()
-        engine.syncBoard(mockPlayer.state('maker')?.openOffers ?? [])
+        const state = mockPlayer.state('maker')
+        engine.syncBoard(state?.openOffers ?? [], state?.tick ?? null)
         mockPlayer.start()
         player = mockPlayer
       })
@@ -103,7 +104,7 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
     const pollBoard = () => {
       fetchState(ENDPOINTS.maker.http).then(
         (s) => {
-          if (s?.openOffers) engine.syncBoard(s.openOffers)
+          if (s?.openOffers) engine.syncBoard(s.openOffers, s.tick)
         },
         () => undefined,
       )
