@@ -15,6 +15,7 @@ import { dealerGroups, dealerOf, selectedIn, type DealerGroup } from '../views/n
 import { nowTick } from '../views/decisions.ts'
 import { liveDuelCount } from '../views/duels.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
+import { Markets, OurNegotiations, TeamsWithUs } from './NegotiationsLive.tsx'
 
 function Pill({ state }: { state: NegStatus }) {
   const t = useGameStrings()
@@ -334,6 +335,7 @@ export function NegotiationsScreen() {
     <>
       {groups.length > 0 && <DealerChips groups={groups} value={dealer?.with ?? null} />}
       {dealer && <DealerSummary g={dealer} state={state} />}
+      <OurNegotiations rows={all} dealer={dealer?.with ?? null} />
       {(!dealer || live.length > 0) && (
         <Panel title={t.neg.live} sub={t.neg.liveSub(live.length)} actions={dealer ? undefined : <DuelsLink live={liveDuelCount(state)} />}>
           {!rows.length ? (
@@ -364,6 +366,8 @@ export function NegotiationsScreen() {
           </Panel>
         )}
       </div>
+      {!dealer && <TeamsWithUs />}
+      {!dealer && <Markets />}
     </>
   )
 }
