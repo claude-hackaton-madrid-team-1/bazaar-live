@@ -3,7 +3,7 @@
  * every field is checked, a row in an odd shape loses that field or is skipped when it lacks what makes it
  * a row (a day, a tick, an amount), it never breaks the snapshot.
  */
-import type { CashPoint, Order, TeamEvent, Trade } from '../../shared/history.ts'
+import type { CashPoint, Order, ScoreMark, ScorePoint, TeamEvent, Trade } from '../../shared/history.ts'
 import { line, num } from '../learn/rows.ts'
 
 type Row = Record<string, unknown>
@@ -85,4 +85,29 @@ export function teamEventOf(raw: unknown): TeamEvent | null {
     level: int(r.level),
     why: line(r.why, 120),
   }
+}
+
+/** A timestamptz as pg hands it over (a Date) or as text → ISO, or null. */
+export function isoOf(raw: unknown): string | null {
+  const d = raw instanceof Date ? raw : typeof raw === 'string' ? new Date(raw) : null
+  return d && Number.isFinite(d.getTime()) ? d.toISOString() : null
+}
+
+export function scorePointOf(raw: unknown): ScorePoint | null {
+  const r = asRow(raw)
+  const day = dayOf(r.day)
+  const tick = int(r.tick)
+  if (!day || tick === null) return null
+  return { day, tick, at: isoOf(r.read_at), cash: int(r.cash), score: num(r.score), duel: num(r.duel), ladder: num(r.ladder), neg: num(r.neg), mm: num(r.mm), bench: num(r.bench) }
+}
+
+export function scoreMarkOf(raw: unknown): ScoreMark | null {
+  const r = asRow(raw)
+  const id = int(r.id)
+  const day = dayOf(r.day)
+  const tick = int(r.tick)
+  if (id === null || !day || tick === null || (r.kind !== 'start' && r.kind !== 'game')) return null
+  const agent = line(r.agent, 24)
+  if (r.kind === 'start' && !agent) return null
+  return { kind: r.kind, id, day, tick, agent, action: line(r.action, 16), note: line(r.note, 120), at: isoOf(r.at) }
 }

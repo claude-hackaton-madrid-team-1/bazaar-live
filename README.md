@@ -207,7 +207,7 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
 
 Cash is in the header of every game screen, larger than the other figures, with its last change (▲ +68 P); once
 the header scrolls away it stays in a pill in the corner. Both open `/history`. The header's figure is the game's
-own `/me`, live; the screen reads Postgres through `db/history.sql`, four more read-only views for the same role:
+own `/me`, live; the screen reads Postgres through `db/history.sql`, six more read-only views for the same role:
 
 - `show.cash_points`: our cash (real world, our team) at each tick it changed, and the latest, with score and rank.
 - `show.our_trades`: our settlements from the feed (it carries when we received them, so a tick that starts again
@@ -215,6 +215,19 @@ own `/me`, live; the screen reads Postgres through `db/history.sql`, four more r
 - `show.our_orders`: the ledger (listings, accepts, spends) per agent.
 - `show.our_events`: our feed events that move cash or stock besides a trade: a market's bond, a pack opened, a
   gift, a level, a failed settlement.
+- `show.score_points`: our score and its five parts (duels, ladder, negotiation, market-making, bench) and cash at
+  each tick one of them moved, and the latest. Never the whole score object (it carries `luck_private`).
+- `show.score_marks`: what may explain a change of score: an agent's `process_started` decision (a deploy or a
+  restart; only the agent and the tick leave the row) and the game's own turns (a round, a Market Test, duels, a
+  new day). A decision has a tick and no time, so a start is put on its day by order: a tick far below the one
+  before it starts a new run of the clock, as does a day that starts far below the last day's last tick.
+
+The top of `/history` is **Score today**: the score tick by tick with a mark at each start (an agent's starts
+within 10 ticks of each other fold into one, `taker restart ×8 (t434–480)`) and each game turn. Tap a mark to
+compare from it, until now or until the next mark: each part's change since the mark against the same number of
+ticks before it (▲ moving faster, ▼ slower), which is the answer to "did the change help?". Tap a part to put it
+on the big chart. Changes to the agents' GUARDRAILS.md, STRATEGY.md or flags are not marked: that repository is
+private, and the server holds no GitHub token. Until `show.score_points` is applied the panel is the cash chart.
 
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
 `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/history.sql`. The server reads

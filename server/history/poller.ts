@@ -1,5 +1,5 @@
 /**
- * Reads db/history.sql's four views every few seconds and keeps the last snapshot in memory for
+ * Reads db/history.sql's six views every few seconds and keeps the last snapshot in memory for
  * GET /api/history. It reads on the server's one shared pool (the reader role has a connection limit of
  * 4), and its capped queries run one after the other. Like the learn poller: a view not applied yet (42P01)
  * or not granted (42501) only blanks its part, logged once; any other error keeps the last good part and
@@ -8,7 +8,7 @@
 import { EMPTY_HISTORY, type HistoryParts, type HistorySnapshot } from '../../shared/history.ts'
 import { parseAll } from '../learn/rows.ts'
 import type { Db } from '../transcript/poller.ts'
-import { orderOf, pointOf, teamEventOf, tradeOf } from './rows.ts'
+import { orderOf, pointOf, scoreMarkOf, scorePointOf, teamEventOf, tradeOf } from './rows.ts'
 
 // newest first, capped, then put back in time order; day::text so a date never becomes a local midnight
 export const SQL = {
@@ -18,9 +18,11 @@ export const SQL = {
   orders: `select id, day::text as day, kind, tick, price, item, agent from show.our_orders order by id desc limit $1`,
   events: `select id, day::text as day, tick, type, venue, name, bond, pack, best, cash, level, why
              from show.our_events order by day desc, tick desc, id desc limit $1`,
+  scores: `select * from (select day::text as day, tick, read_at, cash, score, duel, ladder, neg, mm, bench from show.score_points order by day desc, tick desc limit $1) p order by day, tick`,
+  marks: `select kind, id, day::text as day, tick, agent, action, note, at from show.score_marks order by day desc, tick desc limit $1`,
 } as const
 
-export const CAPS = { points: 2000, trades: 500, orders: 500, events: 200 } as const
+export const CAPS = { points: 2000, trades: 500, orders: 500, events: 200, scores: 2000, marks: 300 } as const
 
 type Part = keyof HistoryParts
 
@@ -80,7 +82,7 @@ export class HistoryPoller {
     this.timer = (this.deps.setTimer ?? setTimeout)(() => void this.loop(), delay)
   }
 
-  /** One read of the four views. Never throws. */
+  /** One read of the six views. Never throws. */
   async pollOnce(): Promise<void> {
     const prev = this.snapshot
     const parts: Record<Part, boolean> = { ...prev.parts }
@@ -108,8 +110,10 @@ export class HistoryPoller {
     const trades = await read('trades', tradeOf, prev.trades)
     const orders = await read('orders', orderOf, prev.orders)
     const events = await read('events', teamEventOf, prev.events)
+    const scores = await read('scores', scorePointOf, prev.scores)
+    const marks = await read('marks', scoreMarkOf, prev.marks)
     this.failures = failed ? this.failures + 1 : 0
-    this.snapshot = { at: failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString(), parts, points, trades, orders, events }
+    this.snapshot = { at: failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString(), parts, points, trades, orders, events, scores, marks }
   }
 
   private redact(error: unknown): string {

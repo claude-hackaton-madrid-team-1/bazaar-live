@@ -2694,6 +2694,191 @@
   stroke-width: 2;
 }
 
+/* score over the day: the big chart, the marks where something changed, one strip per part */
+.gm-score-span {
+  margin: 0 0 var(--s-2);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.gm-score-box {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.gm-score-chart {
+  touch-action: pan-y;
+}
+
+.gm-score-after {
+  fill: color-mix(in srgb, var(--gm-us) 10%, transparent);
+}
+
+.gm-score-before {
+  fill: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.gm-score-markline {
+  stroke: var(--text-3, var(--text-2));
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.7;
+}
+
+.gm-score-markline[data-kind='start'] {
+  stroke: var(--gm-warn);
+  stroke-dasharray: none;
+  opacity: 0.55;
+}
+
+.gm-score-markline[data-on] {
+  stroke: var(--gm-warn);
+  stroke-width: 2;
+  opacity: 1;
+}
+
+.gm-score-flag {
+  cursor: pointer;
+  outline: none;
+}
+
+.gm-score-flag path,
+.gm-score-flag circle {
+  fill: var(--text-2);
+}
+
+.gm-score-flag[data-kind='start'] path {
+  fill: var(--gm-warn);
+}
+
+.gm-score-flag[data-on] path,
+.gm-score-flag[data-on] circle {
+  fill: var(--gm-warn);
+  stroke: var(--text);
+  stroke-width: 1;
+}
+
+.gm-score-flag:focus-visible .gm-score-hit {
+  stroke: var(--gm-us);
+  stroke-width: 1.5;
+}
+
+.gm-score-hit {
+  fill: transparent;
+}
+
+.gm-score-cross {
+  stroke: var(--text-2);
+  stroke-width: 1;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.gm-score-tip {
+  position: absolute;
+  top: 4px;
+  z-index: 2;
+  display: grid;
+  gap: 2px;
+  max-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--material-solid);
+  box-shadow: 0 4px 16px color-mix(in srgb, #000 18%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.gm-score-strips {
+  display: grid;
+  gap: 2px;
+  margin-top: var(--s-2);
+}
+
+.gm-score-strip-head,
+.gm-score-strip-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem 6.5rem 6rem;
+  gap: var(--s-2);
+  align-items: baseline;
+  /* the chart's own side padding (views/score.ts PAD), so the text sits over the plot */
+  padding: 0 12px 0 40px;
+}
+
+.gm-score-strip-head {
+  color: var(--text-2);
+  font-size: 0.6875rem;
+  text-align: right;
+}
+
+.gm-score-strip {
+  display: grid;
+  width: 100%;
+  padding: 4px 0 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+
+.gm-score-strip:hover {
+  background: var(--gm-row-hover);
+}
+
+.gm-score-strip[aria-pressed='true'] {
+  background: var(--gm-well);
+}
+
+.gm-score-strip:focus-visible {
+  outline: 2px solid var(--gm-us);
+  outline-offset: -2px;
+}
+
+.gm-score-strip-row {
+  font-size: 0.8125rem;
+}
+
+.gm-score-strip-name {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gm-score-strip[aria-pressed='true'] .gm-score-strip-name {
+  font-weight: 600;
+}
+
+.gm-score-strip svg {
+  display: block;
+}
+
+.gm-score-spark {
+  fill: none;
+  stroke: var(--gm-us);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.gm-score-trend {
+  margin-left: 4px;
+  font-size: 0.6875rem;
+}
+
+.gm-score-trend[data-tone='in'] {
+  color: var(--gm-good);
+}
+
+.gm-score-trend[data-tone='out'] {
+  color: var(--gm-bad);
+}
+
 .gm-history-cols {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
@@ -2742,6 +2927,12 @@
 }
 
 @media (max-width: 640px) {
+  .gm-score-strip-head,
+  .gm-score-strip-row {
+    grid-template-columns: minmax(0, 1fr) 4rem 5rem 4.5rem;
+    padding-left: 0;
+  }
+
   .gm-cashhero {
     grid-template-columns: minmax(0, 1fr);
     padding: var(--s-4);

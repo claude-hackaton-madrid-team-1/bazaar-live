@@ -1,6 +1,6 @@
 -- Movements screen (bazaar-live): our cash over the day and what moved it, read-only for bazaar_live_reader.
 --
--- Four views in schema `show`, like db/show.sql and db/learn.sql: the reader gets these and nothing else
+-- Six views in schema `show`, like db/show.sql and db/learn.sql: the reader gets these and nothing else
 -- (no table grants). Our team is the one in the real world's latest /me snapshot.
 --
 --   show.cash_points  our cash at every tick it changed (and the latest tick), with score and rank
@@ -8,6 +8,10 @@
 --   show.our_orders   what our agents committed in the ledger: listings, accepts, spends
 --   show.our_events   feed events that move cash or stock other than a trade: a venue's bond, packs,
 --                     gifts, a level unlocked (public facts, ours only)
+--   show.score_points our score and its five parts (and cash) at every tick one of them changed (and the
+--                     latest tick): never the whole score object (it carries luck_private)
+--   show.score_marks  what may explain a change of score: an agent process starting (a deploy or a restart)
+--                     and the game's own turns (a round, a Market Test, duels, a new day)
 --
 -- db/show.sql revokes everything in schema show from the reader, so apply this file after it (and after the
 -- other show files), every time:
@@ -81,6 +85,77 @@ select f.id, (f.received_at at time zone 'Europe/Madrid')::date as day, f.tick, 
  where f.type in ('venue.opened', 'venue.closed', 'pack.opened', 'gift.given', 'level.unlocked', 'settlement.failed')
    and (f.payload ->> 'team' = us.team or f.payload ->> 'owner' = us.team or f.actor = us.team);
 
+-- One row per (day, tick), the latest read, kept only when the score, one of its parts or the cash moved
+-- (the score drifts with the others' play, but most ticks nothing moves), and the latest tick. The parts are
+-- in their own units: the score is not their sum.
+create or replace view show.score_points with (security_barrier = true) as
+with us as (
+  select team from public.me_snapshots where world = 'real' and team is not null order by read_at desc limit 1
+), per_tick as (
+  select distinct on (day, m.tick)
+         (m.read_at at time zone 'Europe/Madrid')::date as day,
+         m.tick, m.read_at, m.cash,
+         case when jsonb_typeof(m.score -> 'score') = 'number' then round((m.score ->> 'score')::numeric, 3) end as score,
+         case when jsonb_typeof(m.score -> 'duel_points') = 'number' then round((m.score ->> 'duel_points')::numeric, 3) end as duel,
+         case when jsonb_typeof(m.score -> 'ladder_points') = 'number' then round((m.score ->> 'ladder_points')::numeric, 3) end as ladder,
+         case when jsonb_typeof(m.score -> 'neg_points') = 'number' then round((m.score ->> 'neg_points')::numeric, 3) end as neg,
+         case when jsonb_typeof(m.score -> 'mm_points') = 'number' then round((m.score ->> 'mm_points')::numeric, 3) end as mm,
+         case when jsonb_typeof(m.score -> 'bench_points') = 'number' then round((m.score ->> 'bench_points')::numeric, 3) end as bench
+    from public.me_snapshots m
+    cross join us
+   where m.world = 'real' and m.team = us.team and m.tick is not null and jsonb_typeof(m.score) = 'object'
+   order by day, m.tick, m.read_at desc
+), marked as (
+  select p.*,
+         row(p.cash, p.score, p.duel, p.ladder, p.neg, p.mm, p.bench)::text as now_row,
+         lag(row(p.cash, p.score, p.duel, p.ladder, p.neg, p.mm, p.bench)::text) over w as prev_row,
+         lead(p.tick) over w as next_tick
+    from per_tick p
+  window w as (order by p.day, p.tick)
+)
+select day, tick, read_at, cash, score, duel, ladder, neg, mm, bench
+  from marked
+ where prev_row is null or prev_row <> now_row or next_tick is null;
+
+-- A decision row has a tick and no time, and the game's tick may start again on a new day. So a start is put
+-- on its day by order, not by tick alone: a decision whose tick is far (over 100) below the one written just
+-- before it opens a new run of the clock, and so does a day whose first tick is far below the last day's
+-- last; the start goes to the latest day of its own run that had reached its tick. Only the agent and the
+-- tick leave the row (in a decision `owner` is the process's writer token; its reason is never read).
+-- The game's own turns are public feed events, with the time we received them.
+create or replace view show.score_marks with (security_barrier = true) as
+with days as (
+  select d.day, d.min_tick,
+         count(*) filter (where d.min_tick < d.prev_max - 100) over (order by d.day) as run
+    from (select x.day, x.min_tick, lag(x.max_tick) over (order by x.day) as prev_max
+            from (select (m.read_at at time zone 'Europe/Madrid')::date as day, min(m.tick) as min_tick, max(m.tick) as max_tick
+                    from public.me_snapshots m
+                   where m.world = 'real' and m.tick is not null
+                   group by 1) x) d
+), decided as (
+  select r.id, r.tick, r.agent, r.kind,
+         count(*) filter (where r.prev_tick - r.tick > 100) over (order by r.id) as run
+    from (select d.id, d.tick, d.agent, d.kind, lag(d.tick) over (order by d.id) as prev_tick
+            from public.decisions d
+           where d.tick >= 0 and d.dry_run is not true) r
+)
+select 'start'::text as kind, s.id, dy.day, s.tick, left(s.agent, 24) as agent,
+       null::text as action, null::text as note, null::timestamptz as at
+  from decided s
+  cross join lateral (select y.day from days y
+                       where y.run = s.run
+                       order by (y.min_tick <= s.tick) desc, case when y.min_tick <= s.tick then y.day end desc, y.day
+                       limit 1) dy
+ where s.kind = 'process_started'
+union all
+select 'game', f.id, (f.received_at at time zone 'Europe/Madrid')::date, f.tick, null,
+       case when f.type = 'day.opened' then 'day' else show.as_text(f.payload -> 'action', 16) end,
+       case when f.type = 'day.opened' then show.as_text(f.payload -> 'name', 32) else show.as_text(f.payload -> 'note', 120) end,
+       f.received_at
+  from public.feed_events f
+ where f.tick is not null
+   and (f.type = 'day.opened' or (f.type = 'schedule.fired' and f.payload ->> 'action' in ('round', 'bench', 'duels')));
+
 do $$
 begin
   if not exists (select from pg_roles where rolname = 'bazaar_live_reader') then
@@ -89,4 +164,4 @@ begin
 end $$;
 
 grant usage on schema show to bazaar_live_reader;
-grant select on show.cash_points, show.our_trades, show.our_orders, show.our_events to bazaar_live_reader;
+grant select on show.cash_points, show.our_trades, show.our_orders, show.our_events, show.score_points, show.score_marks to bazaar_live_reader;
