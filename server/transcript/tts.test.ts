@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import { EMPTY_ITEM } from '../../shared/transcript.ts'
 import { offerLine } from '../../shared/real-lines.ts'
+import { guestSpeaker, SPEAKERS } from '../../shared/tags.ts'
 import { createApp, parseTtsRequest } from '../app.ts'
 import { readProviderConfig } from '../providers.ts'
 import { TranscriptStore } from './store.ts'
@@ -61,9 +62,24 @@ describe('what the TTS proxy will voice from a real conversation', () => {
     const store = new TranscriptStore()
     store.add([{ ...EMPTY_ITEM, id: 'f1', kind: 'thread_line', who: 'them', counterpart: 'chato', text: QUOTE }])
     const { say, upstream } = await start(store, true)
-    for (const speaker of ['buyer', 'seller', 'abuela', 'narrator']) expect((await say(speaker, QUOTE)).status, speaker).toBe(400)
+    for (const speaker of SPEAKERS.filter((s) => s !== 'chato')) expect((await say(speaker, QUOTE)).status, speaker).toBe(400)
     expect(upstream).toHaveLength(0)
     expect((await say('chato', QUOTE)).status).toBe(200)
+  })
+
+  it("binds a new dealer's quote to its guest voice, and never voices a team's words", async () => {
+    const store = new TranscriptStore()
+    const team = 'Te lo cambio por dos repetidas, ni una más, que es buen trato.'
+    store.add([
+      { ...EMPTY_ITEM, id: 'f1', kind: 'thread_line', who: 'them', counterpart: 'picaros', text: QUOTE },
+      { ...EMPTY_ITEM, id: 'f2', kind: 'thread_line', who: 'them', counterpart: 't05', text: team },
+    ])
+    const { say, upstream } = await start(store, true)
+    const own = guestSpeaker('picaros')
+    for (const speaker of SPEAKERS.filter((s) => s !== own)) expect((await say(speaker, QUOTE)).status, speaker).toBe(400)
+    for (const speaker of SPEAKERS) expect((await say(speaker, team)).status, speaker).toBe(400)
+    expect(upstream).toHaveLength(0)
+    expect((await say(own, QUOTE)).status).toBe(200)
   })
 
   it("never voices a rival's duel words, in any mode", async () => {
@@ -71,7 +87,7 @@ describe('what the TTS proxy will voice from a real conversation', () => {
     const text = 'Eso es muy poco para una carta así, no me hagas perder el tiempo.'
     store.add([{ ...EMPTY_ITEM, id: 'dc:1', kind: 'duel_replay', counterpart: 'Rival Noche', lines: [{ n: 1, speaker: 'them', tick: 1, price: 5, days: null, text }] }])
     const { say, upstream } = await start(store, true)
-    for (const speaker of ['buyer', 'seller', 'chato', 'abuela', 'narrator']) expect((await say(speaker, text)).status, speaker).toBe(400)
+    for (const speaker of SPEAKERS) expect((await say(speaker, text)).status, speaker).toBe(400)
     expect(upstream).toHaveLength(0)
   })
 

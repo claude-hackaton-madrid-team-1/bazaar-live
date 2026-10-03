@@ -26,7 +26,7 @@ export interface Strings {
   readonly jevThinks: string
   readonly jevSr: string
   readonly undecided: string
-  readonly dealers: { readonly abuela: string; readonly chato: string; readonly other: string }
+  readonly dealers: { readonly abuela: string; readonly chato: string; readonly pilar: string; readonly other: string }
   readonly moves: Readonly<Record<string, string>>
   readonly hoods: Readonly<Record<string, string>>
   readonly transcript: string
@@ -91,7 +91,7 @@ const ES: Strings = {
   jevThinks: 'Jev piensa…',
   jevSr: 'Jev piensa',
   undecided: '¿?',
-  dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', other: 'el tratante' },
+  dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar', other: 'el tratante' },
   moves: { open: 'saluda', bid: 'regatea…', accept: '¡trato!', walk: 'se va' },
   hoods: HOODS_ALL,
   transcript: 'Transcripción',
@@ -151,7 +151,7 @@ const EN: Strings = {
   jevThinks: 'Jev thinks…',
   jevSr: 'Jev thinks',
   undecided: '¿?',
-  dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', other: 'the dealer' },
+  dealers: { abuela: 'Abuela Carmen', chato: 'El Chato', pilar: 'Doña Pilar', other: 'the dealer' },
   moves: { open: 'greets', bid: 'haggling…', accept: 'deal!', walk: 'walks away' },
   hoods: HOODS_ALL,
   transcript: 'Transcript',

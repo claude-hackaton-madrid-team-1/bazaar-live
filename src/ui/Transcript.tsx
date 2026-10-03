@@ -1,22 +1,15 @@
 import { useEffect, useRef } from 'react'
 import type { TranscriptEntry } from '../show/engine'
+import { type DealerNames, useDealerNames } from '../net/dealers'
 import { Spoken } from '../stage/Bubbles'
 import { useStrings } from './lang'
+import { speakerName } from './speakers'
 import './transcript.css'
 
-function speakerName(t: ReturnType<typeof useStrings>, speaker: TranscriptEntry['speaker']): string {
-  switch (speaker) {
-    case 'buyer':
-      return t.buyer.charAt(0) + t.buyer.slice(1).toLowerCase()
-    case 'seller':
-      return t.seller.charAt(0) + t.seller.slice(1).toLowerCase()
-    case 'abuela':
-      return t.dealers.abuela
-    case 'chato':
-      return t.dealers.chato
-    case 'narrator':
-      return t.narrator
-  }
+/** Buyer and seller read as names in the log ("Comprador"), not as the stage's uppercase labels. */
+function whoName(t: ReturnType<typeof useStrings>, e: TranscriptEntry, names: DealerNames): string {
+  const name = speakerName(t, e.speaker, e.dealer, names)
+  return e.speaker === 'buyer' || e.speaker === 'seller' ? name.charAt(0) + name.slice(1).toLowerCase() : name
 }
 
 /** The lines that open a new tick: the tick shows once per turn, not on every line of it. */
@@ -34,6 +27,7 @@ function turnStarts(entries: readonly TranscriptEntry[]): ReadonlySet<string> {
 /** The captions: every line, in order, with replayed and skipped lines dimmed. */
 export function Transcript({ entries }: { readonly entries: readonly TranscriptEntry[] }) {
   const t = useStrings()
+  const names = useDealerNames()
   const list = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
   const last = entries.at(-1)
@@ -65,7 +59,7 @@ export function Transcript({ entries }: { readonly entries: readonly TranscriptE
           {entries.length === 0 && <li className="empty">{t.waiting}</li>}
           {entries.map((e) => (
             <li key={e.id} className={`line ${e.kind}${turns.has(e.id) ? ' turn' : ''}`}>
-              <span className={`who ${e.speaker}`}>{speakerName(t, e.speaker)}</span>
+              <span className={`who ${e.speaker}`}>{whoName(t, e, names)}</span>
               {e.kind === 'skipped' && <span className="sr-only"> ({t.skipped})</span>}
               <p className="said">
                 <Spoken text={e.text} />

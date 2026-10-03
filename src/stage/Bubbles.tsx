@@ -3,8 +3,9 @@ import { Fragment } from 'react'
 import type { AgentId } from '../model/events'
 import type { Line } from '../show/beat'
 import { verdictFamily, verdictHue } from '../show/jev'
-import type { Strings } from '../ui/strings'
+import { useDealerNames } from '../net/dealers'
 import { useStrings } from '../ui/lang'
+import { speakerName } from '../ui/speakers'
 import { appear, EASE_OUT } from './calm'
 
 const TAG = /\[([a-z][a-z ]{0,30})\]/gi
@@ -53,24 +54,10 @@ export function Spoken({ text }: { readonly text: string }) {
   )
 }
 
-function speakerName(t: Strings, speaker: Line['speaker']): string {
-  switch (speaker) {
-    case 'buyer':
-      return t.buyer
-    case 'seller':
-      return t.seller
-    case 'abuela':
-      return t.dealers.abuela
-    case 'chato':
-      return t.dealers.chato
-    case 'narrator':
-      return t.narrator
-  }
-}
-
 /** The line being spoken, as a Liquid Glass caption on the side of whoever says it, marked with their light. */
 export function SpeechBubble({ line, id }: { readonly line: Line | null; readonly id: string }) {
   const t = useStrings()
+  const names = useDealerNames()
   const reduce = useReducedMotion()
   return (
     <AnimatePresence mode="wait">
@@ -89,7 +76,7 @@ export function SpeechBubble({ line, id }: { readonly line: Line | null; readonl
         >
           <span className="caption-who">
             <i className="caption-dot" />
-            {speakerName(t, line.speaker)}
+            {speakerName(t, line.speaker, line.dealer, names)}
           </span>
           <span className="caption-text">
             <Spoken text={line.text} />

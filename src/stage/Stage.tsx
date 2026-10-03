@@ -91,7 +91,7 @@ export function Stage({ state }: { readonly state: ShowState }) {
         <Voice role="buyer" className="lead" pose={pose.buyer} talking={speaker === 'buyer'} label={t.buyer}>
           <Nameplate role="buyer" talking={speaker === 'buyer'} />
         </Voice>
-        <Dealer dealer={state.dealer} speaking={speaker === 'abuela' || speaker === 'chato'} />
+        <Dealer dealer={state.dealer} speaking={speaker !== undefined && speaker !== 'buyer' && speaker !== 'seller' && speaker !== 'narrator'} />
         <ReachCard reach={state.reach} />
         <div className="toasts">
           <DealToast deal={state.deal} />

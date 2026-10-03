@@ -73,8 +73,27 @@ describe('a dealer thread line', () => {
     expect(beat?.lines).toEqual([{ speaker: 'chato', text: 'Lavapiés number 8 will cost you 31 primas.', lang: 'en' }])
   })
 
-  it('gives a dealer we have no character for to the narrator', () => {
-    expect(realBeat(dealerLine(EN_QUOTE, { counterpart: 'tendero' }), 'en')?.lines[0]?.speaker).toBe('narrator')
+  it('gives Doña Pilar her own voice, never the narrator', () => {
+    const beat = realBeat(dealerLine(null, { counterpart: 'pilar' }), 'en')
+    expect(beat?.lines).toEqual([{ speaker: 'pilar', text: 'Lavapiés number 8 will cost you 31 primas.', lang: 'en' }])
+    expect(beat?.cue).toMatchObject({ kind: 'dealer', dealer: 'pilar' })
+  })
+
+  it('gives a dealer we do not know yet a guest voice and its id, so the captions can name it', () => {
+    const lines = realBeat(dealerLine(EN_QUOTE, { counterpart: 'Tendero' }), 'en', SPEAK)?.lines ?? []
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) {
+      expect(['guest1', 'guest2', 'guest3']).toContain(line.speaker)
+      expect(line.dealer).toBe('tendero')
+    }
+    // and its own words may be voiced, like a known dealer's
+    expect(lines.some((l) => !l.silent && l.text === EN_QUOTE)).toBe(true)
+  })
+
+  it('leaves a team counterpart to the narrator, as a caption', () => {
+    const lines = realBeat(dealerLine(EN_QUOTE, { counterpart: 't05' }), 'en', SPEAK)?.lines ?? []
+    expect(lines.map((l) => l.speaker)).toEqual(['narrator', 'narrator'])
+    expect(lines[0]).toMatchObject({ text: EN_QUOTE, silent: true })
   })
 
   it('has nothing to play for an empty line', () => {

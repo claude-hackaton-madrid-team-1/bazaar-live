@@ -146,6 +146,35 @@ describe('the TTS proxy', () => {
   })
 })
 
+describe('a voice per dealer', () => {
+  it('reads ELEVENLABS_VOICE_PILAR and fills the guest voices from ELEVENLABS_VOICE_POOL', () => {
+    const voices = readProviderConfig({ ELEVENLABS_API_KEY: 'e', ELEVENLABS_VOICE_PILAR: 'pilarVoice', ELEVENLABS_VOICE_POOL: ' g1 , g2 ', ELEVENLABS_VOICE_GUEST2: 'own2' }).elevenlabs!.voices
+    expect(voices.pilar).toBe('pilarVoice')
+    expect(voices.guest1).toBe('g1')
+    expect(voices.guest2).toBe('own2')
+    expect(voices.guest3).not.toBe('')
+  })
+
+  it('gives every dealer and guest a voice of its own by default, never the narrator\'s', () => {
+    const voices = readProviderConfig({ ELEVENLABS_API_KEY: 'e' }).elevenlabs!.voices
+    const dealers = [voices.abuela, voices.chato, voices.pilar, voices.guest1, voices.guest2, voices.guest3]
+    expect(new Set(dealers).size).toBe(dealers.length)
+    expect(dealers).not.toContain(voices.narrator)
+    expect(dealers).not.toContain(voices.buyer)
+    expect(dealers).not.toContain(voices.seller)
+  })
+
+  it('accepts a line for pilar and a guest voice, and answers /api/dealers', async () => {
+    expect(parseTtsRequest(JSON.stringify({ provider: 'elevenlabs', speaker: 'pilar', lang: 'en', text: 'Lavapiés number 8 will cost you 31 primas.' }), ['elevenlabs'])).toMatchObject({ speaker: 'pilar' })
+    expect(parseTtsRequest(JSON.stringify({ provider: 'elevenlabs', speaker: 'guest2', lang: 'en', text: 'Lavapiés number 8 will cost you 31 primas.' }), ['elevenlabs'])).toMatchObject({ speaker: 'guest2' })
+    const base = await start({}, (() => Promise.reject(new Error('no upstream'))) as typeof fetch, { dealerNames: () => Promise.resolve({ pilar: 'Doña Pilar' }) })
+    const res = await fetch(`${base}/api/dealers`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ names: { pilar: 'Doña Pilar' } })
+    expect((await fetch(`${base}/api/dealers`, { method: 'POST' })).status).toBe(405)
+  })
+})
+
 describe('provider helpers', () => {
   it('builds the Gemini request with persona + line style and inline vocal bursts', () => {
     const req = geminiRequest('gemini-3.8-flash-tts', 'Puck', 'buyer', '[sarcastic] Sure. [laughs]') as { input: { content: { text: string; annotations: { style: string }[] }[] }[]; generation_config: unknown }
@@ -391,7 +420,7 @@ describe('one language per line (the proxy contract, both languages)', () => {
     const req = elevenRequest(config, 'abuela', 'es', '[sighs] Ay, qué calor.')
     expect(req.url).toBe(`https://api.elevenlabs.io/v1/text-to-speech/${config.voices.abuela}?output_format=mp3_44100_128`)
     expect(req.body).toEqual({ text: '[sighs] Ay, qué calor.', model_id: 'eleven_v4', language_code: 'es', voice_settings: { stability: 0.55, similarity_boost: 0.8 } })
-    expect(Object.keys(ELEVEN_SETTINGS).sort()).toEqual(['abuela', 'buyer', 'chato', 'narrator', 'seller'])
+    expect(Object.keys(ELEVEN_SETTINGS).sort()).toEqual(['abuela', 'buyer', 'chato', 'guest1', 'guest2', 'guest3', 'narrator', 'pilar', 'seller'])
     for (const s of Object.values(ELEVEN_SETTINGS)) {
       expect(s.stability).toBeGreaterThanOrEqual(0)
       expect(s.stability).toBeLessThanOrEqual(1)

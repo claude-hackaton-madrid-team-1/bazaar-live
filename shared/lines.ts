@@ -49,7 +49,7 @@ export function fill(text: string, values: SlotValues): string {
 }
 
 /** Who says a template line: the dealer role resolves to the dealer on stage, or the narrator. */
-export function speakerOf(role: Role, dealer: 'abuela' | 'chato' | 'other'): Speaker {
+export function speakerOf(role: Role, dealer: 'abuela' | 'chato' | 'pilar' | 'other'): Speaker {
   if (role !== 'dealer') return role
   return dealer === 'other' ? 'narrator' : dealer
 }
@@ -59,6 +59,10 @@ const ROLES_FOR: Readonly<Record<Speaker, readonly Role[]>> = {
   seller: ['seller'],
   abuela: ['dealer'],
   chato: ['dealer'],
+  pilar: ['dealer'],
+  guest1: ['dealer'],
+  guest2: ['dealer'],
+  guest3: ['dealer'],
   narrator: ['narrator', 'dealer'],
 }
 

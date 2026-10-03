@@ -37,15 +37,20 @@ export class UpstreamError extends Error {
 type Env = Readonly<Record<string, string | undefined>>
 
 /**
- * Voice ids. We could not check them without a key (no call is made to write this file): set
- * ELEVENLABS_VOICE_<SPEAKER> to voices in your library, ideally Spanish (Spain) ones, and read
- * docs/voices.md for the settings and the reasoning per role. Gemini's names come from its prebuilt list.
+ * Voice ids, overridable with ELEVENLABS_VOICE_<SPEAKER> (and ELEVENLABS_VOICE_POOL for the guest
+ * voices); docs/voices.md has the voice chosen for each dealer and the reasoning per role. Each dealer has
+ * its own voice, never the narrator's. Gemini's names come from its prebuilt list.
  */
 const ELEVEN_VOICES: Readonly<Record<Speaker, string>> = {
   buyer: 'IKne3meq5aSn9XLyUdCD',
   seller: 's3TPKV1kjDlVtZbl4Ksh',
-  abuela: 'XB0fDUnXU5powFXDhCwa',
-  chato: 'N2lVS1w4EtoT3dr4eOWO',
+  // Spain-Spanish voices from the shared library (peninsular accent), usable by id on our paid tier.
+  abuela: 'RTuKyXJgRGAQSx8Qz8Mf', // Tete: old, soft, slow
+  chato: 'RnKqZYEeVQciORlpiCz0', // Baldo: middle-aged, husky, serious
+  pilar: '9oWKy782oltLmeuOUdq7', // Alegria Sana: old, classy, diplomatic
+  guest1: '5egO01tkUjEzu7xSSE8M', // Carmelo: middle-aged, deep, mysterious
+  guest2: '1eHrpOW5l98cxiSRjbzJ', // Raquel: young, bright, cheerful
+  guest3: 'orF2qy9215xjwqqxqsWW', // Rafael: old, theatrical, a little raspy
   narrator: 'onwK4e9ZLuTAKqWW03F9',
 }
 
@@ -54,6 +59,10 @@ const GEMINI_VOICES: Readonly<Record<Speaker, string>> = {
   seller: 'Fenrir',
   abuela: 'Sulafat',
   chato: 'Algenib',
+  pilar: 'Gacrux',
+  guest1: 'Orus',
+  guest2: 'Leda',
+  guest3: 'Iapetus',
   narrator: 'Charon',
 }
 
@@ -63,6 +72,10 @@ const PERSONA: Readonly<Record<Speaker, string>> = {
   seller: 'a theatrical Madrid market stallholder, loud and charming',
   abuela: 'a warm, chatty Madrid grandmother, slow and affectionate',
   chato: 'a gruff, laconic Madrid card dealer, low voice',
+  pilar: 'an elegant, formal older lady from the Salamanca district of Madrid, refined and unhurried',
+  guest1: 'a card dealer at a Madrid flea market, deep-voiced and a little mysterious',
+  guest2: 'a young card dealer at a Madrid flea market, bright and quick',
+  guest3: 'an old card dealer at a Madrid flea market, theatrical like an auctioneer',
   narrator: 'a friendly radio host, clear and upbeat',
 }
 
@@ -86,16 +99,40 @@ export const ELEVEN_SETTINGS: Readonly<Record<Speaker, ElevenSettings>> = {
   seller: { stability: 0.4, similarity_boost: 0.75 },
   abuela: { stability: 0.55, similarity_boost: 0.8 },
   chato: { stability: 0.5, similarity_boost: 0.8 },
+  pilar: { stability: 0.6, similarity_boost: 0.8 },
+  guest1: { stability: 0.45, similarity_boost: 0.75 },
+  guest2: { stability: 0.45, similarity_boost: 0.75 },
+  guest3: { stability: 0.5, similarity_boost: 0.75 },
   narrator: { stability: 0.6, similarity_boost: 0.75 },
 }
 
-const voices = (env: Env, prefix: string, defaults: Readonly<Record<Speaker, string>>): Record<Speaker, string> => ({
-  buyer: env[`${prefix}_BUYER`] || defaults.buyer,
-  seller: env[`${prefix}_SELLER`] || defaults.seller,
-  abuela: env[`${prefix}_ABUELA`] || defaults.abuela,
-  chato: env[`${prefix}_CHATO`] || defaults.chato,
-  narrator: env[`${prefix}_NARRATOR`] || defaults.narrator,
-})
+/** `<PREFIX>_POOL`: comma-separated voice ids for the guest voices (dealers we do not know yet), in order. */
+const pool = (env: Env, prefix: string): string[] =>
+  (env[`${prefix}_POOL`] ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+
+/**
+ * One voice per speaker: `<PREFIX>_<SPEAKER>` (e.g. ELEVENLABS_VOICE_PILAR), else the default. A guest
+ * voice takes `<PREFIX>_GUEST<n>` first, then the n-th id of `<PREFIX>_POOL`, then its default.
+ */
+const voices = (env: Env, prefix: string, defaults: Readonly<Record<Speaker, string>>): Record<Speaker, string> => {
+  const fromPool = pool(env, prefix)
+  const pick = (speaker: Speaker, poolIndex: number | null): string =>
+    env[`${prefix}_${speaker.toUpperCase()}`]?.trim() || (poolIndex === null ? undefined : fromPool[poolIndex]) || defaults[speaker]
+  return {
+    buyer: pick('buyer', null),
+    seller: pick('seller', null),
+    abuela: pick('abuela', null),
+    chato: pick('chato', null),
+    pilar: pick('pilar', null),
+    guest1: pick('guest1', 0),
+    guest2: pick('guest2', 1),
+    guest3: pick('guest3', 2),
+    narrator: pick('narrator', null),
+  }
+}
 
 export function readProviderConfig(env: Env): ProviderConfig {
   const eleven = env.ELEVENLABS_API_KEY?.trim()

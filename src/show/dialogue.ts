@@ -10,6 +10,7 @@
 import type { BankKey } from '../../shared/bank.ts'
 import type { Lang } from '../../shared/lang.ts'
 import * as L from '../../shared/lines.ts'
+import { dealerSpeaker, type Speaker } from '../../shared/tags.ts'
 import type { DecisionEvent, ExecutionEvent, PublicDecision, ShowEvent } from '../model/events'
 import { PRIORITY, type Beat, type Cue, type DealerId, type Line, type Side } from './beat'
 import { chooseVariant, type LineMemory } from './memory'
@@ -37,6 +38,8 @@ type Part = Pick<Beat, 'lines' | 'mood' | 'cue' | 'priority'>
 interface Ctx {
   readonly values: L.SlotValues
   readonly dealer: DealerId
+  /** The guest voice and id of a dealer we do not know yet: it says the dealer's lines, not the narrator. */
+  readonly guest: { readonly speaker: Speaker; readonly id: string } | null
   readonly dialogue: DialogueContext
   readonly practice: boolean
 }
@@ -47,8 +50,10 @@ function ctxOf(d: PublicDecision | null, dialogue: DialogueContext, extra: Parti
   const move = d?.move ?? {}
   const ref = inputs.ref ?? inputs.card ?? inputs.item
   const dealer = dealerId(inputs.dealer)
+  const guestVoice = dealer === 'other' ? dealerSpeaker(inputs.dealer) : null
   return {
     dealer,
+    guest: guestVoice && inputs.dealer ? { speaker: guestVoice, id: inputs.dealer.trim().toLowerCase() } : null,
     dialogue,
     practice: d !== null && !d.sent,
     values: {
@@ -76,7 +81,11 @@ function lines(key: BankKey, topic: Topic, ctx: Ctx, seed: number): { lines: Lin
   memory?.record(variant, now)
   return {
     mood: variant.mood,
-    lines: variant.lines.map(([role, text]) => ({ speaker: L.speakerOf(role, ctx.dealer), text: L.fill(text, ctx.values) })),
+    lines: variant.lines.map(([role, text]) =>
+      role === 'dealer' && ctx.guest
+        ? { speaker: ctx.guest.speaker, dealer: ctx.guest.id, text: L.fill(text, ctx.values) }
+        : { speaker: L.speakerOf(role, ctx.dealer), text: L.fill(text, ctx.values) },
+    ),
   }
 }
 
