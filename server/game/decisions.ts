@@ -219,6 +219,8 @@ export class DecisionsPoller {
   private missing = false
   private timer: unknown = null
   private stopped = true
+  private polling = false
+  private again = false
 
   constructor(deps: DecisionsPollerDeps) {
     this.deps = deps
@@ -241,6 +243,22 @@ export class DecisionsPoller {
     this.timer = null
   }
 
+  /**
+   * Read now rather than at the timer's next turn (an agent's socket said something moved). While a read is
+   * running, one more follows it; while stopped, missing or backing off after a failure, nothing: the slow
+   * re-check and the backoff hold. True when a read is coming.
+   */
+  poke(): boolean {
+    if (this.stopped || this.missing || this.fails > 0) return false
+    if (this.polling) {
+      this.again = true
+      return true
+    }
+    if (this.timer !== null) this.o.clearTimer(this.timer)
+    this.schedule(0)
+    return true
+  }
+
   /** True while the views are missing (or not granted): polling has slowed to a re-check. */
   get off(): boolean {
     return this.missing
@@ -257,8 +275,12 @@ export class DecisionsPoller {
     this.timer = this.o.setTimer(() => {
       this.timer = null
       if (this.stopped) return
+      this.polling = true
       void this.pollOnce().then(() => {
-        if (!this.stopped) this.schedule(this.nextDelayMs())
+        this.polling = false
+        const again = this.again && this.fails === 0
+        this.again = false
+        if (!this.stopped) this.schedule(again ? 0 : this.nextDelayMs())
       })
     }, ms)
   }
@@ -358,6 +380,8 @@ export class DecisionsPoller {
 
 export interface Decisions {
   readonly stop: () => void
+  /** Read now (`DecisionsPoller.poke`); false while off. */
+  readonly poke: () => boolean
 }
 
 /** Off (and says why, once) without the show's database or without the game hub; else polling. */
@@ -365,7 +389,7 @@ export function startDecisions(
   env: Readonly<Record<string, string | undefined>>,
   deps: { readonly db: Db | null; readonly hub: Publisher | null; readonly log: (entry: Record<string, unknown>) => void; readonly secrets?: readonly string[] },
 ): Decisions {
-  const off: Decisions = { stop: () => undefined }
+  const off: Decisions = { stop: () => undefined, poke: () => false }
   if (deps.db === null) {
     deps.log({ route: 'agent_decisions', event: 'off', reason: 'no_database' })
     return off
@@ -377,5 +401,5 @@ export function startDecisions(
   const poller = new DecisionsPoller({ db: deps.db, hub: deps.hub, log: deps.log, limits: readLimits(env), secrets: deps.secrets ?? [] })
   poller.start()
   deps.log({ route: 'agent_decisions', event: 'polling' })
-  return { stop: () => poller.stop() }
+  return { stop: () => poller.stop(), poke: () => poller.poke() }
 }

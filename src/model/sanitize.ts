@@ -17,7 +17,7 @@ import type {
   PublicInputs,
   PublicMove,
   ShowEvent,
-} from './events'
+} from './events.ts'
 
 type Json = Record<string, unknown>
 

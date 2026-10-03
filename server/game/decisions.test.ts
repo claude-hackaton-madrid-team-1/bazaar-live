@@ -216,3 +216,68 @@ describe('startDecisions', () => {
     expect(hub.replay()[0]?.type).toBe('agent.ledger')
   })
 })
+
+describe('DecisionsPoller.poke', () => {
+  function manual(handler: () => unknown[] | Error) {
+    const tasks: { fn: () => void; ms: number }[] = []
+    let reads = 0
+    const db: Db = {
+      query: async (sql) => {
+        if (sql === SQL.decisionsBackfill || sql === SQL.decisionsAfter) reads += 1
+        const out = handler()
+        if (out instanceof Error) throw out
+        return { rows: out }
+      },
+    }
+    const poller = new DecisionsPoller({
+      db, hub: new GameHub(), log: () => undefined, random: () => 0.5,
+      setTimer: (fn, ms) => {
+        const t = { fn, ms }
+        tasks.push(t)
+        return t
+      },
+      clearTimer: (h) => {
+        const i = tasks.indexOf(h as { fn: () => void; ms: number })
+        if (i >= 0) tasks.splice(i, 1)
+      },
+    })
+    const fire = async () => {
+      for (const t of tasks.splice(0)) t.fn()
+      for (let i = 0; i < 20; i += 1) await Promise.resolve()
+    }
+    return { poller, tasks, fire, reads: () => reads }
+  }
+
+  it('reads now and goes back to the 3 s poll', async () => {
+    const m = manual(() => [])
+    m.poller.start()
+    await m.fire()
+    expect(m.reads()).toBe(1)
+    expect(m.poller.poke()).toBe(true)
+    expect(m.tasks.map((t) => t.ms)).toEqual([0])
+    await m.fire()
+    expect(m.reads()).toBe(2)
+    expect(m.tasks.map((t) => t.ms)).toEqual([3000])
+    m.poller.stop()
+    expect(m.poller.poke()).toBe(false)
+  })
+
+  it('does nothing while the views are missing or the database fails', async () => {
+    const missing = manual(() => pgError('42P01'))
+    missing.poller.start()
+    await missing.fire()
+    expect(missing.poller.off).toBe(true)
+    expect(missing.poller.poke()).toBe(false)
+    expect(missing.tasks.map((t) => t.ms)).toEqual([60_000])
+
+    const down = manual(() => pgError('57P01'))
+    down.poller.start()
+    await down.fire()
+    expect(down.poller.poke()).toBe(false)
+    expect(down.tasks.map((t) => t.ms)).toEqual([6000])
+  })
+
+  it('startDecisions hands out poke, and a no-op one while off', () => {
+    expect(startDecisions({}, { db: null, hub: null, log: () => undefined }).poke()).toBe(false)
+  })
+})

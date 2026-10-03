@@ -5,17 +5,17 @@ import { createApp } from '../app.ts'
 import { RateLimiter } from '../limits.ts'
 import { readProviderConfig } from '../providers.ts'
 import { GameHub, type GameEvent } from './relay.ts'
-import { tokenMatches } from './routes.ts'
+import { tokenMatches, type GameRouteDeps } from './routes.ts'
 import { startGame } from './start.ts'
 
 const servers: Server[] = []
 afterEach(() => servers.splice(0).forEach((s) => { s.closeAllConnections(); s.close() }))
 
-async function start(opts: { hub?: GameHub | null; enabled?: boolean; token?: string | null; maxPerAddress?: number; openLimiter?: RateLimiter } = {}) {
+async function start(opts: { hub?: GameHub | null; enabled?: boolean; token?: string | null; maxPerAddress?: number; openLimiter?: RateLimiter; sockets?: GameRouteDeps['sockets'] } = {}) {
   const hub = opts.hub === undefined ? new GameHub() : opts.hub
   const app = createApp({
     config: readProviderConfig({}), distDir: '/nonexistent', log: () => undefined,
-    game: { hub, enabled: () => opts.enabled ?? true, target: 'simulator', token: opts.token ?? null, maxPerAddress: opts.maxPerAddress, openLimiter: opts.openLimiter },
+    game: { hub, enabled: () => opts.enabled ?? true, target: 'simulator', token: opts.token ?? null, maxPerAddress: opts.maxPerAddress, openLimiter: opts.openLimiter, sockets: opts.sockets },
   })
   const server = createServer(app)
   servers.push(server)
@@ -53,14 +53,20 @@ describe('GET /api/game', () => {
     const { base } = await start({ hub: null, enabled: false })
     const res = await fetch(`${base}/api/game`)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ enabled: false, target: null, source: null, tokenRequired: false })
+    expect(await res.json()).toEqual({ enabled: false, target: null, source: null, tokenRequired: false, sockets: null })
   })
 
   it('reports the target and whether a token is needed, never the key or url', async () => {
     const { base } = await start({ token: 'tok' })
     const text = await (await fetch(`${base}/api/game`)).text()
-    expect(JSON.parse(text)).toEqual({ enabled: true, target: 'simulator', source: 'api', tokenRequired: true })
+    expect(JSON.parse(text)).toEqual({ enabled: true, target: 'simulator', source: 'api', tokenRequired: true, sockets: null })
     expect(text).not.toContain('http')
+  })
+
+  it('reports each agent\'s socket (state, last live event) while the subscriber runs', async () => {
+    const sockets = { taker: { state: 'open', lastEventAt: '2026-10-03T11:00:00.000Z' }, maker: { state: 'reconnecting', lastEventAt: null } } as const
+    const { base } = await start({ sockets: () => sockets })
+    expect(((await (await fetch(`${base}/api/game`)).json()) as { sockets: unknown }).sockets).toEqual(sockets)
   })
 
   it('refuses other methods', async () => {
