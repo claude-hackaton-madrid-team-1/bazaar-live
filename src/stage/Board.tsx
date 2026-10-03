@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { BoardCard } from '../show/engine'
+import { useStrings } from '../ui/lang'
 
 const HOOD_COLORS: Readonly<Record<string, string>> = {
   LAV: '#e76f51',
@@ -8,15 +9,6 @@ const HOOD_COLORS: Readonly<Record<string, string>> = {
   SAL: '#2a9d8f',
   RET: '#52b788',
   CHA: '#457b9d',
-}
-
-const HOODS: Readonly<Record<string, string>> = {
-  LAV: 'Lavapiés',
-  MAL: 'Malasaña',
-  LAT: 'La Latina',
-  SAL: 'Salamanca',
-  RET: 'El Retiro',
-  CHA: 'Chamberí',
 }
 
 function setOf(ref: string): string {
@@ -50,6 +42,7 @@ export function PriceTag({ price, version }: { readonly price: number | null; re
 }
 
 function OfferCard({ card }: { readonly card: BoardCard }) {
+  const t = useStrings()
   const set = setOf(card.ref)
   return (
     <motion.div
@@ -59,26 +52,27 @@ function OfferCard({ card }: { readonly card: BoardCard }) {
       animate={{ x: 0, y: 0, rotate: card.side === 'bid' ? 2 : -2, scale: 1, opacity: 1 }}
       exit={{ x: '-260%', y: '-40%', rotate: 30, scale: 0.4, opacity: 0, transition: { duration: 0.5 } }}
       transition={{ type: 'spring', stiffness: 120, damping: 15 }}
-      aria-label={`${card.side === 'bid' ? 'Bid for' : 'Ask for'} ${card.ref}, ${card.price ?? 'price private'} primas`}
+      aria-label={`${card.side === 'bid' ? t.bidFor : t.askFor} ${card.ref}, ${card.price ?? t.cardPrivate} ${t.primas}`}
     >
       <span className="pin" />
       <div className="band" style={{ background: HOOD_COLORS[set] ?? '#8d99ae' }} />
       <div className="ref">{card.ref}</div>
-      <div className="hood">{card.side === 'bid' ? 'WANTED · ' : ''}{HOODS[set] ?? 'Madrid'}</div>
+      <div className="hood">{card.side === 'bid' ? `${t.wanted} · ` : ''}{t.hoods[set] ?? 'Madrid'}</div>
       <PriceTag price={card.price} version={card.version} />
     </motion.div>
   )
 }
 
 export function Board({ cards }: { readonly cards: readonly BoardCard[] }) {
+  const t = useStrings()
   return (
-    <div className="board" aria-label="Our offers on the board">
+    <div className="board" aria-label={t.boardLabel}>
       <AnimatePresence mode="popLayout">
         {cards.map((card) => (
           <OfferCard key={card.key} card={card} />
         ))}
       </AnimatePresence>
-      {cards.length === 0 && <div className="board-empty">The board is empty… for now.</div>}
+      {cards.length === 0 && <div className="board-empty">{t.boardEmpty}</div>}
     </div>
   )
 }

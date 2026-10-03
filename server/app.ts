@@ -15,7 +15,9 @@
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
+import { isLang, LANGS, type Lang } from '../shared/lang.ts'
 import { isShowLine } from '../shared/lines.ts'
+import { detectLang } from '../shared/detect-lang.ts'
 import { isRealLine } from '../shared/real-lines.ts'
 import { isSpeaker, type Speaker } from '../shared/tags.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
@@ -127,6 +129,8 @@ function sameOrigin(req: IncomingMessage): boolean {
 interface TtsRequest {
   readonly provider: ProviderId
   readonly speaker: Parameters<typeof elevenLabs>[1]
+  /** The line's one language: the page's, or the one whose templates the text matches. */
+  readonly lang: Lang
   readonly text: string
 }
 
@@ -143,15 +147,25 @@ export function parseTtsRequest(raw: string, available: readonly ProviderId[], v
     return 'body is not JSON'
   }
   if (typeof body !== 'object' || body === null) return 'body must be an object'
-  const { provider, speaker, text } = body as Record<string, unknown>
+  const { provider, speaker, text, lang: rawLang } = body as Record<string, unknown>
   if (provider !== 'elevenlabs' && provider !== 'gemini') return 'provider must be elevenlabs or gemini'
   if (!available.includes(provider)) return `${provider} is not configured on this server`
   if (!isSpeaker(speaker)) return 'unknown speaker'
   // eslint-disable-next-line no-control-regex
   const clean = typeof text === 'string' ? text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : ''
   if (!clean || clean.length > MAX_TEXT) return `text must be 1 to ${MAX_TEXT} characters`
-  if (!isShowLine(speaker, clean) && !isRealLine(clean) && !vouches(clean, speaker)) return 'only the show\'s own lines are spoken here'
-  return { provider, speaker, text: clean }
+  if (rawLang !== undefined && !isLang(rawLang)) return `lang must be one of ${LANGS.join(', ')}`
+  // A line is in one language: the page's when it says so, else the first whose templates match.
+  const own = (l: Lang) => isShowLine(speaker, clean, l) || isRealLine(clean, l)
+  const lang = rawLang ?? LANGS.find(own)
+  if (lang && own(lang)) return { provider, speaker, lang, text: clean }
+  // A quote the server read from the database itself: voiced only in the language it is actually in.
+  if (vouches(clean, speaker)) {
+    const detected = detectLang(clean)
+    const quoteLang = rawLang ?? (detected === 'unknown' ? undefined : detected)
+    if (quoteLang && detected === quoteLang) return { provider, speaker, lang: quoteLang, text: clean }
+  }
+  return 'only the show\'s own lines are spoken here'
 }
 
 export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -176,8 +190,8 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
   })
 
   async function synthesize(req: TtsRequest): Promise<Audio> {
-    if (req.provider === 'elevenlabs' && deps.config.elevenlabs) return elevenLabs(deps.config.elevenlabs, req.speaker, req.text, fetchImpl)
-    if (req.provider === 'gemini' && deps.config.gemini) return gemini(deps.config.gemini, req.speaker, req.text, fetchImpl)
+    if (req.provider === 'elevenlabs' && deps.config.elevenlabs) return elevenLabs(deps.config.elevenlabs, req.speaker, req.lang, req.text, fetchImpl)
+    if (req.provider === 'gemini' && deps.config.gemini) return gemini(deps.config.gemini, req.speaker, req.lang, req.text, fetchImpl)
     throw new UpstreamError(req.provider, 503, 'not configured')
   }
 
@@ -193,7 +207,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
     }
     const parsed = parseTtsRequest(raw, available, (text, speaker) => deps.transcript?.vouchQuotes === true && transcriptStore.quote(text)?.speaker === speaker)
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
-    const key = `${parsed.provider}|${parsed.speaker}|${parsed.text}`
+    const key = `${parsed.provider}|${parsed.lang}|${parsed.speaker}|${parsed.text}`
     const started = Date.now()
     let audio = cache.get(key)
     const shared = inFlight.get(key)

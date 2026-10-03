@@ -11,6 +11,7 @@
  * `steps[].content[]` of type `audio`.
  */
 import { Buffer } from 'node:buffer'
+import type { Lang } from '../shared/lang.ts'
 import { forElevenLabs, forGemini, type Speaker } from '../shared/tags.ts'
 
 export type ProviderId = 'elevenlabs' | 'gemini'
@@ -36,9 +37,9 @@ export class UpstreamError extends Error {
 type Env = Readonly<Record<string, string | undefined>>
 
 /**
- * Voice ids. ElevenLabs' `s3TPKV1kjDlVtZbl4Ksh` ("George") is the one in ElevenLabs' own v4 sample;
- * the other ElevenLabs defaults are premade voices we could not check without a key: set
- * ELEVENLABS_VOICE_<SPEAKER> to voices in your library. Gemini's names come from its prebuilt list.
+ * Voice ids. We could not check them without a key (no call is made to write this file): set
+ * ELEVENLABS_VOICE_<SPEAKER> to voices in your library, ideally Spanish (Spain) ones, and read
+ * docs/voices.md for the settings and the reasoning per role. Gemini's names come from its prebuilt list.
  */
 const ELEVEN_VOICES: Readonly<Record<Speaker, string>> = {
   buyer: 'IKne3meq5aSn9XLyUdCD',
@@ -58,11 +59,34 @@ const GEMINI_VOICES: Readonly<Record<Speaker, string>> = {
 
 /** Who each character is, for Gemini's turn-level style. */
 const PERSONA: Readonly<Record<Speaker, string>> = {
-  buyer: 'a cheeky young bargain hunter at a Madrid flea market, quick and playful, Spanish accent',
-  seller: 'a theatrical Madrid market stallholder, loud and charming, Spanish accent',
-  abuela: 'a warm, chatty Madrid grandmother, slow and affectionate, Spanish accent',
-  chato: 'a gruff, laconic Madrid card dealer, low voice, Spanish accent',
+  buyer: 'a cheeky young bargain hunter at a Madrid flea market, quick and playful',
+  seller: 'a theatrical Madrid market stallholder, loud and charming',
+  abuela: 'a warm, chatty Madrid grandmother, slow and affectionate',
+  chato: 'a gruff, laconic Madrid card dealer, low voice',
   narrator: 'a friendly radio host, clear and upbeat',
+}
+
+/** The accent of the whole line: castellano from Madrid, or English with a light Madrid accent. */
+const ACCENT: Readonly<Record<Lang, string>> = {
+  es: 'speaking natural peninsular Spanish (castellano) from Madrid, not Latin American',
+  en: 'speaking English with a light Madrid accent',
+}
+
+/**
+ * ElevenLabs voice settings per character. Eleven v4 has two: `stability` (lower = broader emotional
+ * range, higher = steadier) and `similarity_boost` (adherence to the reference voice); the model
+ * ignores `style` and `speed` (docs: text-to-speech/eleven-v4). See docs/voices.md for the reasoning.
+ */
+export interface ElevenSettings {
+  readonly stability: number
+  readonly similarity_boost: number
+}
+export const ELEVEN_SETTINGS: Readonly<Record<Speaker, ElevenSettings>> = {
+  buyer: { stability: 0.35, similarity_boost: 0.75 },
+  seller: { stability: 0.4, similarity_boost: 0.75 },
+  abuela: { stability: 0.55, similarity_boost: 0.8 },
+  chato: { stability: 0.5, similarity_boost: 0.8 },
+  narrator: { stability: 0.6, similarity_boost: 0.75 },
 }
 
 const voices = (env: Env, prefix: string, defaults: Readonly<Record<Speaker, string>>): Record<Speaker, string> => ({
@@ -112,21 +136,36 @@ async function failure(provider: ProviderId, res: Response): Promise<never> {
   throw new UpstreamError(provider, res.status, errorCode(body))
 }
 
-export async function elevenLabs(config: NonNullable<ProviderConfig['elevenlabs']>, speaker: Speaker, text: string, fetchImpl: typeof fetch = fetch): Promise<Audio> {
+/** The request ElevenLabs gets for a line (pure: building it costs nothing and sends nothing). */
+export function elevenRequest(config: Pick<NonNullable<ProviderConfig['elevenlabs']>, 'model' | 'voices'>, speaker: Speaker, lang: Lang, text: string): { url: string; body: unknown } {
   const voice = encodeURIComponent(config.voices[speaker])
-  const res = await fetchImpl(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`, {
+  return {
+    url: `https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`,
+    body: {
+      text: forElevenLabs(text),
+      model_id: config.model,
+      // ISO 639-1: enforces the language and its text normalisation ("30 primas" is read in that language).
+      language_code: lang,
+      voice_settings: ELEVEN_SETTINGS[speaker],
+    },
+  }
+}
+
+export async function elevenLabs(config: NonNullable<ProviderConfig['elevenlabs']>, speaker: Speaker, lang: Lang, text: string, fetchImpl: typeof fetch = fetch): Promise<Audio> {
+  const request = elevenRequest(config, speaker, lang, text)
+  const res = await fetchImpl(request.url, {
     method: 'POST',
     headers: { 'xi-api-key': config.key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify({ text: forElevenLabs(text), model_id: config.model }),
+    body: JSON.stringify(request.body),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
   if (!res.ok) return failure('elevenlabs', res)
   return { body: Buffer.from(await res.arrayBuffer()), contentType: 'audio/mpeg' }
 }
 
-export function geminiRequest(model: string, voice: string, speaker: Speaker, text: string): unknown {
+export function geminiRequest(model: string, voice: string, speaker: Speaker, text: string, lang: Lang = 'es'): unknown {
   const line = forGemini(text)
-  const style = [PERSONA[speaker], line.style].filter(Boolean).join('; ')
+  const style = [PERSONA[speaker], ACCENT[lang], line.style].filter(Boolean).join('; ')
   return {
     model,
     input: [{ type: 'user_input', content: [{ type: 'text', text: line.text, annotations: [{ type: 'speech_metadata', style }] }] }],
@@ -171,11 +210,11 @@ export function wavFromPcm(pcm: Buffer, sampleRate = 24_000): Buffer {
   return Buffer.concat([header, pcm])
 }
 
-export async function gemini(config: NonNullable<ProviderConfig['gemini']>, speaker: Speaker, text: string, fetchImpl: typeof fetch = fetch): Promise<Audio> {
+export async function gemini(config: NonNullable<ProviderConfig['gemini']>, speaker: Speaker, lang: Lang, text: string, fetchImpl: typeof fetch = fetch): Promise<Audio> {
   const res = await fetchImpl('https://generativelanguage.googleapis.com/v1beta/interactions', {
     method: 'POST',
     headers: { 'x-goog-api-key': config.key, 'Content-Type': 'application/json' },
-    body: JSON.stringify(geminiRequest(config.model, config.voices[speaker], speaker, text)),
+    body: JSON.stringify(geminiRequest(config.model, config.voices[speaker], speaker, text, lang)),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
   if (!res.ok) return failure('gemini', res)

@@ -1,24 +1,20 @@
 import { AnimatePresence, motion } from 'motion/react'
+import { useEffect, useRef } from 'react'
 import type { ShowState } from '../show/engine'
+import { useStrings } from '../ui/lang'
 import { Board, PriceTag } from './Board'
-import { JevBubble, SpeechBubble } from './Bubbles'
-import { Character, type Pose } from './Character'
+import { JevOrb, SpeechBubble } from './Bubbles'
 import { Dealer } from './Dealer'
-import { Deal, Fail, StopSign } from './Effects'
-
-function poses(state: ShowState): { buyer: Pose; seller: Pose } {
-  if (state.deal?.big) return { buyer: 'shake', seller: 'shake' }
-  if (state.denied) return state.beat?.agent === 'taker' ? { buyer: 'shrug', seller: 'idle' } : { buyer: 'idle', seller: 'shrug' }
-  if (state.fail) return state.beat?.agent === 'taker' ? { buyer: 'shrug', seller: 'idle' } : { buyer: 'idle', seller: 'shrug' }
-  if (state.reach?.take) return { buyer: 'reach', seller: 'idle' }
-  if (state.deal) return state.beat?.agent === 'taker' ? { buyer: 'cheer', seller: 'idle' } : { buyer: 'idle', seller: 'cheer' }
-  const cue = state.beat?.cue.kind
-  if (cue === 'post' || cue === 'reprice' || cue === 'cancel') return { buyer: 'idle', seller: 'reach' }
-  return { buyer: 'idle', seller: 'idle' }
-}
+import { Deal, Fail, RuneShield } from './Effects'
+import { Merchant } from './Merchant'
+import { poses } from './poses'
+import { BackdropFar, Counter, Foreground } from './scene/Backdrop'
+import './scene/scene.css'
+import './stage.css'
 
 /** The card the buyer reaches for: it flies in from the other stalls; a denied grab drops it. */
 function ReachCard({ reach }: { readonly reach: ShowState['reach'] }) {
+  const t = useStrings()
   return (
     <AnimatePresence>
       {reach && (
@@ -29,7 +25,7 @@ function ReachCard({ reach }: { readonly reach: ShowState['reach'] }) {
           animate={reach.take ? { x: 0, y: 0, rotate: -8, opacity: 1 } : { x: ['160%', '0%', '0%'], y: ['-120%', '0%', '180%'], rotate: [25, -8, 40], opacity: [0, 1, 0] }}
           exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.3 } }}
           transition={reach.take ? { type: 'spring', stiffness: 140, damping: 16 } : { duration: 1.6, times: [0, 0.4, 1] }}
-          aria-label={`The buyer reaches for ${reach.ref}`}
+          aria-label={`${t.reaches} ${reach.ref}`}
         >
           <span>{reach.ref}</span>
           <PriceTag price={reach.price} version={0} />
@@ -39,24 +35,67 @@ function ReachCard({ reach }: { readonly reach: ShowState['reach'] }) {
   )
 }
 
+function Nameplate({ role }: { readonly role: 'seller' | 'buyer' }) {
+  const t = useStrings()
+  return (
+    <div className={`nameplate ${role}`}>
+      {role === 'buyer' ? t.buyer : t.seller} <small>{role === 'buyer' ? t.taker : t.maker}</small>
+    </div>
+  )
+}
+
+/** Moves the layers a little with the pointer (CSS variables only: no React renders, no layout). */
+function useParallax(ref: React.RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    const el = ref.current
+    if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    let frame = 0
+    const set = (x: number, y: number) => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        el.style.setProperty('--px', x.toFixed(3))
+        el.style.setProperty('--py', y.toFixed(3))
+      })
+    }
+    const move = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect()
+      set(((e.clientX - r.left) / r.width - 0.5) * 2, ((e.clientY - r.top) / r.height - 0.5) * 2)
+    }
+    const leave = () => set(0, 0)
+    el.addEventListener('pointermove', move, { passive: true })
+    el.addEventListener('pointerleave', leave)
+    return () => {
+      cancelAnimationFrame(frame)
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerleave', leave)
+    }
+  }, [ref])
+}
+
 export function Stage({ state }: { readonly state: ShowState }) {
+  const t = useStrings()
+  const ref = useRef<HTMLElement>(null)
+  useParallax(ref)
   const pose = poses(state)
   const speaker = state.line?.speaker
   const lineId = state.line && state.beat ? `${state.beat.id}:${state.beat.lines.indexOf(state.line)}` : 'none'
   return (
-    <section className="stage" aria-label="The stall at El Rastro">
-      <div className="awning" />
-      <div className="sign">EL RASTRO · STALL Nº 1</div>
+    <section className="stage" ref={ref} aria-label={t.stageLabel} data-mood={state.beat?.mood}>
+      <BackdropFar />
+      <div className="sign">{t.sign}</div>
       <Board cards={state.board} />
-      <JevBubble jev={state.jev} />
-      <Character role="seller" talking={speaker === 'seller'} pose={pose.seller} />
-      <Character role="buyer" talking={speaker === 'buyer'} pose={pose.buyer} />
-      <div className="table" />
-      <Dealer dealer={state.dealer} />
+      <JevOrb jev={state.jev} />
+      <Merchant role="seller" className="lead" pose={pose.seller} talking={speaker === 'seller'} label={t.seller} />
+      <Merchant role="buyer" className="lead" flip pose={pose.buyer} talking={speaker === 'buyer'} label={t.buyer} />
+      <Dealer dealer={state.dealer} speaking={speaker === 'abuela' || speaker === 'chato'} />
+      <Counter />
+      <Nameplate role="seller" />
+      <Nameplate role="buyer" />
+      <Foreground />
       <ReachCard reach={state.reach} />
       <SpeechBubble line={state.line} id={lineId} />
       <Deal deal={state.deal} />
-      <StopSign n={state.denied?.n ?? null} />
+      <RuneShield n={state.denied?.n ?? null} />
       <Fail fail={state.fail} />
       <AnimatePresence>
         {state.beat?.note && state.line && (

@@ -28,18 +28,40 @@ export async function fetchRemoteProviders(fetchImpl: typeof fetch = fetch): Pro
   }
 }
 
+/** One element for every line: a browser that allows it to play inside a tap (iOS Safari) keeps allowing it. */
+let shared: HTMLAudioElement | null = null
+
+const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+
+/** Call it inside the click that starts the show: it plays a silent clip so later lines may play without a tap. */
+export function unlockAudio(): void {
+  if (typeof Audio === 'undefined') return
+  shared ??= new Audio()
+  shared.src = SILENCE
+  void shared.play().catch(() => undefined)
+}
+
 function playBlob(blob: Blob, signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    const done = (error?: Error) => {
-      audio.onended = audio.onerror = null
+    const audio = shared ?? new Audio()
+    audio.src = url
+    let settled = false
+    const onended = (): void => done()
+    const onerror = (): void => done(new Error('audio playback failed'))
+    // A line ends once. The element is shared, so a late rejection of an aborted line's play() must not
+    // clear the handlers of the line that now owns it.
+    const done = (error?: Error): void => {
+      if (settled) return
+      settled = true
+      if (audio.onended === onended) audio.onended = null
+      if (audio.onerror === onerror) audio.onerror = null
       URL.revokeObjectURL(url)
       if (error) reject(error)
       else resolve()
     }
-    audio.onended = () => done()
-    audio.onerror = () => done(new Error('audio playback failed'))
+    audio.onended = onended
+    audio.onerror = onerror
     signal.addEventListener(
       'abort',
       () => {
@@ -48,7 +70,7 @@ function playBlob(blob: Blob, signal: AbortSignal): Promise<void> {
       },
       { once: true },
     )
-    audio.play().catch((e: unknown) => done(e instanceof Error ? e : new Error('audio.play() refused')))
+    audio.play().catch((e: unknown) => done(e instanceof Error && e.name !== 'AbortError' ? e : e instanceof Error ? undefined : new Error('audio.play() refused')))
   })
 }
 
@@ -58,7 +80,7 @@ export function createRemote(name: RemoteName, options: RemoteOptions = {}): Spe
   const cache = new Map<string, Promise<Blob>>()
 
   const load = (u: Utterance): Promise<Blob> => {
-    const key = `${u.speaker}|${u.text}`
+    const key = `${u.lang}|${u.speaker}|${u.text}`
     const hit = cache.get(key)
     if (hit) return hit
     const controller = new AbortController()
@@ -66,7 +88,7 @@ export function createRemote(name: RemoteName, options: RemoteOptions = {}): Spe
     const request = fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: name, speaker: u.speaker, text: u.text }),
+      body: JSON.stringify({ provider: name, speaker: u.speaker, lang: u.lang, text: u.text }),
       signal: controller.signal,
     })
       .then(async (res) => {

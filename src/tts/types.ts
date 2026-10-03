@@ -6,10 +6,10 @@ export type ProviderName = 'webspeech' | 'elevenlabs' | 'gemini' | 'silent'
 export interface Utterance {
   readonly id: string
   readonly speaker: Speaker
+  /** The one language of the line. */
+  readonly lang: Lang
   /** With expressive tags; each provider strips or converts them. */
   readonly text: string
-  /** The line's language when it has one (real lines): a voice must not read it in another. */
-  readonly lang?: Lang
 }
 
 export interface SpeechProvider {

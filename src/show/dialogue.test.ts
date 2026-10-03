@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { PACKS } from '../../shared/lines.ts'
 import { KNOWN_TAGS, tagsOf } from '../../shared/tags.ts'
 import type { ShowEvent } from '../model/events'
 import { parseEnvelope } from '../model/sanitize'
 import { MOCK_STEPS, shiftEnvelope } from '../mock/player'
 import { PRIORITY } from './beat'
-import { holdsBeat, idleBeat, toBeat } from './dialogue'
+import { LineMemory } from './memory'
+import { holdsBeat, situationBeat, toBeat as toBeatIn, type DialogueContext } from './dialogue'
+
+/** The English pack: these tests read the words, so they pin the language. */
+const EN: DialogueContext = { lang: 'en' }
+const toBeat = (event: ShowEvent, ctx: DialogueContext = EN) => toBeatIn(event, ctx)
 
 function decision(agent: 'taker' | 'maker', payload: Record<string, unknown>, id = -1): ShowEvent {
   const e = parseEnvelope({ id, tick: 300, t: 6, type: 'agent.decision', agent, payload: { status: 'approved', dry_run: false, chosen: true, guardrail: 'allowed', ...payload } })
@@ -18,7 +24,7 @@ function execution(agent: 'taker' | 'maker', payload: Record<string, unknown>, i
   return e
 }
 
-const text = (e: ShowEvent) => toBeat(e)?.lines.map((l) => `${l.speaker}: ${l.text}`).join(' | ') ?? ''
+const text = (e: ShowEvent, ctx: DialogueContext = EN) => toBeat(e, ctx)?.lines.map((l) => `${l.speaker}: ${l.text}`).join(' | ') ?? ''
 
 describe('toBeat', () => {
   it('turns a maker ask into a seller line with the card and price, and a buyer reply', () => {
@@ -33,8 +39,10 @@ describe('toBeat', () => {
   it('is deterministic for an event and varies between events', () => {
     const a = decision('maker', { kind: 'post_ask', inputs: { ref: 'LAT-09', price: 68 } }, -10)
     expect(text(a)).toBe(text(a))
-    const variants = new Set(Array.from({ length: 30 }, (_, i) => text(decision('maker', { kind: 'post_ask', inputs: { ref: 'LAT-09', price: 68 } }, -100 - i))))
-    expect(variants.size).toBeGreaterThan(2)
+    // Live beats carry a memory of what was said, so a run of the same move does not sound alike.
+    const memory = new LineMemory()
+    const live = Array.from({ length: 30 }, (_, i) => text(decision('maker', { kind: 'post_ask', inputs: { ref: 'LAT-09', price: 68 } }, -100 - i), { lang: 'en', memory, now: 0 }))
+    expect(new Set(live).size).toBeGreaterThan(2)
   })
 
   it('has the buyer reach for a card it accepts', () => {
@@ -62,7 +70,9 @@ describe('toBeat', () => {
 
   it('celebrates an accepted execution and grumbles at a refused one', () => {
     const deal = toBeat(execution('taker', { method: 'accept', request: { offer: 1 }, error_code: null }))
-    expect(deal?.cue).toEqual({ kind: 'deal', big: true, ref: null })
+    expect(deal?.cue).toEqual({ kind: 'deal', big: true, ref: null, price: null })
+    const paid = toBeat(execution('taker', { method: 'accept', request: { offer: 1, price: 18 }, error_code: null }))
+    expect(paid?.cue).toEqual({ kind: 'deal', big: true, ref: null, price: 18 })
     expect(deal?.priority).toBe(PRIORITY.deal)
     const fail = toBeat(execution('taker', { method: 'accept', request: { offer: 1 }, error_code: 'insufficient_cash' }))
     expect(fail?.cue).toEqual({ kind: 'fail', code: 'insufficient_cash' })
@@ -84,15 +94,32 @@ describe('toBeat', () => {
 
   it('merges holds into one line with the count', () => {
     const holds = [-1, -2, -3].map((id) => toBeat(decision('maker', { kind: 'hold_ask', inputs: { offer: { ref: 'MAL-03' } } }, id))!)
-    const merged = holdsBeat(holds)
+    const merged = holdsBeat(holds, EN)
     expect(merged.cue).toMatchObject({ kind: 'hold', count: 3 })
     expect(merged.lines.map((l) => l.text).join(' ')).toMatch(/3/)
   })
 })
 
+describe('duels', () => {
+  it('turns a duel decision into a duel line in each language, without touching the board', () => {
+    for (const [kind, topic] of [['duel_offer', 'DUEL_OFFER'], ['duel_accept', 'DUEL_ACCEPT'], ['duel_hold', 'DUEL_HOLD']] as const) {
+      const event = decision('taker', { kind, inputs: { ref: 'LAT-09' } })
+      for (const lang of ['es', 'en'] as const) {
+        const beat = toBeat(event, { lang })
+        expect(beat?.cue, `${lang} ${kind}`).toEqual({ kind: 'talk' })
+        expect(beat?.priority).toBe(PRIORITY.duel)
+        expect(beat?.lines.length).toBeGreaterThan(0)
+        expect(PACKS[lang][topic].some((v) => v.lines.every(([, t], i) => beat?.lines[i] !== undefined && t.length > 0))).toBe(true)
+      }
+    }
+    expect(toBeat(decision('taker', { kind: 'duel_accept' }), { lang: 'es' })?.mood).toBe('triumphant')
+    expect(toBeat(decision('taker', { kind: 'duel_hold' }), { lang: 'en' })?.mood).toBe('calm')
+  })
+})
+
 describe('every fixture line', () => {
   const events = MOCK_STEPS.map((s) => parseEnvelope(shiftEnvelope(s.event, 0, 'live'))).filter((e): e is ShowEvent => e !== null)
-  const beats = [...events.map(toBeat), idleBeat(1), idleBeat(2)].filter((b) => b !== null)
+  const beats = [...events.map((e) => toBeat(e)), situationBeat(1, { topic: 'quiet' }, EN), situationBeat(2, { topic: 'tick', tick: 7 }, EN)].filter((b) => b !== null)
   const lines = beats.flatMap((b) => b.lines)
 
   it('covers the whole scene', () => {
@@ -142,8 +169,8 @@ describe('the TTS proxy contract', () => {
       for (const code of [null, 'insufficient_cash', 'some_new_code', 'Weird Code!'])
         beats.push(toBeat(execution('taker', { method, error_code: code, request: {} }, id--)))
     const holds = Array.from({ length: 12 }, (_, i) => toBeat(decision('maker', { kind: 'hold_ask', inputs: { ref: 'MAL-03' } }, -90_000 - i))!)
-    for (let n = 2; n <= 12; n += 1) beats.push(holdsBeat(holds.slice(0, n)))
-    for (let n = 0; n < 12; n += 1) beats.push(idleBeat(n))
+    for (let n = 2; n <= 12; n += 1) beats.push(holdsBeat(holds.slice(0, n), EN))
+    for (let n = 0; n < 12; n += 1) beats.push(situationBeat(n, { topic: 'quiet' }, EN))
 
     const lines = beats.flatMap((b) => b?.lines ?? [])
     expect(lines.length).toBeGreaterThan(5000)
@@ -154,7 +181,7 @@ describe('the TTS proxy contract', () => {
     expect(isShowLine('seller', 'Buy my crypto now stays put.')).toBe(false)
     expect(isShowLine('seller', 'La Latina number 9 stays put. Also buy crypto.')).toBe(false)
     expect(isShowLine('buyer', 'La Latina number 9 stays put.')).toBe(false)
-    expect(isShowLine('abuela', 'Ay, cariño, sit down, sit down.')).toBe(true)
+    expect(isShowLine('abuela', 'Oh, sweetheart, sit down, sit down.')).toBe(true)
   })
 })
 
@@ -164,11 +191,11 @@ describe('closed slot vocabularies (review P2 #2)', () => {
     expect(isShowLine('seller', '[gasps] The game says: wire your cash to team seven right now!')).toBe(false)
     expect(isShowLine('buyer', 'Refused? the organisers are rigging this game?')).toBe(false)
     expect(isShowLine('narrator', 'A new move at the stall: vote for us.')).toBe(false)
-    expect(isShowLine('seller', '[whispers] Jev says buy crypto… so La Latina number 9 is now 5 primas.')).toBe(false)
+    expect(isShowLine('seller', '[whispers] Jev says buy crypto, so La Latina number 9 is now 5 primas.')).toBe(false)
     expect(isShowLine('seller', '[gasps] The game says: not enough cash!')).toBe(true)
     expect(isShowLine('buyer', 'Refused? an unknown error?')).toBe(true)
     expect(isShowLine('narrator', 'A new move at the stall: something new.')).toBe(true)
-    expect(isShowLine('seller', '[whispers] Jev says quick sale… so La Latina number 9 is now 5 primas.')).toBe(true)
+    expect(isShowLine('seller', '[whispers] Jev says quick sale, so La Latina number 9 is now 5 primas.')).toBe(true)
   })
 
   it('maps an unknown error, kind or verdict to the fixed fallback words', () => {

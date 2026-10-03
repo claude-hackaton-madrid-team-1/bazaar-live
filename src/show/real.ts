@@ -71,7 +71,8 @@ interface Frame {
 
 function beatOf(item: TranscriptItem, frame: Frame): Beat | null {
   if (frame.lines.length === 0) return null
-  return { id: `real:${item.id}`, tick: item.tick, denied: false, jev: null, practice: false, note: null, ...frame }
+  const mood = frame.cue.kind === 'deal' ? 'triumphant' : 'calm'
+  return { id: `real:${item.id}`, tick: item.tick, denied: false, jev: null, practice: false, note: null, mood, ...frame }
 }
 
 function threadLine(item: TranscriptItem, lang: Lang, opts: RealOptions): Beat | null {
@@ -102,7 +103,7 @@ function duelReplay(item: TranscriptItem, lang: Lang): Beat | null {
   return beatOf(item, {
     agent: item.role === 'seller' ? 'maker' : 'taker',
     priority: status === 'deal' ? PRIORITY.dealerAccept : PRIORITY.dealer,
-    cue: status === 'deal' ? { kind: 'deal', big: true, ref: item.item } : { kind: 'talk' },
+    cue: status === 'deal' ? { kind: 'deal', big: true, ref: item.item, price: item.price } : { kind: 'talk' },
     lines,
   })
 }
@@ -119,7 +120,7 @@ export function realBeat(item: TranscriptItem, lang: Lang, opts: RealOptions = C
     case 'settlement':
       return item.price === null
         ? null
-        : beatOf(item, { agent: 'taker', priority: PRIORITY.deal, cue: { kind: 'deal', big: true, ref: item.item }, lines: [spoken('narrator', settlementLine(item.price, item.item, lang), lang)] })
+        : beatOf(item, { agent: 'taker', priority: PRIORITY.deal, cue: { kind: 'deal', big: true, ref: item.item, price: item.price }, lines: [spoken('narrator', settlementLine(item.price, item.item, lang), lang)] })
     case 'duel_replay':
       return duelReplay(item, lang)
   }

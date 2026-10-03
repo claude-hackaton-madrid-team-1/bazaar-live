@@ -1,0 +1,797 @@
+/* The stall at dusk. Units are cqw (the stage is 100cqw wide, 62.5cqw tall); the backdrop's SVG is
+   1600 x 1000, so 16 SVG units = 1cqw. Only transform and opacity move. */
+
+.stage {
+  --gold: #f2b544;
+  --gold-soft: #ffd98a;
+  --parchment: #f7ecd0;
+  --parchment-edge: #d9c08b;
+  --ink: #2a1d12;
+  --px: 0;
+  --py: 0;
+  --serif: 'Alegreya', 'Iowan Old Style', Georgia, serif;
+  position: relative;
+  aspect-ratio: 16 / 10;
+  container-type: inline-size;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 18px;
+  background: #170d22;
+  border: 2px solid rgb(242 181 68 / 0.55);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.55), inset 0 0 0 1px rgb(0 0 0 / 0.4);
+  color: var(--ink);
+  font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ---------------------------------------------------------------- the stall */
+
+.sign {
+  position: absolute;
+  top: 7.4cqw;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  padding: 0.5cqw 2.4cqw;
+  border-radius: 0.9cqw;
+  background: linear-gradient(180deg, #4a2d1b, #2e1a10);
+  border: 0.25cqw solid var(--gold);
+  color: var(--gold-soft);
+  font-family: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  font-weight: 800;
+  font-size: max(11px, 1.9cqw);
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+  box-shadow: 0 0.5cqw 1.2cqw rgb(0 0 0 / 0.5);
+}
+
+.sign::before,
+.sign::after {
+  content: '';
+  position: absolute;
+  top: -2.4cqw;
+  width: 0.2cqw;
+  height: 2.4cqw;
+  background: #2a1830;
+}
+
+.sign::before {
+  left: 18%;
+}
+
+.sign::after {
+  right: 18%;
+}
+
+.counter {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  height: 11cqw;
+  z-index: 4;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* ---------------------------------------------------------------- the board */
+
+.board {
+  position: absolute;
+  top: 15cqw;
+  left: 50%;
+  translate: -50% 0;
+  width: 48cqw;
+  height: 26cqw;
+  padding: 1.6cqw;
+  border-radius: 1.2cqw;
+  border: 0.8cqw solid #3a2418;
+  outline: 0.2cqw solid var(--gold);
+  outline-offset: -0.5cqw;
+  background: radial-gradient(circle at 30% 25%, rgb(255 255 255 / 0.12), transparent 60%),
+    repeating-radial-gradient(circle at 10% 20%, #6e4a30 0 0.2cqw, #7e5738 0.2cqw 0.8cqw);
+  box-shadow: 0 1cqw 2cqw rgb(0 0 0 / 0.55), inset 0 0 2cqw rgb(0 0 0 / 0.45);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 1.2cqw;
+  z-index: 1;
+}
+
+.board-empty {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  place-self: center;
+  font-size: max(12px, 1.7cqw);
+  color: var(--gold-soft);
+  font-style: italic;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.7);
+}
+
+.card {
+  position: relative;
+  border-radius: 0.6cqw;
+  background: linear-gradient(180deg, #f7ecd0, #e9d6a6);
+  border: 0.15cqw solid #b8862b;
+  box-shadow: 0 0.4cqw 0.8cqw rgb(0 0 0 / 0.5);
+  display: grid;
+  grid-template-rows: 1.6cqw 1fr auto;
+  overflow: visible;
+  font-size: 1.3cqw;
+  color: var(--ink);
+}
+
+.card .band {
+  border-radius: 0.5cqw 0.5cqw 0 0;
+}
+
+.card .ref {
+  place-self: center;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 800;
+  font-size: max(11px, 1.8cqw);
+  letter-spacing: 0.05em;
+}
+
+.card .hood {
+  text-align: center;
+  font-size: max(10px, 1cqw);
+  color: rgb(42 29 18 / 0.78);
+  padding-bottom: 0.5cqw;
+}
+
+.card .pin {
+  position: absolute;
+  top: -0.6cqw;
+  left: 50%;
+  width: 1.4cqw;
+  height: 1.4cqw;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffe08a, #b8862b);
+  box-shadow: 0 0.2cqw 0.2cqw rgb(0 0 0 / 0.4);
+}
+
+.card.bid {
+  background: linear-gradient(180deg, #e3f1ec, #bfd9cf);
+}
+
+.price-tag {
+  position: absolute;
+  right: -1cqw;
+  bottom: -0.8cqw;
+  min-width: 5.4cqw;
+  height: max(17px, 2.6cqw);
+  padding: 0 0.8cqw 0 1.4cqw;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  clip-path: polygon(0.9cqw 0, 100% 0, 100% 100%, 0.9cqw 100%, 0 50%);
+  background: #f6bd60;
+  color: var(--ink);
+  font-weight: 900;
+  font-size: max(11px, 1.4cqw);
+  font-variant-numeric: tabular-nums;
+}
+
+.price-tag span {
+  grid-area: 1 / 1;
+}
+
+/* ---------------------------------------------------------------- the merchants */
+
+.merchant {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.merchant svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.merchant.lead {
+  bottom: 7cqw;
+  width: 19cqw;
+}
+
+.merchant.seller {
+  left: 3cqw;
+}
+
+.merchant.buyer {
+  right: 3cqw;
+}
+
+.nameplate {
+  position: absolute;
+  bottom: 1.1cqw;
+  z-index: 4;
+  padding: 0.25cqw 1.2cqw;
+  border-radius: 0.5cqw;
+  background: linear-gradient(180deg, #2e1a10, #1c0f08);
+  border: 0.15cqw solid var(--gold);
+  color: var(--gold-soft);
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 800;
+  font-size: max(11px, 1.4cqw);
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.nameplate.seller {
+  left: 12.5cqw;
+  translate: -50% 0;
+}
+
+.nameplate.buyer {
+  right: 12.5cqw;
+  translate: 50% 0;
+}
+
+.nameplate small {
+  font-family: ui-rounded, system-ui, sans-serif;
+  font-weight: 600;
+  opacity: 0.75;
+  letter-spacing: 0.04em;
+}
+
+.dealer {
+  position: absolute;
+  bottom: 8cqw;
+  left: 50%;
+  z-index: 3;
+  width: 14cqw;
+  translate: -50% 0;
+}
+
+.dealer .merchant {
+  position: static;
+  width: 100%;
+}
+
+.dealer-plaque {
+  position: absolute;
+  top: -3.6cqw;
+  left: 50%;
+  translate: -50% 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.1cqw;
+  padding: 0.3cqw 1.3cqw;
+  border-radius: 0.6cqw;
+  background: linear-gradient(180deg, #2e1a10, #1c0f08);
+  border: 0.15cqw solid var(--gold);
+  white-space: nowrap;
+}
+
+.dealer-name {
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 800;
+  font-size: max(11px, 1.4cqw);
+  color: var(--gold-soft);
+  letter-spacing: 0.08em;
+}
+
+.dealer-move {
+  font-size: max(10px, 1cqw);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #e8dcc0;
+}
+
+/* ---------------------------------------------------------------- bubbles: parchment scrolls */
+
+.bubble {
+  position: absolute;
+  z-index: 8;
+  max-width: 38cqw;
+  padding: 0.8cqw 1.6cqw 0.9cqw;
+  border-radius: 1.2cqw;
+  background: linear-gradient(180deg, #fbf3da, var(--parchment) 60%, #ecdcae);
+  border: 0.28cqw solid #8a5f1a;
+  outline: 0.14cqw solid var(--gold);
+  outline-offset: -0.7cqw;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: max(16px, 2cqw);
+  font-weight: 700;
+  line-height: 1.2;
+  text-wrap: pretty;
+  box-shadow: 0 0.6cqw 1.6cqw rgb(0 0 0 / 0.55), inset 0 0 1.4cqw rgb(184 134 43 / 0.3);
+}
+
+/* Bubbles sit in the street strip between the board and the counter, never over the board: the tail
+   points sideways at whoever is speaking. */
+.bubble::after {
+  content: '';
+  position: absolute;
+  bottom: 2.2cqw;
+  width: 1.9cqw;
+  height: 2.8cqw;
+  background: #ecdcae;
+  filter: drop-shadow(0 0 0 #8a5f1a);
+}
+
+.bubble.seller::after,
+.bubble.abuela::after,
+.bubble.chato::after {
+  left: -1.7cqw;
+  clip-path: polygon(100% 0, 100% 100%, 0 62%);
+}
+
+.bubble.buyer::after {
+  right: -1.7cqw;
+  clip-path: polygon(0 0, 0 100%, 100% 62%);
+}
+
+.bubble.narrator::after {
+  display: none;
+}
+
+.bubble.seller {
+  left: 24cqw;
+  bottom: 12.2cqw;
+}
+
+.bubble.buyer {
+  right: 24cqw;
+  bottom: 12.2cqw;
+}
+
+.bubble.abuela,
+.bubble.chato {
+  left: 58cqw;
+  bottom: 12.2cqw;
+  max-width: 28cqw;
+}
+
+.bubble.abuela {
+  border-color: #8e3f2e;
+}
+
+.bubble.chato {
+  border-color: #3a424c;
+}
+
+.bubble.narrator {
+  left: 50%;
+  translate: -50% 0;
+  bottom: 12.2cqw;
+  text-align: center;
+  font-style: italic;
+}
+
+/* item quality, in the colours a collector expects (darker on the parchment) */
+.quality {
+  font-weight: 800;
+}
+
+.quality.common {
+  color: #6b6b6b;
+}
+
+.quality.uncommon {
+  color: #17701a;
+}
+
+.quality.rare {
+  color: #1f5fc8;
+}
+
+.quality.epic {
+  color: #8a2fd0;
+}
+
+.quality.legendary {
+  color: #9a4400;
+}
+
+/* a long quote never climbs over the board: four lines here (the tail stays visible), the full text is in the quest log */
+.bubble-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+}
+
+.tag-chip {
+  display: inline-block;
+  margin: 0 0.3em;
+  padding: 0 0.5em;
+  border-radius: 999px;
+  background: rgb(42 29 18 / 0.1);
+  color: rgb(42 29 18 / 0.65);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 0.78em;
+}
+
+/* ---------------------------------------------------------------- Jev, the glowing orb */
+
+.jev {
+  --hue: #cfc7e6;
+  position: absolute;
+  top: 11cqw;
+  z-index: 6;
+  width: 12.5cqw;
+  display: grid;
+  justify-items: center;
+  gap: 0.5cqw;
+  padding: 0.6cqw 1cqw 0.8cqw;
+  border-radius: 1.4cqw;
+  background: radial-gradient(ellipse at 50% 20%, rgb(60 38 100 / 0.82), rgb(20 10 40 / 0.9));
+  border: 0.18cqw solid var(--hue);
+  color: #f1e9ff;
+  box-shadow: 0 0 2cqw rgb(0 0 0 / 0.55);
+}
+
+.jev.maker {
+  left: 0.8cqw;
+}
+
+.jev.taker {
+  right: 0.8cqw;
+}
+
+.orb-wrap {
+  position: relative;
+  width: 7cqw;
+  height: 6.2cqw;
+  display: grid;
+  place-items: center;
+}
+
+.orb-halo {
+  position: absolute;
+  width: 6.2cqw;
+  height: 6.2cqw;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--hue) 70%, transparent), transparent 68%);
+}
+
+.orb {
+  position: relative;
+  width: 3.8cqw;
+  height: 3.8cqw;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 34% 28%, #ffffff 0 6%, var(--hue) 34%, color-mix(in srgb, var(--hue) 35%, #1a0d33) 100%);
+  box-shadow: 0 0 1.4cqw 0.3cqw color-mix(in srgb, var(--hue) 75%, transparent), inset -0.5cqw -0.6cqw 1cqw rgb(10 4 30 / 0.55);
+}
+
+.orb-swirl {
+  position: absolute;
+  inset: -20%;
+  background: conic-gradient(from 0deg, transparent 0 20%, rgb(255 255 255 / 0.4) 28%, transparent 40% 60%, rgb(255 255 255 / 0.25) 70%, transparent 80%);
+  mix-blend-mode: soft-light;
+}
+
+.orb-sparks {
+  position: absolute;
+  width: 6.4cqw;
+  height: 6.4cqw;
+}
+
+.orb-sparks i {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 0.7cqw;
+  height: 0.7cqw;
+  margin-left: -0.35cqw;
+  border-radius: 50%;
+  background: var(--hue);
+  box-shadow: 0 0 0.8cqw 0.2cqw var(--hue);
+}
+
+.orb-sparks i:nth-child(2) {
+  top: auto;
+  bottom: 8%;
+  left: 14%;
+  opacity: 0.8;
+}
+
+.orb-sparks i:nth-child(3) {
+  top: 34%;
+  left: auto;
+  right: 2%;
+  opacity: 0.65;
+}
+
+.jev-plaque {
+  display: grid;
+  justify-items: center;
+  line-height: 1.1;
+}
+
+.jev-title {
+  font-size: max(11px, 1.1cqw);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #cbbcf0;
+}
+
+.jev-verdict {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: max(13px, 1.9cqw);
+  font-weight: 800;
+  color: var(--hue);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.meter {
+  display: flex;
+  gap: 0.4cqw;
+  width: 100%;
+}
+
+.meter-seg {
+  flex: 1;
+  position: relative;
+  height: 0.9cqw;
+  border-radius: 0.4cqw;
+  background: rgb(255 255 255 / 0.12);
+  overflow: hidden;
+}
+
+.meter-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--hue);
+  transform-origin: left;
+}
+
+.meter-labels {
+  display: flex;
+  gap: 0.4cqw;
+  width: 100%;
+  font-size: max(9px, 0.9cqw);
+  color: #b3a7d4;
+}
+
+.meter-labels span {
+  flex: 1;
+  text-align: center;
+}
+
+.meter-labels .on {
+  color: var(--hue);
+  font-weight: 800;
+}
+
+/* ---------------------------------------------------------------- effects */
+
+.fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.coin {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  display: block;
+  margin: -1cqw 0 0 -1cqw;
+}
+
+.coin svg {
+  width: 100%;
+  height: 100%;
+}
+
+.deal-badge {
+  position: absolute;
+  left: 50%;
+  top: 36%;
+  translate: -50% -50%;
+  display: grid;
+  justify-items: center;
+  gap: 0.4cqw;
+}
+
+.deal-coins {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.2cqw;
+}
+
+.deal-coins svg:nth-child(1) {
+  width: 5cqw;
+  height: 5cqw;
+}
+
+.deal-coins svg:nth-child(2) {
+  width: 3.8cqw;
+  height: 3.8cqw;
+}
+
+.deal-coins svg:nth-child(3) {
+  width: 4.4cqw;
+  height: 4.4cqw;
+}
+
+.ribbon {
+  position: relative;
+  padding: 0.5cqw 2.6cqw;
+  background: linear-gradient(180deg, #c23a46, #8d2431);
+  border: 0.22cqw solid var(--gold);
+  color: #fff3d0;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 900;
+  font-size: max(12px, 2.5cqw);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  clip-path: polygon(0 0, 100% 0, 96% 50%, 100% 100%, 0 100%, 4% 50%);
+  filter: none;
+  text-shadow: 0 0.15cqw 0.3cqw rgb(0 0 0 / 0.6);
+}
+
+.float-gold {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 900;
+  font-size: max(14px, 3.2cqw);
+  color: #ffe08a;
+  -webkit-text-stroke: 0.12cqw #6b4410;
+  paint-order: stroke fill;
+  text-shadow: 0 0.2cqw 0.5cqw rgb(0 0 0 / 0.7), 0 0 1.6cqw rgb(255 190 60 / 0.8);
+  white-space: nowrap;
+}
+
+.rune-shield {
+  position: absolute;
+  left: 50%;
+  top: 35%;
+  width: 19cqw;
+  translate: -50% -50%;
+  display: grid;
+  justify-items: center;
+  gap: 0.2cqw;
+}
+
+.rune-shield svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.rune-shield small {
+  padding: 0.2cqw 1.2cqw;
+  border-radius: 0.5cqw;
+  background: rgb(14 8 36 / 0.9);
+  border: 0.14cqw solid #7dd3fc;
+  color: #d9f6ff;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: max(11px, 1.3cqw);
+  white-space: nowrap;
+}
+
+.fail {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  max-width: 40cqw;
+  color: var(--ink);
+  font-weight: 800;
+  font-size: max(12px, 1.9cqw);
+  text-align: center;
+}
+
+.fail .puff-cloud {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  fill: #d9d0e6;
+  opacity: 0.94;
+}
+
+.fail span {
+  grid-area: 1 / 1;
+  padding: 1.8cqw 3.2cqw;
+}
+
+.reach-card {
+  position: absolute;
+  right: 20cqw;
+  bottom: 26cqw;
+  width: 8cqw;
+  height: 10cqw;
+  z-index: 7;
+  border-radius: 0.6cqw;
+  background: linear-gradient(180deg, #f7ecd0, #e9d6a6);
+  border: 0.15cqw solid #b8862b;
+  box-shadow: 0 0.6cqw 1.2cqw rgb(0 0 0 / 0.5);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.3cqw;
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 800;
+  font-size: max(11px, 1.5cqw);
+  color: var(--ink);
+}
+
+.reach-card .price-tag {
+  position: static;
+  font-size: max(10px, 1.2cqw);
+}
+
+.practice {
+  position: absolute;
+  bottom: 1.2cqw;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 9;
+  padding: 0.4cqw 1.6cqw;
+  border-radius: 999px;
+  background: #f4a261;
+  color: var(--ink);
+  font-weight: 900;
+  font-size: max(11px, 1.2cqw);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- narrow stages (phones) */
+
+@container (max-width: 560px) {
+  .bubble {
+    max-width: 84cqw;
+    font-size: 13px;
+    padding: 0.8cqw 2.2cqw;
+  }
+
+  .bubble.seller,
+  .bubble.abuela,
+  .bubble.chato {
+    left: 2cqw;
+    max-width: 84cqw;
+  }
+
+  .bubble.buyer {
+    right: 2cqw;
+  }
+
+  .bubble::after {
+    display: none;
+  }
+
+  .nameplate small,
+  .dealer-move {
+    display: none;
+  }
+
+  .jev {
+    width: 15cqw;
+  }
+}
+
+/* ---------------------------------------------------------------- reduced motion: hold still */
+
+@media (prefers-reduced-motion: reduce) {
+  .stage *,
+  .stage *::before,
+  .stage *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .par {
+    translate: none !important;
+  }
+}

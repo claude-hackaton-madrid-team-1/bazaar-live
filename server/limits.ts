@@ -124,8 +124,9 @@ export const DEFAULT_LIMITS: TtsLimits = {
   perAddressPerMinute: 24,
   globalBurst: 160,
   globalPerMinute: 72,
-  dailyChars: 40_000,
-  dailyCharsPerAddress: 40_000,
+  // The ElevenLabs account holds 10,000 credits and a character costs about one: stay under it by default.
+  dailyChars: 9_000,
+  dailyCharsPerAddress: 9_000,
   clientIpHeader: 'x-real-ip',
 }
 

@@ -26,6 +26,8 @@ const ID_SHIFT = 1000
 export interface MockOptions {
   readonly speed: number
   readonly mode: 'live' | 'dry'
+  /** `closed`: the game's doors are shut, as before the opening: no events, /health counts down to the open. */
+  readonly doors?: 'open' | 'closed'
   readonly onEvent: (event: ShowEvent, replay: boolean) => void
   readonly onTick?: (tick: number) => void
 }
@@ -48,6 +50,8 @@ export class MockPlayer {
   private loop = 0
   private loopStart = 0
   private tick: number
+  /** When the closed mock's doors open: an hour and a half after the page opened. */
+  private readonly openAt = Date.now() + 95 * 60_000
 
   constructor(options: MockOptions) {
     this.opts = options
@@ -56,6 +60,7 @@ export class MockPlayer {
 
   start(): void {
     this.stop()
+    if (this.opts.doors === 'closed') return
     this.loopStart = Date.now()
     this.schedule()
   }
@@ -67,7 +72,10 @@ export class MockPlayer {
 
   health(agent: AgentId): AgentHealth | null {
     const base = parseHealth(SCENE.health[agent])
-    return base ? { ...base, mode: this.opts.mode, tick: this.tick, serverTick: this.tick } : null
+    if (!base) return null
+    const live = { ...base, mode: this.opts.mode, tick: this.tick, serverTick: this.tick }
+    if (this.opts.doors !== 'closed') return live
+    return { ...live, doors: 'closed', paused: true, nextOpens: new Date(this.openAt).toISOString() }
   }
 
   state(agent: AgentId): AgentState | null {

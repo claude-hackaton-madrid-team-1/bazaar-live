@@ -7,6 +7,7 @@
  * - a failing provider falls back to `fallback` for that line, and after `maxFailures` failures in a
  *   row the queue uses the fallback alone for `coolDownMs`.
  */
+import type { Lang } from '../../shared/lang.ts'
 import type { ProviderName, SpeechProvider, Utterance } from './types'
 
 export interface QueueOptions {
@@ -19,11 +20,14 @@ export interface QueueOptions {
   readonly timeoutMs?: (u: Utterance) => number
   readonly onError?: (error: unknown, u: Utterance, provider: ProviderName) => void
   readonly onSpeaking?: (u: Utterance | null) => void
+  /** The language being shown now: a line of another language is never spoken (it resolves unspoken). */
+  readonly currentLang?: () => Lang
 }
 
 interface Pending {
   readonly u: Utterance
-  readonly done: () => void
+  /** Called with whether the line was really spoken (not muted, cleared, refused or timed out). */
+  readonly done: (heard: boolean) => void
 }
 
 const defaultTimeout = (u: Utterance): number => 6000 + u.text.length * 90
@@ -53,6 +57,11 @@ export class SpeechQueue {
     return this.active().name
   }
 
+  /** A real voice is on: not muted and not the silent provider. */
+  get audible(): boolean {
+    return !this.isMuted && this.active().name !== 'silent'
+  }
+
   /** Lines waiting, not counting the one being spoken. */
   get backlog(): number {
     return this.pending.length
@@ -70,9 +79,10 @@ export class SpeechQueue {
     if (muted) this.flush()
   }
 
-  say(u: Utterance): Promise<void> {
-    if (this.isMuted) return Promise.resolve()
-    return new Promise<void>((resolve) => {
+  /** Resolves when the line is over: true when a voice really said it, false when it was skipped or failed. */
+  say(u: Utterance): Promise<boolean> {
+    if (this.isMuted || this.staleLang(u)) return Promise.resolve(false)
+    return new Promise<boolean>((resolve) => {
       this.pending = [...this.pending, { u, done: resolve }]
       this.active().prefetch?.(u)
       void this.drain()
@@ -81,7 +91,12 @@ export class SpeechQueue {
 
   /** Ask the active provider to fetch a line's audio ahead of time (no-op for local voices). */
   prefetch(u: Utterance): void {
-    if (!this.isMuted) this.active().prefetch?.(u)
+    if (!this.isMuted && !this.staleLang(u)) this.active().prefetch?.(u)
+  }
+
+  private staleLang(u: Utterance): boolean {
+    const current = this.opts.currentLang?.()
+    return current !== undefined && u.lang !== current
   }
 
   /** Drop everything: the current line stops, waiting lines resolve unspoken. */
@@ -92,7 +107,7 @@ export class SpeechQueue {
   private flush(): void {
     const waiting = this.pending
     this.pending = []
-    waiting.forEach((p) => p.done())
+    waiting.forEach((p) => p.done(false))
     this.current?.abort()
   }
 
@@ -109,8 +124,7 @@ export class SpeechQueue {
         const [next, ...rest] = this.pending
         if (!next) break
         this.pending = rest
-        await this.speakOne(next.u)
-        next.done()
+        next.done(await this.speakOne(next.u))
       }
     } finally {
       this.running = false
@@ -118,38 +132,43 @@ export class SpeechQueue {
     }
   }
 
-  private async speakOne(u: Utterance): Promise<void> {
-    if (this.isMuted) return
+  private async speakOne(u: Utterance): Promise<boolean> {
+    // A line queued before the language changed is dropped here too, never spoken with the new voices.
+    if (this.isMuted || this.staleLang(u)) return false
     const provider = this.active()
     this.opts.onSpeaking?.(u)
     try {
-      await this.withWatchdog(provider, u)
+      const heard = await this.withWatchdog(provider, u)
       if (provider === this.provider) this.failures = 0
+      return heard
     } catch (error: unknown) {
       this.opts.onError?.(error, u, provider.name)
-      if (provider !== this.provider || !this.fallback || this.isMuted) return
+      if (provider !== this.provider || !this.fallback || this.isMuted) return false
       this.failures += 1
       if (this.failures >= this.opts.maxFailures) this.degradedUntil = this.opts.now() + this.opts.coolDownMs
       try {
-        await this.withWatchdog(this.fallback, u)
+        return await this.withWatchdog(this.fallback, u)
       } catch (fallbackError: unknown) {
         this.opts.onError?.(fallbackError, u, this.fallback.name)
+        return false
       }
     }
   }
 
-  private withWatchdog(provider: SpeechProvider, u: Utterance): Promise<void> {
+  /** Resolves true when the provider finished the line, false when it was aborted or the watchdog ended it. */
+  private withWatchdog(provider: SpeechProvider, u: Utterance): Promise<boolean> {
     const controller = new AbortController()
     this.current = controller
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<boolean>((resolve, reject) => {
       const timer = setTimeout(() => {
         controller.abort()
-        resolve()
+        resolve(false)
       }, this.opts.timeoutMs(u))
       const finish = (error?: unknown) => {
         clearTimeout(timer)
         if (this.current === controller) this.current = null
-        if (error === undefined || controller.signal.aborted) resolve()
+        if (controller.signal.aborted) resolve(false)
+        else if (error === undefined) resolve(true)
         else reject(error instanceof Error ? error : new Error(String(error)))
       }
       controller.signal.addEventListener('abort', () => finish(), { once: true })

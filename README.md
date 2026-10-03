@@ -18,7 +18,7 @@ Node 22.18 or newer (`.nvmrc` pins 22.22.0): the server runs TypeScript directly
 
 ```sh
 npm ci
-npm run dev            # http://localhost:5173 — the show; voices via Web Speech
+npm run dev            # http://localhost:5173 — the show (voice: ElevenLabs v4 when `npm start` has its key, else captions only)
 npm run build          # static files in dist/
 npm start              # http://localhost:8080 — dist/ + /health + the TTS proxy (/api/tts)
 ```
@@ -42,8 +42,11 @@ npm run test:coverage  # with v8 coverage
 |---|---|
 | `?mock=1` | Plays `src/mock/fixtures.json` on a loop instead of the live feeds: a recorded-style afternoon (lists, a reprice with Jev, a guardrail denial, Abuela and El Chato, a deal, a refused accept, a late row). Use it when the doors are closed. |
 | `?speed=2` | Mock playback speed, 0.25 to 8. |
+| `?lang=es\|en` | The language of every line, spoken and written. Castellano with a Madrid flavour by default; `en` has its own native English lines (not translated ones). One language per line, never mixed. |
+| `?doors=closed` | With `?mock=1`: the mock's `/health` says the doors are closed (no events, a countdown to the opening), to hear the idle talk. |
+| `?idle=8` | Seconds of quiet before the characters talk about the situation (default 22 s with closed doors or a pause, 35 s otherwise; 2 to 600). |
 | `?mode=dry` | The mock's agents report DRY RUN, so every move is acted out as practice. |
-| `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) takes ElevenLabs, then Gemini, when the server has their key, else the browser's voice. The header's picker changes it live. |
+| `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) is ElevenLabs v4 when the server has its key, else captions only: no browser-voice or Gemini stand-in. `webspeech` and `gemini` are for development, by name. The header's picker offers ElevenLabs v4 or no voice. |
 
 Keyboard: **M** mutes and unmutes. Browsers only let a page speak after a click, so the show opens
 with a "Start the show with sound / Watch muted" gate.
@@ -103,33 +106,55 @@ Spec: [`docs/specs/LIVE-T1.md`](docs/specs/LIVE-T1.md).
 
 ## What it shows
 
-- **Stage** (`src/stage/`): the SELLER behind the stall, the BUYER in front, a cork board with our
-  offers. A heartbeat per `agent.tick`; offer cards fly from the seller to the board on `post_ask` /
-  `post_bid`, price tags roll and flash on a reprice, cards fly back on a cancel; the buyer reaches for
-  a card on `accept_ask`; a handshake, a "¡TRATO HECHO!" stamp and confetti on an accepted
-  `agent.execution` (a smaller handshake for other requests the game accepted); a shaking red ALTO sign
-  on a guardrail denial; Jev's thought bubble; Abuela Carmen and El Chato pop up for `dealer_*` moves; a
-  chip says why a move was not sent (practice, blocked, too late). `prefers-reduced-motion` is respected
-  (`MotionConfig reducedMotion="user"`, no confetti, no shaking).
-- **Dialogue** (`src/show/`): each decision or execution becomes a one-to-three-line BUYER ↔ SELLER
-  exchange, Spanish-flavoured, with expressive tags (`[laughs]`, `[sarcastic]`, `[whispers]`,
-  `[gasps]`, ...). Deterministic templates: the line is picked by a hash of the event, so a replay says
-  the same thing. A director plays beats in order and, on a busy tick, drops the least interesting ones
-  (holds before deals), merges runs of holds into one line, and skips stale small talk.
+- **Stage** (`src/stage/`): an original fantasy-RPG bazaar for Madrid's Rastro at dusk, drawn in SVG and
+  CSS (no game assets, names, fonts or likenesses; the only font is Cinzel from Google Fonts, bundled).
+  Layers: a sky from indigo to ember with a moon and twinkling stars, two rows of rooftops with lit
+  windows, stalls down the street, pennant strings and swaying lanterns, two heraldic banners, torches
+  with flickering flames, cobbles in perspective, drifting fog, light shafts and a vignette. The layers
+  drift slowly and shift with the pointer (parallax). The SELLER, the BUYER and the two dealers (Abuela
+  Carmen with her lantern, El Chato in his flat cap) are SVG merchants animated with Motion: they
+  breathe when idle, nod and gesture when they talk, haggle (rocking, hands working), reach for a card,
+  triumph (arms up, a shower of gold coins and a "¡TRATO HECHO!" ribbon on an accepted execution),
+  and grumble (head shake, arms crossed) when a request is refused or a dealer walks away. A guardrail
+  denial raises a glowing **rune shield**; Jev's verdict is a **glowing orb** whose colour is the
+  verdict, with the meter of its sibling options; offer cards fly to a notice board, price tags roll
+  and flash on a reprice. `prefers-reduced-motion` is respected: every CSS and Motion animation stops
+  (0 running animations, measured) and the figures hold their pose. Captions sit on parchment scrolls
+  in at least 15 px (13 px on a phone) and the transcript repeats every line.
+- **Dialogue** (`src/show/`, `shared/`): each decision or execution becomes a one-to-three-line
+  BUYER ↔ SELLER exchange in ONE language per line (`shared/lines.es.ts`, `shared/lines.en.ts`: the same
+  banks, written separately for each language), with delivery tags (`[laughs]`, `[sarcastic]`,
+  `[whispers]`...) that are never read aloud. It is **context-aware and non-repeating**:
+  - *Situations.* When nothing is happening the characters read the agents' public `/health` (`doors`,
+    `paused`, `next_opens`, `tick_seconds`, `mode`, `target`) and the tick (`src/show/situation.ts`):
+    closed doors with the countdown and the opening hour in Madrid time, a pause, a quiet market, a new
+    tick, a dry run, the simulator, no signal. They also notice, from live events, a new neighbourhood
+    page (El Retiro on Saturday, Chamberí on Sunday: the first live card of that set) and a Market Test
+    session (every two game hours, from the events' `t`).
+  - *Mood.* A small deterministic mood (calm, eager, sarcastic or triumphant, `src/show/mood.ts`) comes
+    from the topic (a deal is triumphant, a refusal sarcastic), a busy or long-quiet stage, a practice
+    row, and the moods of the last lines. Every variant in the banks carries its mood.
+  - *Memory.* A recent-lines memory (`src/show/memory.ts`, six minutes) means no line repeats within the
+    window while a fresh one exists; when a bank is used up the one said longest ago comes back first.
+    Replayed history passes no memory, so a replay of the same event reads the same.
+  A director plays beats in order and, on a busy tick, drops the least interesting ones (holds before
+  deals), merges runs of holds, and skips stale small talk.
 - **Transcript** = captions: every spoken line, in order (`role="log"`, `aria-live="polite"`), with
   replayed and skipped lines dimmed.
 
 ## Voices
 
-One queue (`src/tts/queue.ts`): one line at a time, never overlapping; mute stops the current line
-and drops the rest; a watchdog ends a line whose provider never reports its end; a failing provider
-falls back to the browser's voice, and after three failures in a row the fallback is used alone for a
-minute.
+One queue (`src/tts/queue.ts`): one line at a time, never overlapping, and **gap-free**: the whole beat is
+fetched ahead (`prefetch`) when it starts, so each voice starts a few milliseconds after the last one ends,
+the captions follow the voice, and `say()` reports whether a line was really heard (a refused, failed, timed-out
+or muted line keeps its caption for its reading time); mute
+stops the current line and drops the rest; a watchdog ends a line whose provider never reports its end; a failing or refused line (a spent budget, a 5xx)
+is skipped: its caption keeps its reading time and the show goes on (no browser voice stands in).
 
 | Provider | Where | Model | Tags | Env (server only) |
 |---|---|---|---|---|
-| `webspeech` | browser `speechSynthesis`, keyless | the browser's voices (a Spanish one for the dealers when available) | stripped | none |
-| `elevenlabs` | `POST /api/tts` → `api.elevenlabs.io/v1/text-to-speech/{voice}` | `eleven_v4` (default) | `[laughs]`, `[whispers]`, `[sarcastic]`... passed as they are | `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_NARRATOR` |
+| `webspeech` | browser `speechSynthesis`, keyless | a NATIVE voice of the line's language per role (es-ES first, then other Spanish; en-GB, en-US), different voices per character when the browser has them, a woman for Abuela, rate and pitch per character | never read: mapped to a little speed, pitch or volume (`[whispers]` is quieter, `[excited]` brighter), then stripped | none |
+| `elevenlabs` (**the show's voice**) | `POST /api/tts` → `api.elevenlabs.io/v1/text-to-speech/{voice}` | `eleven_v4` (default) | `[laughs]`, `[whispers]`, `[sarcastic]`... passed as they are | `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_NARRATOR` |
 | `gemini` | `POST /api/tts` → `generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.8-flash-tts` (default) | sustained tags (`[sarcastic]`, `[whispers]`) go to `speech_metadata.style` with each character's persona; momentary ones become inline `<laugh>`, `<gasp>`, `<sigh>` | `GEMINI_API_KEY`, `GEMINI_TTS_MODEL`, `GEMINI_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_NARRATOR` |
 
 Model names, checked against the official docs on 2026-10-03:
@@ -141,25 +166,30 @@ Model names, checked against the official docs on 2026-10-03:
 - **Gemini:** "Gemini 3.8 TTS" is `gemini-3.8-flash-tts` (expressive) or `gemini-3.8-flash-lite-tts`
   (faster, cheaper); set `GEMINI_TTS_MODEL` to switch.
 - **Voices:** Gemini's defaults (Puck, Fenrir, Sulafat, Algenib, Charon) are from its prebuilt list.
-  ElevenLabs' seller default is the voice in ElevenLabs' own v4 sample; the other ElevenLabs defaults
-  are premade voice ids we could not check without a key. Set `ELEVENLABS_VOICE_*` to voices in your
-  account.
+  The ElevenLabs defaults are premade voice ids we could not check without a key. The settings sent
+  per role (`stability`, `similarity_boost`, `language_code`), the reasoning, how to get a Castilian
+  accent and the switch-on steps for the pitch are in [`docs/voices.md`](docs/voices.md); none of it was
+  run (no paid call is made by the tests or by this repo's work).
 
 **No key in the browser.** Keys are read from the server's environment and never sent to the page,
 logged or committed. The proxy is public, so it guards what it speaks and what it spends:
 
-- **Only the show's own lines.** The dialogue templates live in `shared/lines.ts`; the page fills
-  their `{slots}` from public event fields, and the proxy accepts a line only when it matches one of
-  those templates for that speaker, with every slot restricted to the words the show can produce: card
-  names, primas, dealer names, and closed lists for the game's error codes, the documented decision
-  kinds and Jev's verdicts. Anything else is a `400`; a test checks that every line the show can produce
-  passes and arbitrary text (or a phrase smuggled into a slot) does not.
+- **Only the show's own lines, in one language.** The dialogue templates live in `shared/lines.es.ts` and
+  `shared/lines.en.ts` (matched by `shared/lines.ts`); the page fills their `{slots}` from public event
+  fields and `/health`, and the proxy accepts a line only when it matches one of those templates for that
+  speaker in the request's `lang` (or, for an older page that sends none, in the language it matches),
+  with every slot restricted to the words the show can produce in that language (`shared/vocab.ts`):
+  card names, primas, dealer names, a countdown ("45 minutos") and an opening hour ("hoy a las 9:00"), a
+  neighbourhood, and closed lists for the game's error codes, the documented decision kinds and Jev's
+  verdicts. Anything else is a `400`, and so is a line that is half of each language; a test checks that
+  every line the show can produce passes in its own language and is refused in the other, and that
+  arbitrary text (or a phrase smuggled into a slot) is refused.
 - **Only this page.** A request must carry an `Origin` naming this host (browsers always send it on a
   `POST`); others get `403`. Text is capped at 300 characters.
 - **Limits.** Per address (Railway's `X-Real-IP`; `X-Forwarded-For` is never trusted) a burst of 40
   then 24 lines a minute; all callers together a burst of 160 then 72 a minute. The address is checked
   before the shared bucket, so one caller over its limit cannot drain it for everyone. A daily budget of
-  40,000 characters sent to a provider (UTC day) caps the cost; a share per address is opt-in
+  9,000 characters sent to a provider (UTC day; the ElevenLabs account has 10,000 credits and a character costs about one) caps the cost; a share per address is opt-in
   (`TTS_DAILY_CHARS_PER_ADDRESS`, off by default because the pitch screen is one address too), and a
   call the provider refused gives its characters back. IPv6 callers are counted by their /64. Env: `TTS_PER_ADDRESS_BURST`, `TTS_PER_ADDRESS_PER_MINUTE`,
   `TTS_GLOBAL_BURST`, `TTS_GLOBAL_PER_MINUTE`, `TTS_DAILY_CHARS`, `TTS_DAILY_CHARS_PER_ADDRESS`,
@@ -169,7 +199,7 @@ logged or committed. The proxy is public, so it guards what it speaks and what i
 - **Cache.** Every viewer hears the same line for the same event: a 24 MB cache and shared in-flight
   requests make a repeated line free.
 
-A refused or failed line falls back to the browser's voice.
+A refused or failed line is shown as a caption only, for its reading time.
 
 ## Deploy (Railway)
 
@@ -183,7 +213,7 @@ railway variable set ELEVENLABS_API_KEY --stdin --service bazaar-live
 railway variable set GEMINI_API_KEY --stdin --service bazaar-live
 ```
 
-With neither key set, the show still speaks with the browser's voice.
+The show's voice is **ElevenLabs v4 only**: with no ElevenLabs key on the server the show plays with captions only (the header says so); the browser's own voice is no stand-in (`?tts=webspeech` still reaches it, for development, and `?tts=gemini` Gemini).
 
 After the first deploy, check the edge from outside (the proxy trusts what Railway's edge reports):
 
@@ -198,7 +228,7 @@ curl -s $URL/health                                   # {"ok":true,"service":"ba
 BASE=$((RANDOM % 900))
 for n in $(seq $((BASE + 1)) $((BASE + 45))); do curl -s -o /dev/null -w '%{http_code} ' -X POST $URL/api/tts \
   -H 'Content-Type: application/json' -H "Origin: $URL" -H "X-Real-IP: 198.51.100.$n" \
-  -d "{\"provider\":\"elevenlabs\",\"speaker\":\"seller\",\"text\":\"La Latina number $n stays put.\"}"; done
+  -d "{\"provider\":\"elevenlabs\",\"speaker\":\"seller\",\"lang\":\"es\",\"text\":\"La Latina número $n se queda como está.\"}"; done
 ```
 
 ## Layout
@@ -207,10 +237,11 @@ for n in $(seq $((BASE + 1)) $((BASE + 45))); do curl -s -o /dev/null -w '%{http
 src/model     the event model and the public allow-list (sanitize.ts)
 src/net       WebSocket feed (backoff, dedupe, replay) and /health, /state fetches
 src/mock      fixtures.json (written by scripts/make-fixtures.py) and the looping player
-src/show      event → dialogue, the director, the engine that plays beats
-src/tts       speech queue, Web Speech, the proxy client, provider choice
-src/stage     Motion components: characters, board, dealers, effects, bubbles
+src/show      event → dialogue, mood, memory, situations (from /health), the director, the engine
+src/tts       speech queue, Web Speech and its voice picker, the proxy client, provider choice
+src/stage     the dusk scene (scene/), the merchants, board, dealers, effects, bubbles (Motion, SVG, CSS)
 src/ui        header, transcript, start gate, React hooks
-shared/       dialogue templates (lines.ts), tag conversion, endpoints: browser and server
+shared/       the language packs (lines.es.ts, lines.en.ts), vocab and slot patterns, tags, endpoints: browser and server
+docs/         voices.md: the ElevenLabs settings per role
 server/       the Node server: static files, /health, /api/tts
 ```

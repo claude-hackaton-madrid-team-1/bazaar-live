@@ -4,16 +4,24 @@ import { readConfig } from './config'
 import { Stage } from './stage/Stage'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
+import { useLang, useStrings } from './ui/lang'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
+import { unlockAudio } from './tts/remote'
 import { unlockWebSpeech } from './tts/webspeech'
 import { useShow } from './ui/useShow'
 
 export default function App() {
   const config = useMemo(() => readConfig(window.location.search), [])
+  const lang = useLang()
+  const t = useStrings()
   const { state, speech } = useShow(config)
   const [started, setStarted] = useState(false)
   const { muted, setMuted } = speech
+
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -34,7 +42,7 @@ export default function App() {
         <Header state={state} speech={speech} mock={config.mock} />
         <Notice state={state} mock={config.mock} />
         <main className="main">
-          <ErrorBoundary fallback={<div className="fallback">The stall tripped over a crate. Back in a moment; the transcript keeps going.</div>}>
+          <ErrorBoundary fallback={<div className="fallback">{t.fallback}</div>}>
             <Stage state={state} />
           </ErrorBoundary>
           <Transcript entries={state.transcript} />
@@ -43,7 +51,10 @@ export default function App() {
       {!started && (
         <StartGate
           onStart={(withSound) => {
-            if (withSound) unlockWebSpeech()
+            if (withSound) {
+              unlockWebSpeech()
+              unlockAudio()
+            }
             setStarted(true)
             setMuted(!withSound)
           }}
