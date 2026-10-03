@@ -1,0 +1,120 @@
+/**
+ * Reads db/history.sql's four views every few seconds and keeps the last snapshot in memory for
+ * GET /api/history. It shares /api/learn's one-connection pool (the reader role has a connection limit of
+ * 4), so its capped queries run one after the other. Like the learn poller: a view not applied yet (42P01)
+ * or not granted (42501) only blanks its part, logged once; any other error keeps the last good part and
+ * backs off; no exception leaves `pollOnce()`; error text is redacted.
+ */
+import { EMPTY_HISTORY, type HistoryParts, type HistorySnapshot } from '../../shared/history.ts'
+import { parseAll } from '../learn/rows.ts'
+import type { Db } from '../transcript/poller.ts'
+import { orderOf, pointOf, teamEventOf, tradeOf } from './rows.ts'
+
+// newest first, capped, then put back in time order; day::text so a date never becomes a local midnight
+export const SQL = {
+  points: `select * from (select day::text as day, tick, cash, score, rank from show.cash_points order by day desc, tick desc limit $1) p order by day, tick`,
+  trades: `select id, day::text as day, tick, venue, side, counterparty, card, card_name, rarity, items, price, fee
+             from show.our_trades order by day desc, tick desc, id desc limit $1`,
+  orders: `select id, day::text as day, kind, tick, price, item, agent from show.our_orders order by id desc limit $1`,
+  events: `select id, day::text as day, tick, type, venue, name, bond, pack, best, cash, level, why
+             from show.our_events order by day desc, tick desc, id desc limit $1`,
+} as const
+
+export const CAPS = { points: 2000, trades: 500, orders: 500, events: 200 } as const
+
+type Part = keyof HistoryParts
+
+export interface HistoryPollerDeps {
+  readonly db: Db
+  readonly log: (entry: Record<string, unknown>) => void
+  readonly intervalMs?: number
+  readonly maxDelayMs?: number
+  readonly secrets?: readonly string[]
+  readonly now?: () => Date
+  readonly setTimer?: (fn: () => void, ms: number) => unknown
+  readonly clearTimer?: (handle: unknown) => void
+}
+
+const codeOf = (error: unknown): string => {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === 'string' ? code : 'ERR'
+}
+
+export class HistoryPoller {
+  private snapshot: HistorySnapshot = EMPTY_HISTORY
+  private readonly missingLogged = new Set<Part>()
+  private failures = 0
+  private timer: unknown = null
+  private running = false
+  private readonly deps: HistoryPollerDeps
+  private readonly intervalMs: number
+  private readonly maxDelayMs: number
+
+  constructor(deps: HistoryPollerDeps) {
+    this.deps = deps
+    this.intervalMs = deps.intervalMs ?? 5_000
+    this.maxDelayMs = deps.maxDelayMs ?? 120_000
+  }
+
+  current(): HistorySnapshot {
+    return this.snapshot
+  }
+
+  start(): void {
+    if (this.running) return
+    this.running = true
+    void this.loop()
+  }
+
+  stop(): void {
+    this.running = false
+    if (this.timer !== null) (this.deps.clearTimer ?? clearTimeout)(this.timer as ReturnType<typeof setTimeout>)
+    this.timer = null
+  }
+
+  private async loop(): Promise<void> {
+    if (!this.running) return
+    await this.pollOnce()
+    if (!this.running) return
+    const delay = this.failures === 0 ? this.intervalMs : Math.min(this.maxDelayMs, this.intervalMs * 2 ** this.failures)
+    this.timer = (this.deps.setTimer ?? setTimeout)(() => void this.loop(), delay)
+  }
+
+  /** One read of the four views. Never throws. */
+  async pollOnce(): Promise<void> {
+    const prev = this.snapshot
+    const parts: Record<Part, boolean> = { ...prev.parts }
+    let failed = false
+    const read = async <T>(part: Part, parse: (raw: unknown) => T | null, keep: readonly T[]): Promise<readonly T[]> => {
+      try {
+        const { rows } = await this.deps.db.query(SQL[part], [CAPS[part]])
+        parts[part] = true
+        this.missingLogged.delete(part)
+        return parseAll(rows, parse)
+      } catch (error: unknown) {
+        const code = codeOf(error)
+        if (code === '42P01' || code === '42501') {
+          parts[part] = false
+          if (!this.missingLogged.has(part)) this.deps.log({ route: 'history', event: 'view_missing', part, code })
+          this.missingLogged.add(part)
+          return []
+        }
+        failed = true
+        this.deps.log({ route: 'history', event: 'poll_error', part, code, message: this.redact(error) })
+        return keep
+      }
+    }
+    const points = await read('points', pointOf, prev.points)
+    const trades = await read('trades', tradeOf, prev.trades)
+    const orders = await read('orders', orderOf, prev.orders)
+    const events = await read('events', teamEventOf, prev.events)
+    this.failures = failed ? this.failures + 1 : 0
+    this.snapshot = { at: failed ? prev.at : (this.deps.now ?? (() => new Date()))().toISOString(), parts, points, trades, orders, events }
+  }
+
+  private redact(error: unknown): string {
+    let text = error instanceof Error ? error.message : String(error)
+    for (const s of this.deps.secrets ?? []) if (s) text = text.split(s).join('***')
+    return text.slice(0, 200)
+  }
+}

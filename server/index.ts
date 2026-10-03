@@ -4,7 +4,8 @@
  * of db/show.sql; absent = no real transcript) and the optional model and voice overrides listed in README.md. With no key at all the show still speaks with Web Speech.
  * The game screens: BAZAAR_KEY (the real game) or BAZAAR_SIM=1 with BAZAAR_SIM_KEY (the simulator, default
  * sim-team1); GAME_VIEW_TOKEN to require a token on their stream; GAME_POLL_MS (default 5000). No key = no feed.
- * The Learn screen reads db/learn.sql's views with the same SHOW_DATABASE_URL, behind the same GAME_VIEW_TOKEN.
+ * The Learn screen reads db/learn.sql's views with the same SHOW_DATABASE_URL, behind the same GAME_VIEW_TOKEN;
+ * the Movements screen reads db/history.sql's views on that same connection.
  * With both SHOW_DATABASE_URL and a game key, our agents' decisions join that stream (GUARDRAIL_* override the caps shown).
  */
 import { createServer } from 'node:http'
@@ -13,6 +14,7 @@ import { fileURLToPath } from 'node:url'
 import { createApp } from './app.ts'
 import { startDecisions } from './game/decisions.ts'
 import { startGame } from './game/start.ts'
+import { startHistory } from './history/start.ts'
 import { startLearn } from './learn/start.ts'
 import { readLimits } from './limits.ts'
 import { availableProviders, readProviderConfig } from './providers.ts'
@@ -33,6 +35,8 @@ const game = startGame(process.env, log)
 const learn = startLearn(process.env, log)
 // Our agents' decisions (db/agent_decisions.sql) into the game stream: on the transcript's pool and the game hub, else off.
 const decisions = startDecisions(process.env, { db: transcript.db, hub: game.hub, log, secrets: transcript.secrets })
+// Our cash and what moved it (db/history.sql), on the Learn screen's one connection.
+const history = startHistory(learn, log)
 const perAddress = Number(process.env.TRANSCRIPT_STREAMS_PER_ADDRESS)
 const server = createServer(
   createApp({
@@ -44,6 +48,7 @@ const server = createServer(
     },
     game,
     learn,
+    history,
   }),
 )
 
@@ -55,6 +60,7 @@ const shutdown = (): void => {
   decisions.stop()
   void transcript.stop()
   game.stop()
+  history.stop()
   void learn.stop()
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(0), 3000).unref()

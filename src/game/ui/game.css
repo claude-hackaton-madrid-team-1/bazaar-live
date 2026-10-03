@@ -1729,3 +1729,275 @@
 .gm-learning-conf .gm-track {
   height: 5px;
 }
+
+/* ---------------------------------------------------------------- cash, always in sight, and its movements */
+
+.gm-amount[data-tone='in'],
+.gm-cash-delta[data-tone='in'] {
+  color: var(--gm-good);
+}
+
+.gm-amount[data-tone='out'],
+.gm-cash-delta[data-tone='out'] {
+  color: var(--gm-bad);
+}
+
+/* the header's cash: the one figure that matters at a glance, a link to its movements */
+.gm-cash {
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--gm-us) 34%, transparent);
+  background: color-mix(in srgb, var(--buyer-1) 10%, transparent);
+  color: inherit;
+  text-decoration: none;
+}
+
+.gm-cash:hover {
+  background: color-mix(in srgb, var(--buyer-1) 18%, transparent);
+}
+
+.gm-cash:focus-visible,
+.gm-cashdock:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.gm-cash-num {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.gm-cash-delta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* the same, in the corner once the header has scrolled away */
+.gm-cashdock {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--r-pill);
+  color: inherit;
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: var(--track-eyebrow);
+}
+
+.gm-cashdock .gm-cash-num {
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  text-transform: none;
+}
+
+/* the Movements screen */
+.gm-cashhero {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-4) var(--s-6);
+  padding: var(--s-4) var(--s-5);
+  border-radius: var(--r-lg);
+}
+
+.gm-cashhero-value {
+  font-size: 3rem;
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: var(--track-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.gm-cashhero-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--s-3);
+  margin-top: 6px;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.gm-cashstats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--s-3) var(--s-4);
+  margin: 0;
+}
+
+.gm-cashstats > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gm-cashstats dt {
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.gm-cashstats dd {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gm-cashstats dd.gm-cashstats-small {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.gm-cashchart-box {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.gm-cashchart {
+  display: block;
+}
+
+.gm-cashchart .gm-grid {
+  stroke: var(--hairline);
+}
+
+.gm-cashchart .gm-axis {
+  fill: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.gm-cash-line {
+  fill: none;
+  stroke: var(--gm-us);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.gm-cash-area {
+  fill: color-mix(in srgb, var(--buyer-1) 14%, transparent);
+}
+
+.gm-cash-mark {
+  stroke: var(--material-solid);
+  stroke-width: 1.5;
+}
+
+.gm-cash-mark[data-tone='in'] {
+  fill: var(--gm-good);
+}
+
+.gm-cash-mark[data-tone='out'] {
+  fill: var(--gm-bad);
+}
+
+.gm-cash-end {
+  fill: var(--gm-us);
+  stroke: var(--material-solid);
+  stroke-width: 2;
+}
+
+.gm-history-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+
+.gm-moves td.gm-move-what {
+  min-width: 260px;
+  white-space: normal;
+}
+
+.gm-moves td.gm-amount {
+  font-weight: 600;
+}
+
+.gm-move-lines {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gm-move-lines li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--s-2);
+}
+
+.gm-move-lines li[data-kind='other'] {
+  color: var(--text-2);
+  font-style: italic;
+}
+
+.gm-move-lines .gm-amount {
+  margin-left: auto;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 960px) {
+  .gm-history-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .gm-cashhero {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--s-4);
+  }
+
+  .gm-cashhero-value {
+    font-size: 2.5rem;
+  }
+
+  .gm-cashdock {
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* a movement is a card: tick, change and cash on one line, what moved it below, full width */
+  .gm-moves thead {
+    display: none;
+  }
+
+  .gm-moves,
+  .gm-moves tbody {
+    display: block;
+  }
+
+  .gm-moves tr {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: 4px var(--s-3);
+    padding: var(--s-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .gm-moves td {
+    padding: 0;
+    border: 0;
+  }
+
+  .gm-moves td.gm-move-what {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+}

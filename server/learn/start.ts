@@ -5,18 +5,23 @@
  */
 import { EMPTY_LEARN, type LearnSnapshot } from '../../shared/learn.ts'
 import { createShowPool, readShowDatabase, secretsOf, type ShowPool } from '../transcript/pg.ts'
+import type { Db } from '../transcript/poller.ts'
 import { LearnPoller } from './poller.ts'
 
 export interface Learn {
   readonly enabled: () => boolean
   readonly snapshot: () => LearnSnapshot
   readonly token: string | null
+  /** The one-connection pool, for other readers of the same role (the Movements screen), or null when off. */
+  readonly db: Db | null
+  /** The url's secrets, to redact from logged errors. */
+  readonly secrets: readonly string[]
   readonly stop: () => Promise<void>
 }
 
 export function startLearn(env: Readonly<Record<string, string | undefined>>, log: (entry: Record<string, unknown>) => void): Learn {
   const token = env.GAME_VIEW_TOKEN?.trim() || null
-  const off: Learn = { enabled: () => false, snapshot: () => EMPTY_LEARN, token, stop: () => Promise.resolve() }
+  const off: Learn = { enabled: () => false, snapshot: () => EMPTY_LEARN, token, db: null, secrets: [], stop: () => Promise.resolve() }
   const config = readShowDatabase(env)
   if (!config.enabled) {
     log({ route: 'learn', event: 'off', reason: config.reason })
@@ -34,6 +39,8 @@ export function startLearn(env: Readonly<Record<string, string | undefined>>, lo
       enabled: () => true,
       snapshot: () => poller.current(),
       token,
+      db: live,
+      secrets: secretsOf(config.url),
       stop: async () => {
         poller.stop()
         await live.end().catch(() => undefined)

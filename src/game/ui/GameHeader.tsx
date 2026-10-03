@@ -1,11 +1,13 @@
 import { motion, useReducedMotion } from 'motion/react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import { LANGS, type Lang } from '../../../shared/lang.ts'
 import { setLang, useLang, useStrings } from '../../ui/lang'
 import { Nav } from '../../ui/Nav'
-import { fmtP } from '../game.ts'
+import { hrefOf, navigate } from '../../ui/route'
+import { fmtP, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame, useNow, type GameStatus } from '../store.ts'
+import { lastCashChange } from '../views/history.ts'
 import '../../ui/header.css'
 
 const LANG_NAME: Readonly<Record<Lang, string>> = { es: 'Castellano', en: 'English' }
@@ -43,6 +45,52 @@ function Kpi({ label, children }: { label: string; children: ReactNode }) {
       <span className="gm-kpi-num">{children}</span>
     </span>
   )
+}
+
+/**
+ * Our cash, always in sight: in the header, larger than the other figures, with its last change; and, once
+ * the header has scrolled away, as a pill in the corner (CashDock). Both open the Movements screen.
+ */
+function Cash({ dock = false }: { dock?: boolean }) {
+  const store = useGame()
+  const t = useGameStrings()
+  const s = store.state
+  const last = lastCashChange(s.history)
+  const go = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+    e.preventDefault()
+    navigate('history')
+  }
+  return (
+    <a
+      className={dock ? 'gm-cashdock glass' : 'hdr-chip gm-kpi gm-cash'}
+      href={hrefOf('history', window.location.search)}
+      onClick={go}
+      title={last ? `${t.cashHint} · ${t.cashLast(signed(last.delta), last.tick)}` : t.cashHint}
+    >
+      <span className="gm-kpi-label">{t.cash}</span>
+      <span className="gm-cash-num">{s.team ? fmtP(s.cash) : '—'}</span>
+      {last && (
+        <span className="gm-cash-delta" data-tone={last.delta > 0 ? 'in' : 'out'}>
+          {last.delta > 0 ? '▲' : '▼'} {signed(last.delta)}
+        </span>
+      )}
+    </a>
+  )
+}
+
+/** The cash pill in the corner, shown only while the header (and its cash) is scrolled out of sight. */
+export function CashDock() {
+  const store = useGame()
+  const [away, setAway] = useState(false)
+  useEffect(() => {
+    const header = document.querySelector('.gm-hdr')
+    if (!header || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(([e]) => setAway(e ? !e.isIntersecting : false))
+    io.observe(header)
+    return () => io.disconnect()
+  }, [])
+  return away && store.state.team ? <Cash dock /> : null
 }
 
 /** Day and tick, with a bar that fills until the next tick. */
@@ -97,7 +145,7 @@ export function GameHeader() {
           </span>
         )}
         <Clock />
-        <Kpi label={t.cash}>{s.team ? fmtP(s.cash) : '—'}</Kpi>
+        <Cash />
         <Kpi label={t.score}>{s.score.score ?? '—'}</Kpi>
         <Kpi label={t.rank}>{s.score.rank != null ? `#${s.score.rank}` : '—'}</Kpi>
       </div>
