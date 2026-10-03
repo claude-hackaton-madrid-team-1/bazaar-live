@@ -180,7 +180,8 @@ export async function gemini(config: NonNullable<ProviderConfig['gemini']>, spea
   })
   if (!res.ok) return failure('gemini', res)
   const data = geminiAudioData(await res.json())
-  if (!data) throw new UpstreamError('gemini', 502, 'no audio in the answer')
+  // A 200 without audio was probably billed: a plain Error, so the daily budget is not refunded.
+  if (!data) throw new Error('gemini answered 200 with no audio')
   const bytes = Buffer.from(data, 'base64')
   const wav = bytes.subarray(0, 4).toString('ascii') === 'RIFF' ? bytes : wavFromPcm(bytes)
   return { body: wav, contentType: 'audio/wav' }

@@ -338,3 +338,14 @@ describe('second review of the follow-ups', () => {
     expect(addressKey('203.0.113.9')).toBe('203.0.113.9')
   })
 })
+
+describe('post-approval P3s', () => {
+  it('does not refund a Gemini 200 that carried no audio (probably billed)', async () => {
+    const budget = new DailyBudget(1000, 1000)
+    const fake = (async () => Response.json({ outputs: [] })) as unknown as typeof fetch
+    const base = await start({ GEMINI_API_KEY: 'k' }, fake, { budget })
+    const line = { provider: 'gemini', speaker: 'seller', text: 'La Latina number 3 stays put.' }
+    expect((await tts(base, line)).status).toBe(502)
+    expect(budget.remaining).toBe(1000 - line.text.length)
+  })
+})
