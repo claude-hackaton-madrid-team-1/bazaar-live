@@ -42,7 +42,7 @@ export default function App() {
         <Header state={state} speech={speech} mock={config.mock} />
         <Notice state={state} mock={config.mock} />
         <main className="main">
-          <ErrorBoundary fallback={<div className="fallback">{t.fallback}</div>}>
+          <ErrorBoundary fallback={<div className="fallback material">{t.fallback}</div>}>
             <Stage state={state} />
           </ErrorBoundary>
           <Transcript entries={state.transcript} />
