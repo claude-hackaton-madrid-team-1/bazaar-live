@@ -41,13 +41,17 @@ export function guestSpeaker(id: string): GuestSpeaker {
   return GUEST_SPEAKERS[hashOf(id.toLowerCase()) % GUEST_SPEAKERS.length] ?? 'guest1'
 }
 
+/** Every handle and name a known dealer goes by, exactly (`pilarica` is somebody else). */
+const KNOWN_NAMES: Readonly<Record<string, KnownDealer>> = {
+  abuela: 'abuela', carmen: 'abuela', 'abuela carmen': 'abuela',
+  chato: 'chato', 'el chato': 'chato',
+  pilar: 'pilar', 'doña pilar': 'pilar', 'dona pilar': 'pilar',
+}
+
 /** A known dealer's id from a handle or a name (`chato`, `Abuela Carmen`, `Doña Pilar`), or null. */
 export function knownDealer(counterpart: string | null | undefined): KnownDealer | null {
-  const id = (counterpart ?? '').toLowerCase()
-  if (id.includes('abuela') || id.includes('carmen')) return 'abuela'
-  if (id.includes('chato')) return 'chato'
-  if (id.includes('pilar')) return 'pilar'
-  return null
+  const key = (counterpart ?? '').normalize('NFC').trim().toLowerCase().replace(/[\s_-]+/g, ' ')
+  return KNOWN_NAMES[key] ?? null
 }
 
 /**

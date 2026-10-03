@@ -60,6 +60,11 @@ describe('a voice per dealer', () => {
     expect(dealerSpeaker('pilar')).toBe('pilar')
     expect(dealerSpeaker('Doña Pilar')).toBe('pilar')
     expect(knownDealer('pilar')).toBe('pilar')
+    // a handle that only contains a known one is another dealer
+    for (const id of ['pilarica', 'carmencita', 'el_chato_jr']) {
+      expect(knownDealer(id)).toBeNull()
+      expect(GUEST_SPEAKERS).toContain(dealerSpeaker(id))
+    }
     expect(isSpeaker('pilar')).toBe(true)
   })
 

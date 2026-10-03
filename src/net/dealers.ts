@@ -9,6 +9,7 @@ import { getJson } from './http'
 export type DealerNames = Readonly<Record<string, string>>
 
 const REFRESH_MS = 5 * 60_000
+const RETRY_MS = 30_000
 const ID = /^[a-z][a-z0-9_-]{0,39}$/
 const NAME = /^[\p{L}\p{N} _.'-]{1,32}$/u
 
@@ -24,11 +25,16 @@ let loadedAt = -Infinity
 const listeners = new Set<() => void>()
 let timer: ReturnType<typeof setInterval> | null = null
 
+let failedAt = -Infinity
+
 async function load(): Promise<void> {
-  loadedAt = Date.now()
+  // one read at a time; after a failure, try again soon rather than in five minutes
+  failedAt = Date.now()
   try {
     const next = parseNames(await getJson('/api/dealers'))
     if (Object.keys(next).length === 0) return
+    loadedAt = Date.now()
+    failedAt = -Infinity
     names = next
     listeners.forEach((l) => l())
   } catch {
@@ -36,11 +42,13 @@ async function load(): Promise<void> {
   }
 }
 
+const due = (now: number): boolean => now - loadedAt > REFRESH_MS && now - failedAt > RETRY_MS
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener)
-  if (Date.now() - loadedAt > REFRESH_MS) void load()
+  if (due(Date.now())) void load()
   // A new dealer opens mid-game: read again while a caption is on screen.
-  timer ??= setInterval(() => void load(), REFRESH_MS)
+  timer ??= setInterval(() => due(Date.now()) && void load(), RETRY_MS)
   return () => {
     listeners.delete(listener)
     if (listeners.size === 0 && timer !== null) {

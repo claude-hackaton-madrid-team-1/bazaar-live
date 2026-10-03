@@ -132,6 +132,9 @@ and never to the public show. The page counts a duel event as ours only when it 
 so the feed's public `duel.closed` of other teams stays in the market:
 
 - `GET /api/game` → `{enabled, target, tokenRequired}` (never the key or the URL).
+- `GET /api/dealers` → `{names: {id: name}}`: every dealer's display name, read keyless from the game's
+  public `/api/dealers` at most every 5 minutes (`server/dealers.ts`), for the captions of a dealer that speaks
+  with a guest voice (docs/voices.md).
 - `GET /api/game/stream` → server-sent events: one `events` message with the replay (the latest hello,
   /me, clock first, then the last 5000 events), then one `events` message per poll, and `hb`.
 
@@ -388,7 +391,7 @@ is skipped: its caption keeps its reading time and the show goes on (no browser 
 |---|---|---|---|---|
 | `webspeech` | browser `speechSynthesis`, keyless | a NATIVE voice of the line's language per role (es-ES first, then other Spanish; en-GB, en-US), different voices per character when the browser has them, a woman for Abuela, rate and pitch per character | never read: mapped to a little speed, pitch or volume (`[whispers]` is quieter, `[excited]` brighter), then stripped | none |
 | `elevenlabs` (**the show's voice**) | `POST /api/tts` → `api.elevenlabs.io/v1/text-to-speech/{voice}` | `eleven_v4` (default) | `[laughs]`, `[whispers]`, `[sarcastic]`... passed as they are | `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_PILAR` / `_NARRATOR`, and `ELEVENLABS_VOICE_POOL` (comma-separated ids for dealers that arrive later; `_GUEST1`..`_GUEST3` override one) |
-| `gemini` | `POST /api/tts` → `generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.8-flash-tts` (default) | sustained tags (`[sarcastic]`, `[whispers]`) go to `speech_metadata.style` with each character's persona; momentary ones become inline `<laugh>`, `<gasp>`, `<sigh>` | `GEMINI_API_KEY`, `GEMINI_TTS_MODEL`, `GEMINI_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_NARRATOR` |
+| `gemini` | `POST /api/tts` → `generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.8-flash-tts` (default) | sustained tags (`[sarcastic]`, `[whispers]`) go to `speech_metadata.style` with each character's persona; momentary ones become inline `<laugh>`, `<gasp>`, `<sigh>` | `GEMINI_API_KEY`, `GEMINI_TTS_MODEL`, `GEMINI_VOICE_BUYER` / `_SELLER` / `_ABUELA` / `_CHATO` / `_PILAR` / `_NARRATOR`, and `GEMINI_VOICE_POOL` (or `_GUEST1`..`_GUEST3`) |
 
 Model names, checked against the official docs on 2026-10-03:
 

@@ -307,7 +307,7 @@ export function createApp(deps: AppDeps): (req: IncomingMessage, res: ServerResp
       if (path === '/api/tts/providers') return json(res, 200, { providers: available })
       if (path === '/api/tts') return await tts(req, res)
       if (path === '/api/dealers') {
-        if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'GET' })
+        if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method_not_allowed' }, { Allow: 'GET, HEAD' })
         return json(res, 200, { names: deps.dealerNames ? await deps.dealerNames() : {} })
       }
       if (transcript(req, res, path)) return

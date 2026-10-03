@@ -27,7 +27,8 @@ export function parseDealerNames(body: unknown): DealerNames {
   const personas = typeof body === 'object' && body !== null ? (body as { personas?: unknown }).personas : null
   if (!Array.isArray(personas)) return {}
   const out: Record<string, string> = {}
-  for (const p of personas.slice(0, MAX_DEALERS)) {
+  for (const p of personas) {
+    if (Object.keys(out).length >= MAX_DEALERS) break
     if (typeof p !== 'object' || p === null) continue
     const { id, name } = p as { id?: unknown; name?: unknown }
     const key = typeof id === 'string' ? id.trim().toLowerCase() : ''
