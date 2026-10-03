@@ -91,10 +91,13 @@ export function duelRowEvents(rows: readonly unknown[], team: string, limit: num
   return duelEvents({ duels }, team, limit).map((e) => ({ id: e.id, ...(e.tick === null ? {} : { tick: e.tick }), type: e.type, scope: 'team', actor: '', payload: e.payload }))
 }
 
-/** The error the views' absence (or a missing grant) raises: db/game.sql is not applied. */
+/**
+ * The error the views' absence (or a missing grant) raises: db/game.sql is not applied. An undefined column (42703)
+ * counts too: the view predates this code (db/game.sql not re-applied since a column was added).
+ */
 export const isMissingViews = (error: unknown): boolean => {
   const code = (error as { code?: unknown } | null)?.code
-  return code === '42P01' || code === '42501' || code === '3F000'
+  return code === '42P01' || code === '42501' || code === '3F000' || code === '42703'
 }
 
 export interface DbSourceDeps {

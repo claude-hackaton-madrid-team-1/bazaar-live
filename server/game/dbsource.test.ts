@@ -138,6 +138,15 @@ describe('GameDbSource', () => {
     expect(logs.filter((l) => l.event === 'db_views_missing')).toHaveLength(1)
   })
 
+  it('an older view without the columns this code reads counts as missing (db/game.sql not re-applied)', async () => {
+    const onMissing = vi.fn()
+    const stale = Object.assign(new Error('column "your_limit" does not exist'), { code: '42703' })
+    const source = new GameDbSource({ db: fakeDb(new Map([[DB_SQL.duelsFirst, stale]])), hub: new GameHub(), log: () => undefined, onMissing })
+    await source.pollOnce()
+    expect(source.viewsMissing).toBe(true)
+    expect(onMissing).toHaveBeenCalledTimes(1)
+  })
+
   it('logs any other failure redacted, and keeps going', async () => {
     const logs: Record<string, unknown>[] = []
     const err = Object.assign(new Error('connect to secret-host failed'), { code: 'ECONNREFUSED' })
