@@ -4,6 +4,14 @@ import { parseBatch, parseItem } from './transcript-parse.ts'
 const good = { id: 'f1', seq: 1, kind: 'thread_line', tick: 11, counterpart: 'chato', who: 'them', thread: 187, item: 'LAV-08', text: 'hola', offer: { by: 'them', verb: 'ask', price: 31, item: 'LAV-08', final: true }, price: null, status: null, role: null, lines: [] }
 
 describe('parseItem', () => {
+  it("keeps the server's mute and fails closed: only `muted: false` lets a quote be voiced", () => {
+    const item = { id: 'f9', seq: 9, kind: 'thread_line', who: 'them', text: 'hola' }
+    expect(parseItem({ ...item, muted: false })?.muted).toBe(false)
+    expect(parseItem({ ...item, muted: true })?.muted).toBe(true)
+    expect(parseItem(item)?.muted).toBe(true)
+    expect(parseItem({ ...item, muted: 'no' })?.muted).toBe(true)
+  })
+
   it('keeps a good item', () => {
     expect(parseItem(good)).toMatchObject({ id: 'f1', seq: 1, kind: 'thread_line', text: 'hola', offer: { price: 31, final: true } })
   })

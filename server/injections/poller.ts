@@ -1,21 +1,26 @@
 /**
  * Reads db/injections.sql's view every few seconds and keeps the last snapshot in memory for GET /api/injections.
  *
- * One capped query per poll on the server's shared pool. The view missing (42P01: db/injections.sql not applied,
+ * Two small queries per poll on the server's shared pool: the newest CAP rows of each severity (a top-N sort per
+ * severity: its memory is bounded by CAP, so a big table never meets the role's temp_file_limit) and the count per
+ * severity. A read that finds the same rows keeps the same snapshot object (and its `at`), so the route's cached
+ * body and ETag stay valid. The view missing (42P01: db/injections.sql not applied,
  * or bazaar's table not created yet) or not granted (42501) is the empty state, logged once; any other error keeps
  * the last good rows and backs off. No exception ever leaves `pollOnce()`, and error text is redacted against the
  * connection's secrets before it is logged.
  */
-import { EMPTY_INJECTIONS, INJECTION_SOURCES, RAW_MAX, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
+import { EMPTY_INJECTIONS, INJECTION_SOURCES, RAW_MAX, responseOf, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
 import type { Db } from '../transcript/poller.ts'
 
-/** The newest `$1` rows of each severity, and each severity's total. */
-export const SQL = `select id, tick, source, from_team, to_us, tags, severity, raw, our_response, proof, seen_at, total
-  from (select v.*, row_number() over (partition by v.severity order by v.seen_at desc, v.id desc) as rn,
-               count(*) over (partition by v.severity) as total
-          from show.injection_attempts v) x
- where rn <= $1
- order by seen_at desc, id desc`
+const COLUMNS = 'id, tick, source, from_team, to_us, tags, severity, raw, our_response, proof, seen_at'
+
+/** The newest `$1` rows of each severity (one top-N sort each), and each severity's total. */
+export const SQL = {
+  rows: `(select ${COLUMNS} from show.injection_attempts where severity = 'attempt' order by seen_at desc, id desc limit $1)
+         union all
+         (select ${COLUMNS} from show.injection_attempts where severity = 'weak' order by seen_at desc, id desc limit $1)`,
+  counts: `select severity, count(*) as n from show.injection_attempts group by severity`,
+} as const
 
 export const CAP = 100
 
@@ -59,7 +64,8 @@ export function attemptOf(raw: unknown): InjectionAttempt | null {
     tags: Array.isArray(r.tags) ? r.tags.map((t) => word(t)).filter((t): t is string => t !== null).slice(0, 12) : [],
     severity,
     raw: said,
-    ourResponse: label(r.our_response, 300) ?? '',
+    // the view already maps it to a verb and a reason without digits; this is the second wall
+    ourResponse: responseOf(label(r.our_response, 120)),
     proof,
     seenAt: seen && Number.isFinite(seen.getTime()) ? seen.toISOString() : null,
   }
@@ -84,6 +90,7 @@ const codeOf = (error: unknown): string => {
 export class InjectionsPoller {
   private snapshot: InjectionsSnapshot = EMPTY_INJECTIONS
   private missingLogged = false
+  private signature = ''
   private failures = 0
   private timer: unknown = null
   private running = false
@@ -128,30 +135,39 @@ export class InjectionsPoller {
   async pollOnce(): Promise<void> {
     const at = (this.deps.now ?? (() => new Date()))().toISOString()
     try {
-      const { rows } = await this.deps.db.query(SQL, [CAP])
+      const { rows } = await this.deps.db.query(SQL.rows, [CAP])
+      const totals = await this.deps.db.query(SQL.counts)
+      const parsed = rows.map(attemptOf).filter((r): r is InjectionAttempt => r !== null)
+      // newest first across both severities
+      parsed.sort((a, b) => (b.seenAt ?? '').localeCompare(a.seenAt ?? '') || b.id - a.id)
       const counts = { attempt: 0, weak: 0 }
-      const parsed: InjectionAttempt[] = []
-      for (const raw of rows) {
-        const row = attemptOf(raw)
-        if (row === null) continue
-        parsed.push(row)
-        counts[row.severity] = Math.max(counts[row.severity], int((raw as Row).total) ?? 0)
+      for (const raw of totals.rows) {
+        const r: Row = typeof raw === 'object' && raw !== null ? (raw as Row) : {}
+        if (r.severity === 'attempt' || r.severity === 'weak') counts[r.severity] = Math.max(0, int(r.n) ?? 0)
       }
       this.failures = 0
       this.missingLogged = false
-      this.snapshot = { at, ready: true, counts, rows: parsed }
+      this.keep({ at, ready: true, counts, rows: parsed })
     } catch (error: unknown) {
       const code = codeOf(error)
       if (code === '42P01' || code === '42501') {
         this.failures = 0
         if (!this.missingLogged) this.deps.log({ route: 'injections', event: 'view_missing', code })
         this.missingLogged = true
-        this.snapshot = { ...EMPTY_INJECTIONS, at }
+        this.keep({ ...EMPTY_INJECTIONS, at })
         return
       }
       this.failures += 1
       this.deps.log({ route: 'injections', event: 'poll_error', code, message: this.redact(error) })
     }
+  }
+
+  /** The new snapshot, unless it holds the same rows as the current one (which then stays, `at` included). */
+  private keep(next: InjectionsSnapshot): void {
+    const signature = JSON.stringify([next.ready, next.counts, next.rows])
+    if (signature === this.signature) return
+    this.signature = signature
+    this.snapshot = next
   }
 
   private redact(error: unknown): string {

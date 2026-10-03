@@ -4,12 +4,14 @@
  *
  * SECURITY: `raw` is hostile. It is rendered ONLY as React text nodes (escaped by React): never
  * dangerouslySetInnerHTML, never markdown, never in an attribute (href, src, title, style). Hidden characters are
- * replaced by visible markers (⟨U+200B⟩), so a bidi override cannot reorder what is shown. Nothing here talks to
- * the speech queue or the TTS proxy.
+ * replaced by visible markers (⟨U+200B⟩), so a bidi override cannot reorder what is shown, and a stack of combining
+ * marks becomes one marker (⟨+238 marks⟩) and the text box clips what is left, so nothing paints over the page.
+ * Nothing here talks to the speech queue or the TTS proxy.
  */
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import type { InjectionAttempt } from '../../shared/injections.ts'
 import { useLang } from './lang'
+import { hrefOf, navigate } from './route'
 import { hiddenCount, INJECTION_STRINGS, preview, revealHidden, useInjections, type InjectionsState, type InjectionStrings } from './injectionRows'
 import './injections.css'
 
@@ -87,12 +89,25 @@ function Row({ row, t }: { readonly row: InjectionAttempt; readonly t: Injection
   )
 }
 
+interface ViewProps {
+  readonly state: InjectionsState
+  readonly t: InjectionStrings
+  readonly className?: string
+  /** At most this many rows (the show keeps a few), with a link to every row. */
+  readonly max?: number
+  /** The judges' view, for that link. */
+  readonly allHref?: string
+  readonly onAll?: (e: MouseEvent<HTMLAnchorElement>) => void
+}
+
 /** The panel from a state: pure, so tests render it without a server. */
-export function InjectionsView({ state, t, className }: { readonly state: InjectionsState; readonly t: InjectionStrings; readonly className?: string }) {
+export function InjectionsView({ state, t, className, max, allHref, onAll }: ViewProps) {
   const [weak, setWeak] = useState(false)
   const { snapshot, status } = state
-  const rows = weak ? snapshot.rows : snapshot.rows.filter((r) => r.severity === 'attempt')
-  const notice = status === 'live' ? null : t.status[status]
+  const shown = weak ? snapshot.rows : snapshot.rows.filter((r) => r.severity === 'attempt')
+  const rows = max === undefined ? shown : shown.slice(0, max)
+  const total = snapshot.counts.attempt + (weak ? snapshot.counts.weak : 0)
+  const notice = status === 'live' ? (snapshot.ready ? null : t.missing) : t.status[status]
   return (
     <section className={`inj material${className ? ` ${className}` : ''}`} aria-labelledby="inj-title">
       <header className="inj-head">
@@ -109,7 +124,7 @@ export function InjectionsView({ state, t, className }: { readonly state: Inject
       <p className="inj-note">{t.note}</p>
       {notice && <p className="inj-status">{notice}</p>}
       {rows.length === 0 ? (
-        status !== 'loading' && status !== 'off' && <p className="inj-empty">{t.empty}</p>
+        (status === 'mock' || (status === 'live' && snapshot.ready)) && <p className="inj-empty">{t.empty}</p>
       ) : (
         <ol className="inj-list">
           {rows.map((r) => (
@@ -117,13 +132,25 @@ export function InjectionsView({ state, t, className }: { readonly state: Inject
           ))}
         </ol>
       )}
+      {allHref !== undefined && total > rows.length && (
+        <a className="inj-all" href={allHref} onClick={onAll}>
+          {t.all(total)}
+        </a>
+      )}
     </section>
   )
 }
 
-/** The panel, reading /api/injections (or the mock rows with `?mock=1`). */
-export function InjectionsPanel({ mock, className }: { readonly mock: boolean; readonly className?: string }) {
+/** The panel, reading /api/injections (or the mock rows with `?mock=1`); with `max`, a few rows and a link to the rest. */
+export function InjectionsPanel({ mock, className, max }: { readonly mock: boolean; readonly className?: string; readonly max?: number }) {
   const state = useInjections(mock)
   const t = INJECTION_STRINGS[useLang()]
-  return <InjectionsView state={state} t={t} className={className} />
+  const toAll = (e: MouseEvent<HTMLAnchorElement>): void => {
+    // a new tab or window keeps the browser's own behaviour
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+    e.preventDefault()
+    navigate('injections')
+  }
+  const link = max === undefined ? {} : { allHref: hrefOf('injections', window.location.search), onAll: toAll }
+  return <InjectionsView state={state} t={t} className={className} max={max} {...link} />
 }

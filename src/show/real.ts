@@ -93,8 +93,9 @@ function threadLine(item: TranscriptItem, lang: Lang, opts: RealOptions): Beat |
     agent: item.offer?.verb === 'bid' ? 'maker' : 'taker',
     priority: item.offer?.final ? PRIORITY.dealer : PRIORITY.dealerBid,
     cue,
-    // A dealer's words are voiced by its own voice; a counterpart with no dealer voice (a team) is a caption.
-    lines: dealerLines(item.counterpart, quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, { speakQuotes: opts.speakQuotes && speakerOfDealer(item.counterpart) !== 'narrator' })),
+    // A dealer's words are voiced by its own voice; a counterpart with no dealer voice (a team) is a caption, and so
+    // is a quote the server muted (its raw words had an injection's shape).
+    lines: dealerLines(item.counterpart, quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, { speakQuotes: opts.speakQuotes && speakerOfDealer(item.counterpart) !== 'narrator' && item.muted !== true })),
   })
 }
 

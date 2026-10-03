@@ -5,14 +5,16 @@ import { RateLimiter } from '../limits.ts'
 import { readProviderConfig } from '../providers.ts'
 import { INJECTIONS_OFF, startInjections } from './start.ts'
 
-async function call(app: ReturnType<typeof createApp>, url: string, method = 'GET'): Promise<{ status: number; body: Record<string, unknown> }> {
+async function call(app: ReturnType<typeof createApp>, url: string, method = 'GET', extra: Record<string, string> = {}): Promise<{ status: number; body: Record<string, unknown>; headers: Record<string, string> }> {
   let status = 0
   let raw = ''
-  const req = { url, method, headers: { host: 'local' }, socket: { remoteAddress: '127.0.0.1' }, on: () => undefined }
+  let headers: Record<string, string> = {}
+  const req = { url, method, headers: { host: 'local', ...extra }, socket: { remoteAddress: '127.0.0.1' }, on: () => undefined }
   const res = {
     headersSent: false,
-    writeHead(s: number) {
+    writeHead(s: number, h: Record<string, string> = {}) {
       status = s
+      headers = h
       this.headersSent = true
       return this
     },
@@ -22,7 +24,7 @@ async function call(app: ReturnType<typeof createApp>, url: string, method = 'GE
     on: () => undefined,
   }
   await app(req as never, res as never)
-  return { status, body: JSON.parse(raw) as Record<string, unknown> }
+  return { status, body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {}, headers }
 }
 
 const SNAPSHOT: InjectionsSnapshot = {
@@ -34,13 +36,29 @@ const app = (injections?: Parameters<typeof createApp>[0]['injections']) => crea
 
 describe('GET /api/injections', () => {
   it('answers enabled: false without a database', async () => {
-    expect(await call(app(), '/api/injections')).toEqual({ status: 200, body: { enabled: false } })
+    expect(await call(app(), '/api/injections')).toMatchObject({ status: 200, body: { enabled: false } })
   })
 
   it('serves the snapshot as JSON, the hostile text as a JSON string (never markup)', async () => {
     const r = await call(app({ enabled: () => true, snapshot: () => SNAPSHOT }), '/api/injections')
     expect(r.status).toBe(200)
     expect(r.body).toEqual({ enabled: true, ...SNAPSHOT })
+  })
+
+  it('answers 304 with no body when the page already holds this snapshot (ETag), and a new body once it changes', async () => {
+    let snapshot = SNAPSHOT
+    const a = app({ enabled: () => true, snapshot: () => snapshot })
+    const first = await call(a, '/api/injections')
+    const etag = first.headers.ETag ?? ''
+    expect(etag).toMatch(/^"[\w-]{27}"$/)
+    expect(first.headers['Cache-Control']).toBe('no-cache')
+    expect(await call(a, '/api/injections', 'GET', { 'if-none-match': etag })).toMatchObject({ status: 304, body: {} })
+    expect((await call(a, '/api/injections', 'GET', { 'if-none-match': `W/${etag}, "other"` })).status).toBe(304)
+    expect((await call(a, '/api/injections', 'GET', { 'if-none-match': '"stale"' })).status).toBe(200)
+    snapshot = { ...SNAPSHOT, counts: { attempt: 2, weak: 0 } }
+    const next = await call(a, '/api/injections', 'GET', { 'if-none-match': etag })
+    expect(next.status).toBe(200)
+    expect(next.headers.ETag).not.toBe(etag)
   })
 
   it('serves the empty state when the view is missing', async () => {

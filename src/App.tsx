@@ -12,6 +12,9 @@ import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
 import { useShow } from './ui/useShow'
 
+/** The show keeps the newest few injection attempts under the stage; every row is on /injections. */
+const SHOW_ROWS = 5
+
 // The game screens are their own chunk: the show never loads them.
 const GameApp = lazy(() => import('./game/ui/GameApp'))
 
@@ -80,7 +83,7 @@ function ShowApp() {
           <Transcript entries={state.transcript} />
         </main>
         {/* their words as plain text only; this panel never reaches the director or a voice */}
-        <InjectionsPanel mock={config.mock} className="inj-show" />
+        <InjectionsPanel mock={config.mock} className="inj-show" max={SHOW_ROWS} />
       </div>
       {!started && (
         <StartGate

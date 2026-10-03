@@ -3,6 +3,7 @@
  * every value is re-checked and cleaned, because a row is untrusted data (a dealer's or a rival's text).
  */
 import { cleanInt, cleanItem, cleanName, cleanQuote } from '../../shared/clean.ts'
+import { looksLikeInjection } from '../../shared/injections.ts'
 import { EMPTY_ITEM, type Draft, type DuelLine, type OfferView, type Who } from '../../shared/transcript.ts'
 
 type Row = Readonly<Record<string, unknown>>
@@ -52,6 +53,8 @@ export function threadItem(row: unknown): Draft | null {
     item,
     // Our own words are not in the feed; whatever a row claims, only the other side has a quote.
     text: who === 'them' ? cleanQuote(row.text) : null,
+    // Decided on the RAW words: cleaning strips the hidden characters, tags and links an injection hides behind.
+    muted: who === 'them' && typeof row.text === 'string' && looksLikeInjection(row.text),
     offer: kind === 'thread_line' ? offerOf(row, item) : null,
     price: kind === 'settlement' ? cleanInt(row.price) : null,
   }

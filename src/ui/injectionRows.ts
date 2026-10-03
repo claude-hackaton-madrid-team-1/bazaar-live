@@ -1,12 +1,12 @@
 /**
- * The "Injection attempts" panel's logic: GET /api/injections every 10 s (or made-up rows with `?mock=1`), the words
- * in es and en, and `revealHidden`, which turns the invisible characters of a hostile text into visible markers.
+ * The "Injection attempts" panel's logic: GET /api/injections every 10 s (or made-up rows with `?mock=1`) and the words
+ * in es and en. `revealHidden` (shared/injections.ts) turns what hides in a hostile text into visible markers.
  *
  * Nothing here ever reaches the show's director, its speech queue or the TTS proxy: the panel only renders text.
- * src/ui/injections.test.ts checks that no module of the show's voice pipeline imports this one.
+ * server/injections/isolation.test.ts checks that no module of the show's voice pipeline imports this one.
  */
 import { useEffect, useState } from 'react'
-import { EMPTY_INJECTIONS, isHiddenChar, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
+import { EMPTY_INJECTIONS, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
 import type { Lang } from '../../shared/lang.ts'
 
 export type InjectionsStatus = 'loading' | 'live' | 'off' | 'error' | 'mock'
@@ -20,28 +20,8 @@ export const POLL_MS = 10_000
 /** Characters shown before "Show all": long texts stay text, only cut on screen. */
 export const PREVIEW_CHARS = 280
 
-/** A run of plain text, or one hidden character shown as its code point (⟨U+200B⟩). */
-export type Segment = { readonly text: string } | { readonly hidden: string }
-
-const codePoint = (ch: string): string => `U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}`
-
-/** The text split into plain runs and hidden characters (`isHiddenChar`), so the panel shows ⟨U+200B⟩ where a trick hides one. */
-export function revealHidden(text: string): Segment[] {
-  const out: Segment[] = []
-  let run = ''
-  for (const ch of text) {
-    if (isHiddenChar(ch)) {
-      if (run) out.push({ text: run })
-      run = ''
-      out.push({ hidden: codePoint(ch) })
-    } else run += ch
-  }
-  if (run) out.push({ text: run })
-  return out
-}
-
-/** How many hidden characters a text carries. */
-export const hiddenCount = (text: string): number => revealHidden(text).filter((s) => 'hidden' in s).length
+/** The text rules live in shared/injections.ts (the server's voice guard reads the same ones). */
+export { hiddenCount, revealHidden, type Segment } from '../../shared/injections.ts'
 
 /** The first `max` characters (by code point, never cutting a surrogate pair). */
 export function preview(text: string, max = PREVIEW_CHARS): { readonly text: string; readonly cut: boolean; readonly length: number } {
@@ -62,6 +42,10 @@ export interface InjectionStrings {
   readonly more: (n: number) => string
   readonly less: string
   readonly empty: string
+  /** The view is not there yet (db/injections.sql not applied, or bazaar's table not created). */
+  readonly missing: string
+  /** On the show: a link to the judges' view with every row. */
+  readonly all: (n: number) => string
   readonly status: Readonly<Record<Exclude<InjectionsStatus, 'live'>, string>>
   readonly note: string
 }
@@ -80,6 +64,8 @@ export const INJECTION_STRINGS: Readonly<Record<Lang, InjectionStrings>> = {
     more: (n) => `Show all (${n} characters)`,
     less: 'Show less',
     empty: 'No injection attempts recorded yet.',
+    missing: 'The injection log is not set up yet (db/injections.sql, or bazaar has not created its table).',
+    all: (n) => `All ${n} on the Injections screen →`,
     status: {
       loading: 'Reading the injection log…',
       off: 'No database: set SHOW_DATABASE_URL and apply db/injections.sql to see the injection log.',
@@ -101,6 +87,8 @@ export const INJECTION_STRINGS: Readonly<Record<Lang, InjectionStrings>> = {
     more: (n) => `Ver todo (${n} caracteres)`,
     less: 'Ver menos',
     empty: 'Aún no hay intentos de inyección registrados.',
+    missing: 'El registro de inyecciones aún no está preparado (db/injections.sql, o bazaar aún no creó su tabla).',
+    all: (n) => `Los ${n} en la pantalla Inyecciones →`,
     status: {
       loading: 'Leyendo el registro de inyecciones…',
       off: 'Sin base de datos: pon SHOW_DATABASE_URL y aplica db/injections.sql para ver el registro de inyecciones.',
@@ -157,7 +145,8 @@ export function useInjections(mock: boolean): InjectionsState {
       controller?.abort()
       controller = new AbortController()
       try {
-        const res = await fetch('/api/injections', { signal: controller.signal, cache: 'no-store' })
+        // revalidated with the server's ETag: an unchanged list costs a 304
+        const res = await fetch('/api/injections', { signal: controller.signal, cache: 'no-cache' })
         const body: unknown = await res.json().catch(() => null)
         if (!stopped) setState((s) => injectionsStateOf(res.status, body, s.snapshot))
       } catch (error: unknown) {

@@ -20,6 +20,7 @@
  */
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { cleanQuote } from '../shared/clean.ts'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isLang, LANGS, type Lang } from '../shared/lang.ts'
 import { EMPTY_HISTORY } from '../shared/history.ts'
@@ -202,18 +203,19 @@ export function parseTtsRequest(
   return 'only the show\'s own lines are spoken here'
 }
 
-/** The TTS proxy's comparison: control characters as spaces, whitespace runs folded, trimmed (as parseTtsRequest cleans). */
-const fold = (text: string): string =>
-  // eslint-disable-next-line no-control-regex
-  text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
-
-/** A text a recorded injection attempt holds (or that holds one): never voiced, whatever else vouches for it. */
+/**
+ * The TTS proxy's last wall: a quote that IS one of the recorded attempts. The quote is `cleanQuote`'s output (hidden
+ * characters, tags and links stripped, cut at 280 with "…"), so the recorded text goes through the same cleaning
+ * and must be equal, or, for a cut quote, start with it. Never a loose substring match: one short recorded text
+ * must not silence every dealer.
+ */
 export function isRecordedInjection(rows: readonly { readonly raw: string }[], text: string): boolean {
-  const said = fold(text)
+  const said = cleanQuote(text, Number.POSITIVE_INFINITY)
   if (!said) return false
+  const cut = said.endsWith('…') ? said.slice(0, -1).trimEnd() : null
   return rows.some((r) => {
-    const raw = fold(r.raw)
-    return raw !== '' && (raw.includes(said) || said.includes(raw))
+    const raw = cleanQuote(r.raw, Number.POSITIVE_INFINITY)
+    return raw !== null && (raw === said || (cut !== null && cut !== '' && raw.startsWith(cut)))
   })
 }
 

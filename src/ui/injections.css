@@ -5,6 +5,8 @@
   padding: var(--s-4);
   border-radius: var(--r-lg);
   color: var(--text);
+  /* nothing a row draws (a stack of combining marks, a tall glyph) may paint outside the panel */
+  contain: paint;
 }
 
 .inj-head {
@@ -55,6 +57,7 @@
   padding: var(--s-3);
   border-radius: var(--r-md);
   box-shadow: 0 0 0 1px var(--hairline);
+  contain: paint;
 }
 
 .inj-row[data-severity='weak'] {
@@ -109,6 +112,9 @@
   overflow-wrap: anywhere;
   unicode-bidi: isolate;
   direction: ltr;
+  /* their glyphs stay inside the box: a mark stack or an oversized glyph is clipped, never drawn over the page */
+  overflow: hidden;
+  contain: paint;
 }
 
 .inj-hidden {
@@ -157,6 +163,14 @@
 .inj-facts dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* on the show: a link to every row on the Injections screen */
+.inj-all {
+  display: inline-block;
+  margin-top: var(--s-3);
+  color: var(--accent);
+  font-size: 0.85rem;
 }
 
 /* on the show, under the stage and the captions */
