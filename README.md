@@ -193,8 +193,10 @@ curl -s $URL/health                                   # {"ok":true,"service":"ba
 # The page's own POSTs must pass: the Origin check compares with Host (or X-Forwarded-Host).
 # The per-address limit must hold even when a caller sends its own X-Real-IP: with a key set,
 # 45 POSTs of DIFFERENT show lines (a repeated line is a cache hit and skips the limiter), each with
-# a new X-Real-IP, should start answering 429 by the 41st:
-for n in $(seq 1 45); do curl -s -o /dev/null -w '%{http_code} ' -X POST $URL/api/tts \
+# a new X-Real-IP, should start answering 429 by the 41st. Lines are cached after a run, so each run
+# starts at a fresh base (BASE) and only a run on lines not yet spoken counts:
+BASE=$((RANDOM % 900))
+for n in $(seq $((BASE + 1)) $((BASE + 45))); do curl -s -o /dev/null -w '%{http_code} ' -X POST $URL/api/tts \
   -H 'Content-Type: application/json' -H "Origin: $URL" -H "X-Real-IP: 198.51.100.$n" \
   -d "{\"provider\":\"elevenlabs\",\"speaker\":\"seller\",\"text\":\"La Latina number $n stays put.\"}"; done
 ```
