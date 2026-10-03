@@ -23,6 +23,9 @@ export interface GameStrings {
   readonly tick: string
   readonly secondsLeft: (s: number) => string
   readonly cash: string
+  /** The header's cash: where a click goes, and the last change. */
+  readonly cashHint: string
+  readonly cashLast: (delta: string, tick: number) => string
   readonly score: string
   readonly rank: string
   readonly pause: string
@@ -305,16 +308,55 @@ export interface GameStrings {
     readonly noRivals: string
     readonly rivalHead: readonly string[]
   }
+  readonly history: {
+    readonly notice: Readonly<Record<'loading' | 'off' | 'locked' | 'error' | 'mock', string>>
+    readonly missing: string
+    readonly asOf: (time: string) => string
+    readonly now: string
+    readonly nowSub: (tick: number | null) => string
+    readonly stats: Readonly<Record<'open' | 'low' | 'high' | 'in' | 'out' | 'fees' | 'trades', string>>
+    readonly tradesValue: (buys: number, sells: number) => string
+    readonly chart: string
+    readonly chartSub: (n: number) => string
+    readonly chartLabel: (low: string, high: string, now: string) => string
+    readonly noChart: string
+    readonly moves: string
+    readonly movesSub: (n: number) => string
+    readonly noMoves: string
+    readonly filter: string
+    readonly filters: Readonly<Record<'all' | 'in' | 'out', string>>
+    readonly head: readonly string[]
+    readonly line: {
+      readonly buy: (card: string, from: string, fee: number) => string
+      readonly sell: (card: string, to: string) => string
+      readonly bond: (venue: string, bond: number | null) => string
+      readonly gift: string
+      readonly pack: (pack: string, best: string | null) => string
+      readonly level: (level: number | null, why: string | null) => string
+      readonly failed: string
+      readonly closed: (venue: string) => string
+      readonly other: string
+    }
+    readonly before: string
+    readonly pending: string
+    readonly orders: string
+    readonly ordersSub: (n: number) => string
+    readonly noOrders: string
+    readonly ordersHead: readonly string[]
+    readonly agent: string
+    readonly allAgents: string
+  }
 }
 
 const EN: GameStrings = {
-  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', album: 'Album', market: 'Market', learn: 'Learned', debug: 'Debug' },
+  nav: { show: 'Show', agent: 'Agent', negotiations: 'Negotiations', album: 'Album', market: 'Market', history: 'Movements', learn: 'Learned', debug: 'Debug' },
   navHint: {
     show: 'the buyer and the seller, out loud',
     agent: 'what our agent is doing, tick by tick',
     negotiations: 'our threads and duels',
     album: 'pages and score',
     market: 'everyone else',
+    history: 'our cash and every movement of it',
     learn: 'what our agents learned: blockers, lessons, dealers, rivals',
     debug: 'the raw event stream',
   },
@@ -333,6 +375,8 @@ const EN: GameStrings = {
   tick: 'tick',
   secondsLeft: (s) => `${s} s to the next tick`,
   cash: 'cash',
+  cashHint: 'our cash now · every movement of it in Movements',
+  cashLast: (delta, tick) => `${delta} at tick ${tick}`,
   score: 'score',
   rank: 'rank',
   pause: 'Pause',
@@ -628,16 +672,61 @@ const EN: GameStrings = {
     noRivals: 'No rival profile yet.',
     rivalHead: ['team', 'level', 'venue', 'bought', 'sold', 'spent', 'earned', 'chases', 'dealer deals', 'pack price', 'tick'],
   },
+  history: {
+    notice: {
+      loading: 'Reading our cash…',
+      off: 'No database: set SHOW_DATABASE_URL on the server and apply db/history.sql to see our cash and its movements.',
+      locked: 'This screen needs ?token= (GAME_VIEW_TOKEN): it shows the team\'s cash and trades.',
+      error: 'The server did not answer: showing the last snapshot read.',
+      mock: 'A made-up day of money around the mock game. Remove ?mock=1 for our real cash.',
+    },
+    missing: 'not applied yet (db/history.sql)',
+    asOf: (time) => `read at ${time}`,
+    now: 'Cash now',
+    nowSub: (tick) => (tick === null ? 'no reading yet' : `at tick ${tick}`),
+    stats: { open: 'first today', low: 'lowest', high: 'highest', in: 'money in', out: 'money out', fees: 'fees paid', trades: 'trades' },
+    tradesValue: (buys, sells) => `${buys} bought · ${sells} sold`,
+    chart: 'Cash today',
+    chartSub: (n) => `${plural(n, 'change', 'changes')} · tick by tick`,
+    chartLabel: (low, high, now) => `Cash today: lowest ${low}, highest ${high}, now ${now}`,
+    noChart: 'No reading of our cash yet today.',
+    moves: 'Movements',
+    movesSub: (n) => `${plural(n, 'movement', 'movements')} · newest first`,
+    noMoves: 'No movement matches.',
+    filter: 'Show',
+    filters: { all: 'All', in: 'Money in', out: 'Money out' },
+    head: ['tick', 'change', 'cash after', 'what moved it'],
+    line: {
+      buy: (card, from, fee) => `Bought ${card} from ${from}${fee ? ` (+${fee} P fee)` : ''}`,
+      sell: (card, to) => `Sold ${card} to ${to}`,
+      bond: (venue, bond) => `Opened our market ${venue}${bond ? `: a ${bond} P bond` : ''}`,
+      gift: 'A gift',
+      pack: (pack, best) => `Opened a pack (${pack})${best ? `, best card ${best}` : ''}`,
+      level: (level, why) => `Level ${level ?? '?'} unlocked${why ? `: ${why}` : ''}`,
+      failed: 'A settlement failed',
+      closed: (venue) => `Market ${venue} closed`,
+      other: 'Not from a trade we saw: a venue fee, a pack, a duel, a payout',
+    },
+    before: 'before we read cash',
+    pending: 'not in the cash yet',
+    orders: 'What our agents committed',
+    ordersSub: (n) => `${plural(n, 'order', 'orders')} in the ledger · newest first`,
+    noOrders: 'No order in the ledger yet.',
+    ordersHead: ['tick', 'agent', 'order', 'card', 'price'],
+    agent: 'Agent',
+    allAgents: 'All',
+  },
 }
 
 const ES: GameStrings = {
-  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', album: 'Álbum', market: 'Mercado', learn: 'Aprendido', debug: 'Depurar' },
+  nav: { show: 'Función', agent: 'Agente', negotiations: 'Negociaciones', album: 'Álbum', market: 'Mercado', history: 'Movimientos', learn: 'Aprendido', debug: 'Depurar' },
   navHint: {
     show: 'el comprador y el vendedor, en voz alta',
     agent: 'qué hace nuestro agente, turno a turno',
     negotiations: 'nuestros hilos y duelos',
     album: 'páginas y puntuación',
     market: 'todos los demás',
+    history: 'nuestra caja y cada movimiento',
     learn: 'lo que aprendieron nuestros agentes: bloqueos, lecciones, tratantes, rivales',
     debug: 'el flujo de eventos en bruto',
   },
@@ -656,6 +745,8 @@ const ES: GameStrings = {
   tick: 'turno',
   secondsLeft: (s) => `${s} s para el siguiente turno`,
   cash: 'caja',
+  cashHint: 'nuestra caja ahora · cada movimiento en Movimientos',
+  cashLast: (delta, tick) => `${delta} en el turno ${tick}`,
   score: 'puntos',
   rank: 'puesto',
   pause: 'Pausa',
@@ -950,6 +1041,50 @@ const ES: GameStrings = {
     rivalsSub: (n) => `${plural(n, 'equipo', 'equipos')} · los más activos primero`,
     noRivals: 'Aún no hay perfiles de rivales.',
     rivalHead: ['equipo', 'nivel', 'puesto', 'compró', 'vendió', 'gastó', 'ganó', 'busca', 'tratos con tratantes', 'precio sobre', 'turno'],
+  },
+  history: {
+    notice: {
+      loading: 'Leyendo nuestra caja…',
+      off: 'Sin base de datos: pon SHOW_DATABASE_URL en el servidor y aplica db/history.sql para ver nuestra caja y sus movimientos.',
+      locked: 'Esta pantalla necesita ?token= (GAME_VIEW_TOKEN): muestra la caja y los tratos del equipo.',
+      error: 'El servidor no respondió: se muestra la última lectura.',
+      mock: 'Un día de dinero inventado alrededor de la partida falsa. Quita ?mock=1 para ver nuestra caja real.',
+    },
+    missing: 'aún sin aplicar (db/history.sql)',
+    asOf: (time) => `leído a las ${time}`,
+    now: 'Caja ahora',
+    nowSub: (tick) => (tick === null ? 'aún sin lectura' : `en el turno ${tick}`),
+    stats: { open: 'primera de hoy', low: 'mínima', high: 'máxima', in: 'entra', out: 'sale', fees: 'comisiones', trades: 'tratos' },
+    tradesValue: (buys, sells) => `${buys} compras · ${sells} ventas`,
+    chart: 'Caja de hoy',
+    chartSub: (n) => `${plural(n, 'cambio', 'cambios')} · turno a turno`,
+    chartLabel: (low, high, now) => `Caja de hoy: mínima ${low}, máxima ${high}, ahora ${now}`,
+    noChart: 'Aún no hay lecturas de nuestra caja hoy.',
+    moves: 'Movimientos',
+    movesSub: (n) => `${plural(n, 'movimiento', 'movimientos')} · los más recientes primero`,
+    noMoves: 'Ningún movimiento coincide.',
+    filter: 'Mostrar',
+    filters: { all: 'Todo', in: 'Entra', out: 'Sale' },
+    head: ['turno', 'cambio', 'caja después', 'qué la movió'],
+    line: {
+      buy: (card, from, fee) => `Compramos ${card} a ${from}${fee ? ` (+${fee} P de comisión)` : ''}`,
+      sell: (card, to) => `Vendimos ${card} a ${to}`,
+      bond: (venue, bond) => `Abrimos nuestro mercado ${venue}${bond ? `: ${bond} P de fianza` : ''}`,
+      gift: 'Un regalo',
+      pack: (pack, best) => `Abrimos un sobre (${pack})${best ? `, mejor carta ${best}` : ''}`,
+      level: (level, why) => `Nivel ${level ?? '?'} desbloqueado${why ? `: ${why}` : ''}`,
+      failed: 'Falló una liquidación',
+      closed: (venue) => `Se cerró el mercado ${venue}`,
+      other: 'No viene de un trato que viéramos: una comisión, un sobre, un duelo, un pago',
+    },
+    before: 'antes de leer la caja',
+    pending: 'aún no está en la caja',
+    orders: 'Lo que comprometieron nuestros agentes',
+    ordersSub: (n) => `${plural(n, 'orden', 'órdenes')} en el libro · las más recientes primero`,
+    noOrders: 'Aún no hay órdenes en el libro.',
+    ordersHead: ['turno', 'agente', 'orden', 'carta', 'precio'],
+    agent: 'Agente',
+    allAgents: 'Todos',
   },
 }
 

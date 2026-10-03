@@ -1,6 +1,7 @@
 /**
- * The game screens: our agent, negotiations, album, market, what our agents learned and the raw stream, fed
- * by the server's relay of the game (or the mock game with `?mock=1`). Loaded on demand: the show never pays for it.
+ * The game screens: our agent, negotiations, album, market, our cash's movements, what our agents learned and
+ * the raw stream, fed by the server's relay of the game (or the mock game with `?mock=1`). Loaded on demand: the
+ * show never pays for it.
  */
 import { MotionConfig } from 'motion/react'
 import { useEffect, useState, type ReactElement } from 'react'
@@ -10,7 +11,8 @@ import { GameContext, GameStore } from '../store.ts'
 import { AgentScreen } from './AgentScreen.tsx'
 import { AlbumScreen } from './AlbumScreen.tsx'
 import { DebugScreen } from './DebugScreen.tsx'
-import { GameHeader, GameNotice } from './GameHeader.tsx'
+import { CashDock, GameHeader, GameNotice } from './GameHeader.tsx'
+import { HistoryScreen } from './HistoryScreen.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LearnScreen } from './LearnScreen.tsx'
 import { MarketScreen } from './MarketScreen.tsx'
@@ -22,6 +24,7 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   negotiations: () => <NegotiationsScreen />,
   album: () => <AlbumScreen />,
   market: () => <MarketScreen />,
+  history: () => <HistoryScreen />,
   learn: () => <LearnScreen />,
   debug: () => <DebugScreen />,
 }
@@ -38,6 +41,7 @@ export default function GameApp({ route }: { route: Exclude<Route, 'show'> }) {
       <MotionConfig reducedMotion="user">
         <div className="app gm-app">
           <GameHeader />
+          <CashDock />
           <GameNotice />
           <main className="gm-main">{SCREENS[route]()}</main>
           <Inspector />

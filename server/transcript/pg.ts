@@ -77,7 +77,7 @@ export function createShowPool(url: string, onError: (error: unknown) => void, m
   }
 }
 
-/** The one pool the transcript, /api/learn and the game screens share: the role may hold four connections in all. */
+/** The one pool the transcript, /api/learn, /api/history and the game screens share: the role may hold four connections in all. */
 export interface SharedShowPool {
   readonly pool: ShowPool
   /** What any logged error text must not contain (`secretsOf(url)`). */

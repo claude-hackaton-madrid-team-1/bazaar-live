@@ -96,6 +96,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. Duels below. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
+| `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
 
@@ -201,6 +202,24 @@ hour, where the money stands against GUARDRAILS.md, and whether each settled dea
 - `?mock=1` plays decisions too: approved ones, blocks by several rules, an expired accept, the maker idle one
   tick in three, scored deals and a ledger.
 - Privacy proof on a throwaway local Postgres: `sh scripts/test-sql.sh` runs `db/agent_decisions.test.ts` after `db/show.test.ts`.
+
+### Our cash and its movements (`/history`)
+
+Cash is in the header of every game screen, larger than the other figures, with its last change (▲ +68 P); once
+the header scrolls away it stays in a pill in the corner. Both open `/history`. The header's figure is the game's
+own `/me`, live; the screen reads Postgres through `db/history.sql`, four more read-only views for the same role:
+
+- `show.cash_points`: our cash (real world, our team) at each tick it changed, and the latest, with score and rank.
+- `show.our_trades`: our settlements from the feed (it carries when we received them, so a tick that starts again
+  on a new day still sorts): buy or sell, counterparty, card, price, fee. A buyer pays price + fee.
+- `show.our_orders`: the ledger (listings, accepts, spends) per agent.
+- `show.our_events`: our feed events that move cash or stock besides a trade: a market's bond, a pack opened, a
+  gift, a level, a failed settlement.
+
+Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/history.sql`. The server reads
+the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4) and serves `GET /api/history`,
+behind `GAME_VIEW_TOKEN`. `?mock=1` shows a made-up day of money.
 
 ## Real conversations (LIVE-T1)
 
