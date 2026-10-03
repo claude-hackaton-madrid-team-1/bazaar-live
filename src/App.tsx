@@ -1,22 +1,18 @@
 import { MotionConfig } from 'motion/react'
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { readConfig } from './config'
 import { Stage } from './stage/Stage'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Header, Notice } from './ui/Header'
 import { useLang, useStrings } from './ui/lang'
 import { useRoute } from './ui/route'
+import { soundMemory } from './ui/soundChoice'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
-import { unlockAudio } from './tts/remote'
-import { unlockWebSpeech } from './tts/webspeech'
 import { useShow } from './ui/useShow'
 
 // The game screens are their own chunk: the show never loads them.
 const GameApp = lazy(() => import('./game/ui/GameApp'))
-
-/** The start gate's answer (with sound or not), kept while the visitor moves between screens. */
-let gateChoice: boolean | null = null
 
 export default function App() {
   const route = useRoute()
@@ -39,13 +35,24 @@ function ShowApp() {
   const config = useMemo(() => readConfig(window.location.search), [])
   const t = useStrings()
   const { state, speech } = useShow(config)
-  const [started, setStarted] = useState(gateChoice !== null)
-  const { muted, setMuted } = speech
+  // answered already in this tab (back from another screen, or a reload): no gate, the same sound
+  const [saved] = useState(() => soundMemory().recall())
+  const [started, setStarted] = useState(saved !== null)
+  const { muted, setMuted: setSpeechMuted } = speech
 
-  // back from another screen: the gate was answered already, keep that answer
+  // every answer after the gate too (M, the header's button) is remembered, so a reload keeps the latest
+  const setMuted = useCallback(
+    (next: boolean): void => {
+      setSpeechMuted(next)
+      soundMemory().remember(!next)
+    },
+    [setSpeechMuted],
+  )
+
+  // the remembered answer again; with sound after a reload, the players wait for the first tap (useShow)
   useEffect(() => {
-    if (gateChoice !== null) setMuted(!gateChoice)
-  }, [setMuted])
+    if (saved !== null) setMuted(!saved)
+  }, [saved, setMuted])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -63,7 +70,7 @@ function ShowApp() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="app">
-        <Header state={state} speech={speech} mock={config.mock} />
+        <Header state={state} speech={{ ...speech, setMuted }} mock={config.mock} />
         <Notice state={state} mock={config.mock} />
         <main className="main">
           <ErrorBoundary fallback={<div className="fallback material">{t.fallback}</div>}>
@@ -75,11 +82,7 @@ function ShowApp() {
       {!started && (
         <StartGate
           onStart={(withSound) => {
-            if (withSound) {
-              unlockWebSpeech()
-              unlockAudio()
-            }
-            gateChoice = withSound
+            // inside the click: unmuting primes the players there
             setStarted(true)
             setMuted(!withSound)
           }}

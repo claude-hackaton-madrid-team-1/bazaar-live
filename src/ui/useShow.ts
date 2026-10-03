@@ -12,6 +12,7 @@ import type { ProviderName } from '../tts/types'
 import { createWebSpeech, hasVoiceFor, unlockWebSpeech, webSpeechAvailable } from '../tts/webspeech'
 import type { Lang } from '../../shared/lang.ts'
 import { getLang, subscribeLang, useLang } from './lang'
+import { hasUserGesture } from './soundChoice'
 import { useTranscript } from './useTranscript'
 
 export interface SpeechControls {
@@ -45,14 +46,34 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   const state = useSyncExternalStore(engine.subscribe, engine.getSnapshot)
 
   const [muted, setMutedState] = useState(true)
+  // Sound asked for before this page had a tap (a reload that remembered "with sound"): the browser would
+  // refuse every line, so the players stay quiet until the first tap or key anywhere.
+  const [waitingForTap, setWaitingForTap] = useState(false)
   // A browser lets a page play audio only after a tap: every unmute is one, so prime the players there.
   const setMuted = useCallback((next: boolean): void => {
     if (!next) {
-      unlockAudio()
-      unlockWebSpeech()
+      if (hasUserGesture(navigator) === false) setWaitingForTap(true)
+      else {
+        unlockAudio()
+        unlockWebSpeech()
+      }
     }
     setMutedState(next)
   }, [])
+  useEffect(() => {
+    if (!waitingForTap) return
+    // Capture: this runs before the M key and the header's button. A touch grants the tap on pointerup,
+    // and Escape never does: until the browser says so, keep waiting for the next one.
+    const events = ['pointerdown', 'pointerup', 'keydown'] as const
+    const onTap = (): void => {
+      if (hasUserGesture(navigator) === false) return
+      unlockAudio()
+      unlockWebSpeech()
+      setWaitingForTap(false)
+    }
+    events.forEach((e) => window.addEventListener(e, onTap, true))
+    return () => events.forEach((e) => window.removeEventListener(e, onTap, true))
+  }, [waitingForTap])
   const [choice, setChoice] = useState<TtsChoice>(config.tts)
   // null until the server has answered which voices it has (so the header does not cry wolf at start).
   const [available, setAvailable] = useState<readonly RemoteName[] | null>(null)
@@ -77,7 +98,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
     }
   }, [])
   useEffect(() => queue.setProvider(providerFor(active)), [queue, providerFor, active])
-  useEffect(() => queue.setMuted(muted || active === 'off'), [queue, muted, active])
+  useEffect(() => queue.setMuted(muted || waitingForTap || active === 'off'), [queue, muted, waitingForTap, active])
   // The selector changes the language: the engine re-picks banks and drops what is queued in the old one.
   useEffect(() => {
     engine.setLang(getLang())
