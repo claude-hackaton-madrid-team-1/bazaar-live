@@ -8,8 +8,9 @@
 -- show.sql starts by revoking everything in schema show from bazaar_live_reader: a later re-run of it
 -- drops these grants too, so re-run this file after it, every time.
 --
--- Idempotent. Six views, read by server/game/dbsource.ts behind GAME_VIEW_TOKEN (the same gate as the
--- relay of the game's API, which carries the same data):
+-- Idempotent. Six views, plus a seventh once bazaar's schema.sql has `team_affinity`, read by
+-- server/game/dbsource.ts behind GAME_VIEW_TOKEN (the same gate as the relay of the game's API, which carries the
+-- same data):
 --   * show.game_feed      the game feed as the agents received it (public events; one world: the real game),
 --                         plus, on our own thread.message rows, the words we sent and their tactic
 --   * show.game_me        our team's /me snapshots in the real world, projected to what the screens read
@@ -19,6 +20,10 @@
 --   * show.game_threads   our dealer threads
 --   * show.game_messages  the messages of our threads, with the tactic of each of ours (no embedding)
 --   * show.game_tape      the settlement tape (public)
+--   * show.game_team_affinity  other teams' set multipliers: what a team SAID (its words, unverified; the quote is
+--                         its untrusted text, cut to 200 characters) and what our agent INFERRED (with a probability).
+--                         Created only when public.team_affinity exists: before bazaar's schema.sql has it this file
+--                         still applies, skips the view and says so; re-run this file after that schema lands.
 -- The views run with their OWNER's rights, so the role holds no grant on the tables. Never selected:
 -- collection_value, any key, an affinity that is not a number, badges, open threads; a duel's your_offer, limit_meaning,
 -- your_days_weight and its words; of a decision, anything but its tactic's id (no tactic_why,
@@ -128,5 +133,36 @@ end $$;
 grant usage on schema show to bazaar_live_reader;
 grant execute on function show.as_int(jsonb), show.as_text(jsonb, int) to bazaar_live_reader;
 grant select on show.game_feed, show.game_me, show.game_duels, show.game_threads, show.game_messages, show.game_tape to bazaar_live_reader;
+
+-- Other teams' set multipliers (bazaar `team_affinity`, one row per team, set and source). The same full join as bazaar's
+-- `team_affinity_board`, read from the table itself (a re-made board never drops this view). Never selected: thread_id,
+-- updated_at. Our own team (t01) and anything that is not a team id or a set code stay out; the server cleans the quote
+-- again (shared/affinity.ts). New columns go last: `create or replace view` only appends.
+do $$
+begin
+  if to_regclass('public.team_affinity') is null then
+    raise notice 'public.team_affinity does not exist yet: show.game_team_affinity skipped (re-run db/game.sql after bazaar schema.sql)';
+    return;
+  end if;
+  execute $view$
+    create or replace view show.game_team_affinity with (security_barrier = true) as
+    select coalesce(s.team, i.team) as team,
+           coalesce(s.set_code, i.set_code) as set_code,
+           s.multiplier::float8 as said,
+           s.confidence::float8 as said_confidence,
+           s.tick as said_tick,
+           left(s.quote, 200) as quote,
+           i.multiplier::float8 as inferred,
+           i.confidence::float8 as inferred_confidence,
+           i.tick as inferred_tick
+      from (select a.team, a.set_code, a.multiplier, a.confidence, a.tick, a.quote from public.team_affinity a where a.source = 'said') s
+      full join (select a.team, a.set_code, a.multiplier, a.confidence, a.tick from public.team_affinity a where a.source = 'inferred') i
+        on i.team = s.team and i.set_code = s.set_code
+     where coalesce(s.team, i.team) ~ '^t[0-9]{1,3}$'
+       and coalesce(s.team, i.team) <> 't01'
+       and coalesce(s.set_code, i.set_code) ~ '^[A-Z]{3}$'
+  $view$;
+  execute 'grant select on show.game_team_affinity to bazaar_live_reader';
+end $$;
 
 commit;

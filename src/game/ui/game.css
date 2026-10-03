@@ -1889,6 +1889,18 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+/* other teams' set multipliers: said above inferred in each cell */
+.mkt-aff {
+  display: grid;
+  gap: 2px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.mkt-aff-said {
+  cursor: help;
+}
+
 /* prices of our cards: on a phone, the code, our value, last and median fit without scrolling */
 @media (max-width: 600px) {
   .mkt-prices .gm-card-code,

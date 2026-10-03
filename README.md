@@ -97,7 +97,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. A link to Duels while any is live. |
 | `/duels` | Is their price inside our limit? | One card per live duel: rival, buying or selling, the card at stake, their price → ours, the gap, our limit and how far inside or outside it their price is, the rounds and what their decay costs, the ticks left, the duels agent's last call (offer, blocked by a rule, accept planned by the deadline − 2) and a pill (inside limit / haggling / outside limit / expiring). Then the record per rival and per session with `score.duel_points`, every finished duel in one line (deal at X vs our limit Y, what it kept, rounds), and whether the duels agent is silent or blocked. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
-| `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams. |
+| `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams, and other teams' set multipliers: what a team SAID in a thread (its words, labelled unverified, the quote on hover) and what our agent INFERRED from its trades (with its probability), from our database (below). |
 | `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
@@ -115,6 +115,12 @@ and never hands the key to the page:
 | `GAME_VIEW_TOKEN` | Strongly recommended on a public deploy. When set, the stream needs `?token=` with this value. Without it, anyone with the URL reads our cash, our assets with their values, our album, our duel offers and our duel limits. |
 | `GAME_POLL_MS` | Poll interval, default 5000 (2000 to 60000). |
 | `SHOW_DATABASE_URL`, `GAME_SOURCE` | With the show's read-only url, the screens read our own database instead (`db/game.sql`'s views, every 3 s, `server/game/dbsource.ts`), no key needed; the header says `DB` or `GAME API`. `GAME_SOURCE=api` forces the relay; views not applied yet → the relay. |
+
+Other teams' set multipliers come only from the database source: bazaar's `team_affinity` table (its `schema.sql`)
+through `show.game_team_affinity` (db/game.sql), read at most every 15 s, validated again (`shared/affinity.ts`: team
+and set ids, multipliers in range, the quote as plain text of at most 200 characters) and sent as the sticky
+`agent.affinity` {rows} only when they changed. db/game.sql creates that view only once the table exists, so re-apply
+it after bazaar's schema.sql has it; until then the panel says "no data yet" and the rest of the screens are unchanged.
 
 Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick and after a settlement
 of ours (a 429 there waits for the next tick, the loop does not slow down). It never opens the game's SSE

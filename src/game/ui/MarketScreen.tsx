@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
+import type { TeamAffinity } from '../../../shared/affinity.ts'
 import type { DecisionStatus } from '../../../shared/decisions.ts'
 import { agentName, ruleName, spanText, whoName } from '../humanize.ts'
-import { fmtP, signed } from '../game.ts'
+import { fmtP, SETS, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
   deltaText, deltaTone, marketTape, opportunities, orderBook, ourOffers, venueRows, watchPrices,
   type Include, type Opportunity, type OurOffer, type Quote, type TapeRow, type VenueBook, type VenueRow, type WatchRow, type Worth,
 } from '../views/market.ts'
+import { affinityBoard, fmtMultiplier, fmtProbability, type AffinityBoard } from '../views/affinity.ts'
 import { Badge, CardRef, Empty, EventLink, Panel, Seg } from './bits.tsx'
 
 /** Header cells; the indexes in `right` are numbers, aligned right. */
@@ -155,6 +157,54 @@ function OurPrices({ rows }: { rows: WatchRow[] }) {
               </td>
               <td className="gm-r">{fmtP(c.median)}</td>
               <td className="gm-r gm-muted">{c.min === c.max ? fmtP(c.min) : `${fmtP(c.min)} – ${fmtP(c.max)}`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- other teams' set multipliers
+
+/** One team's multiplier for one set: what it said (its words, unverified: the quote on hover) and what we inferred. */
+function AffinityCell({ cell }: { cell: TeamAffinity | undefined }) {
+  const t = useGameStrings()
+  if (!cell) return <td className="gm-muted">—</td>
+  return (
+    <td>
+      <span className="mkt-aff">
+        {cell.said !== null && (
+          // the quote is another team's text: a title attribute (plain text), never markup
+          <span className="mkt-aff-said" title={t.market.saidTitle(cell.quote, cell.saidTick)}>
+            <b>{fmtMultiplier(cell.said)}</b> <Badge tone="warn">{t.market.saidLabel}</Badge>
+          </span>
+        )}
+        {cell.inferred !== null && (
+          <span className="mkt-aff-inferred" title={t.market.inferredTitle(cell.inferredTick)}>
+            <b>{fmtMultiplier(cell.inferred)}</b>{' '}
+            <Badge>{t.market.inferredLabel(cell.inferredConfidence === null ? null : fmtProbability(cell.inferredConfidence))}</Badge>
+          </span>
+        )}
+      </span>
+    </td>
+  )
+}
+
+function TeamSets({ board }: { board: AffinityBoard | null }) {
+  const t = useGameStrings()
+  if (!board) return <Empty>{t.market.noTeamSets}</Empty>
+  return (
+    <div className="gm-scroll">
+      <table className="gm-table mkt-aff-table">
+        <Head cells={[t.market.teamHead, ...board.sets.map((s) => SETS[s]?.name ?? s)]} right={[]} />
+        <tbody>
+          {board.teams.map((row) => (
+            <tr key={row.team}>
+              <td>{whoName(t, row.team)}</td>
+              {board.sets.map((set) => (
+                <AffinityCell key={set} cell={row.cells[set]} />
+              ))}
             </tr>
           ))}
         </tbody>
@@ -331,12 +381,12 @@ export function MarketScreen() {
   const t = useGameStrings()
   const [all, setAll] = useState(false)
   const view = useMemo(
-    () => ({ opps: opportunities(state), mine: ourOffers(state), prices: watchPrices(state) }),
+    () => ({ opps: opportunities(state), mine: ourOffers(state), prices: watchPrices(state), teamSets: affinityBoard(state.teamAffinity) }),
     // the state is mutated in place: the version is what changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, version],
   )
-  const { opps, mine, prices } = view
+  const { opps, mine, prices, teamSets } = view
   const untaken = [...opps.buy, ...opps.sell].filter((o) => o.untaken).length
   const boardSize = [...state.book.values()].reduce((n, o) => n + o.size, 0)
   return (
@@ -364,6 +414,9 @@ export function MarketScreen() {
           <OurPrices rows={prices.rows} />
         </Panel>
       </div>
+      <Panel title={t.market.teamSets} sub={teamSets ? t.market.teamSetsSub(teamSets.teams.length, teamSets.said, teamSets.inferred) : undefined}>
+        <TeamSets board={teamSets} />
+      </Panel>
       <button type="button" className="gm-btn mkt-toggle" aria-expanded={all} onClick={() => setAll((v) => !v)}>
         <span aria-hidden="true">{all ? '▾' : '▸'}</span> {all ? t.market.hideAll : t.market.showAll}
         <span className="gm-sub">{t.market.allSub(boardSize, state.tape.length, state.venues.size)}</span>

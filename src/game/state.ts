@@ -1,3 +1,4 @@
+import { cleanAffinityPayload, type TeamAffinity } from '../../shared/affinity.ts'
 import { HEALTH_AGENTS, type HealthReport } from '../../shared/health.ts'
 import { applyDecision, applyLedger, applyOutcome, createDecisionLog, type DecisionLog } from './decisions.ts'
 
@@ -194,6 +195,11 @@ export type State = {
   /** The taker's and the maker's latest /health, as the server relays it (agent.health); empty until the first. */
   health: HealthReport[]
   /**
+   * Other teams' set multipliers, said (their words, unverified) and inferred (with a probability), as the server
+   * relays them from our database (agent.affinity); null until the first, which may never come (no view, API source).
+   */
+  teamAffinity: TeamAffinity[] | null
+  /**
    * When the server last found new rows for the screens that read their own API (/history, /learn), by screen,
    * ISO (pages.changed); null until the server says it sends these, and then the screens refetch on each.
    */
@@ -205,7 +211,7 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
-  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed',
+  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'agent.affinity',
 ])
 
 export const LIMITS = {
@@ -219,7 +225,7 @@ export function createState(): State {
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
     log: [], threads: {}, duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
-    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null,
+    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], teamAffinity: null, changes: null,
   }
 }
 
@@ -579,6 +585,11 @@ export function apply(s: State, e: GameEvent): State {
   // A status every 10 s: only the latest counts, so it never fills the event lists (nor the Debug screen's).
   if (e.type === 'agent.health') {
     health(s, p)
+    return s
+  }
+  // A status too: the latest copy of every team's multipliers, validated again (it is other teams' words).
+  if (e.type === 'agent.affinity') {
+    s.teamAffinity = cleanAffinityPayload(p.rows)
     return s
   }
   // The same kind of status: only the latest says when each screen's rows last changed.

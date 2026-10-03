@@ -895,6 +895,21 @@ export class MockGame {
   }
 
   /**
+   * Other teams' set multipliers as the server relays them from show.game_team_affinity (agent.affinity): one team
+   * that said a value our agent's estimate disagrees with, one that only said it, two only inferred.
+   */
+  private teamSets(): GameEvent {
+    return this.ev('agent.affinity', {
+      rows: [
+        { team: 't04', set: 'LAV', said: 1.6, saidConfidence: null, saidTick: 3, quote: 'Lavapiés is our page, we pay x1.6 for every card', inferred: 1.1, inferredConfidence: 0.64, inferredTick: 9 },
+        { team: 't04', set: 'SAL', said: null, saidConfidence: null, saidTick: null, quote: null, inferred: 0.5, inferredConfidence: 0.81, inferredTick: 9 },
+        { team: 't07', set: 'MAL', said: 1.3, saidConfidence: null, saidTick: 5, quote: 'Malasaña ×1.3 para nosotros, ni un P más', inferred: null, inferredConfidence: null, inferredTick: null },
+        { team: 't11', set: 'LAT', said: null, saidConfidence: null, saidTick: null, quote: null, inferred: 1.3, inferredConfidence: 0.55, inferredTick: 8 },
+      ],
+    })
+  }
+
+  /**
    * The taker's and the maker's /health as the server relays it (server/game/health.ts), every tick: the taker's
    * ledger is down (red: a live agent sends nothing), the maker's ticks run close to their 15 s budget (amber).
    * The duels have no /health: their decisions say they are fine.
@@ -1105,7 +1120,7 @@ export class MockGame {
     const out: GameEvent[] = []
     if (this.n === 0) {
       const past = this.pastDuels()
-      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), ...past, ...this.liveDuels(), ...this.openingBoard(), ...this.seedThreads())
+      out.push(this.ev('agent.hello', { team: this.team, name: this.name }), this.me(), this.teamSets(), ...past, ...this.liveDuels(), ...this.openingBoard(), ...this.seedThreads())
     }
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {

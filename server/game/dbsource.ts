@@ -9,7 +9,13 @@
  * the duel events not sent before (`./duels.ts`), then the feed rows unchanged, oldest first. The first poll
  * replays a bounded window (the newest feed rows and duels). No exception ever leaves `pollOnce()`; the
  * views missing (db/game.sql not applied) is reported once, through `onMissing`, and the source stops.
+ *
+ * Other teams' set multipliers (`show.game_team_affinity`) ride along, at most every `affinityEveryMs`: validated
+ * (`shared/affinity.ts`) and published as the sticky status `agent.affinity` {rows} only when they changed. That
+ * view is optional (it exists once bazaar's schema.sql has `team_affinity` and db/game.sql was re-applied): its
+ * absence is said once and re-checked every `affinityRecheckMs`, and never stops the rest of the source.
  */
+import { cleanAffinityPayload, MAX_AFFINITY_ROWS } from '../../shared/affinity.ts'
 import type { Db } from '../transcript/poller.ts'
 import { redact } from '../transcript/poller.ts'
 import { duelEvents } from './duels.ts'
@@ -31,6 +37,7 @@ export const DB_SQL = {
   duelsFirst: `select * from (select ${DUEL_COLUMNS}, ${stampOf('updated_at')}, updated_at from show.game_duels order by updated_at desc, duel desc limit $1) t order by updated_at, duel`,
   // Keyset on (updated_at, duel): the agents re-upsert every duel with one now(), so many rows share a stamp.
   duelsAfter: `select ${DUEL_COLUMNS}, ${stampOf('updated_at')} from show.game_duels where (updated_at, duel) > ($1::timestamptz, $2::int) order by updated_at, duel limit $3`,
+  affinity: `select team, set_code, said, said_confidence, said_tick, quote, inferred, inferred_confidence, inferred_tick from show.game_team_affinity order by team, set_code limit $1`,
 } as const
 
 const isRecord = (v: unknown): v is Payload => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -115,6 +122,11 @@ export interface DbSourceDeps {
   readonly duelLimit?: number
   readonly maxDelayMs?: number
   readonly secrets?: readonly string[]
+  /** Other teams' set multipliers are read at most this often. */
+  readonly affinityEveryMs?: number
+  /** While show.game_team_affinity is missing, it is looked for again this often. */
+  readonly affinityRecheckMs?: number
+  readonly now?: () => number
   readonly random?: () => number
   readonly setTimer?: (fn: () => void, ms: number) => unknown
   readonly clearTimer?: (handle: unknown) => void
@@ -140,12 +152,16 @@ export class GameDbSource {
   private missing = false
   private polling = false
   private again = false
+  private affinityNextAt = 0
+  private affinityDigest: string | null = null
+  private affinityMissing = false
+  private affinityFails = 0
 
   constructor(deps: DbSourceDeps) {
     this.deps = deps
     this.o = {
       intervalMs: 3000, feedBackfill: 2000, cap: 500, duelLimit: 50, maxDelayMs: 60_000, secrets: [],
-      random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+      affinityEveryMs: 15_000, affinityRecheckMs: 60_000, now: Date.now, random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
   }
@@ -282,6 +298,40 @@ export class GameDbSource {
       this.fails = 0
     } catch (error: unknown) {
       this.failed(error)
+      return
+    }
+    await this.pollAffinity()
+  }
+
+  /** Other teams' set multipliers, when due: published only when they changed. Never throws, never stops the source. */
+  private async pollAffinity(): Promise<void> {
+    const now = this.o.now()
+    if (now < this.affinityNextAt) return
+    try {
+      const { rows } = await this.deps.db.query(DB_SQL.affinity, [MAX_AFFINITY_ROWS])
+      this.affinityNextAt = now + this.o.affinityEveryMs
+      if (this.affinityMissing || this.affinityFails > 0) this.deps.log({ route: 'game', event: 'db_affinity_on' })
+      this.affinityMissing = false
+      this.affinityFails = 0
+      const clean = cleanAffinityPayload(rows)
+      const digest = JSON.stringify(clean)
+      if (digest === this.affinityDigest) return
+      this.affinityDigest = digest
+      this.deps.hub.publishStatus(this.madeUp('agent.affinity', { rows: clean }))
+    } catch (error: unknown) {
+      const code = (error as { code?: unknown } | null)?.code
+      if (isMissingViews(error)) {
+        this.affinityNextAt = now + this.o.affinityRecheckMs
+        if (!this.affinityMissing) this.deps.log({ route: 'game', event: 'db_affinity_missing', code, note: 're-apply db/game.sql once bazaar schema.sql has team_affinity' })
+        this.affinityMissing = true
+        return
+      }
+      this.affinityNextAt = now + this.o.affinityEveryMs
+      this.affinityFails += 1
+      if (this.affinityFails === 1 || this.affinityFails % 10 === 0) {
+        const text = error instanceof Error ? error.message : String(error)
+        this.deps.log({ route: 'game', event: 'db_affinity_failed', fails: this.affinityFails, code: typeof code === 'string' ? code : 'ERR', message: redact(text, this.o.secrets).slice(0, 160) })
+      }
     }
   }
 

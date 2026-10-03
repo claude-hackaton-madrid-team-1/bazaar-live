@@ -384,6 +384,14 @@ export interface GameStrings {
     readonly ourPricesSub: (traded: number, untraded: number) => string
     readonly noOurPrices: string
     readonly priceHead: readonly string[]
+    readonly teamSets: string
+    readonly teamSetsSub: (teams: number, said: number, inferred: number) => string
+    readonly teamHead: string
+    readonly saidLabel: string
+    readonly saidTitle: (quote: string | null, tick: number | null) => string
+    readonly inferredLabel: (pct: string | null) => string
+    readonly inferredTitle: (tick: number | null) => string
+    readonly noTeamSets: string
     readonly showAll: string
     readonly hideAll: string
     readonly allSub: (offers: number, trades: number, venues: number) => string
@@ -1007,6 +1015,14 @@ const EN: GameStrings = {
     ourPricesSub: (traded, untraded) => `${plural(traded, 'card', 'cards')} traded · ${untraded} never traded`,
     noOurPrices: 'None of the cards we miss or hold has traded yet.',
     priceHead: ['card', 'worth to us', 'last', 'median', 'range'],
+    teamSets: "Other teams' set multipliers",
+    teamSetsSub: (teams, said, inferred) => `${plural(teams, 'team', 'teams')} · ${said} said · ${inferred} inferred`,
+    teamHead: 'team',
+    saidLabel: 'said (unverified)',
+    saidTitle: (quote, tick) => `${quote ? `They said: “${quote}”` : 'They said it in a thread (no words kept)'}${tick == null ? '' : ` · tick ${tick}`}. Their words, not a fact.`,
+    inferredLabel: (pct) => (pct ? `inferred ${pct}` : 'inferred'),
+    inferredTitle: (tick) => `Our agent's estimate from their trades, with its probability${tick == null ? '' : ` · tick ${tick}`}`,
+    noTeamSets: "No data yet: our agent has not read any other team's multipliers.",
     showAll: 'Show all market activity',
     hideAll: 'Hide all market activity',
     allSub: (offers, trades, venues) => `${plural(offers, 'offer', 'offers')} · ${plural(trades, 'trade', 'trades')} · ${plural(venues, 'venue', 'venues')}`,
@@ -1559,6 +1575,14 @@ const ES: GameStrings = {
     ourPricesSub: (traded, untraded) => `${plural(traded, 'carta con tratos', 'cartas con tratos')} · ${untraded} sin tratos`,
     noOurPrices: 'Aún no se ha vendido ninguna carta que nos falte o tengamos.',
     priceHead: ['carta', 'nos vale', 'último', 'mediana', 'rango'],
+    teamSets: 'Multiplicadores de otros equipos',
+    teamSetsSub: (teams, said, inferred) => `${plural(teams, 'equipo', 'equipos')} · ${said} dichos · ${inferred} deducidos`,
+    teamHead: 'equipo',
+    saidLabel: 'dicho (sin verificar)',
+    saidTitle: (quote, tick) => `${quote ? `Dijeron: «${quote}»` : 'Lo dijeron en un trato (sin sus palabras)'}${tick == null ? '' : ` · tick ${tick}`}. Son sus palabras, no un hecho.`,
+    inferredLabel: (pct) => (pct ? `deducido ${pct}` : 'deducido'),
+    inferredTitle: (tick) => `Lo que estima nuestro agente por sus tratos, con su probabilidad${tick == null ? '' : ` · tick ${tick}`}`,
+    noTeamSets: 'Aún no hay datos: nuestro agente no ha leído los multiplicadores de ningún otro equipo.',
     showAll: 'Ver toda la actividad del mercado',
     hideAll: 'Ocultar la actividad del mercado',
     allSub: (offers, trades, venues) => `${plural(offers, 'oferta', 'ofertas')} · ${plural(trades, 'trato', 'tratos')} · ${plural(venues, 'puesto', 'puestos')}`,

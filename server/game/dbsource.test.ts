@@ -100,7 +100,8 @@ describe('GameDbSource', () => {
     const db = fakeDb(answers)
     const hub = new GameHub()
     const batches: (readonly GameEvent[])[] = []
-    hub.subscribe((b) => batches.push(b))
+    // the teams' multipliers are a status of their own (tested below)
+    hub.subscribe((b) => b[0]?.type !== 'agent.affinity' && batches.push(b))
     const source = new GameDbSource({ db, hub, log: () => {} })
     await source.pollOnce()
     const first = batches[0] ?? []
@@ -112,7 +113,7 @@ describe('GameDbSource', () => {
     // Nothing new: nothing published. Then a new feed row, a new /me and a new message in the same duel.
     await source.pollOnce()
     expect(batches).toHaveLength(1)
-    const after = db.calls.slice(-3)
+    const after = db.calls.filter((c) => c.sql !== DB_SQL.affinity).slice(-3)
     expect(after.map((c) => c.sql)).toEqual([DB_SQL.feedAfter, DB_SQL.meAfter, DB_SQL.duelsAfter])
     expect(after[0]?.params).toEqual([21155, 500])
     expect(after[1]?.params).toEqual([ME.stamp])
@@ -155,6 +156,97 @@ describe('GameDbSource', () => {
     expect(source.viewsMissing).toBe(false)
     expect(source.nextDelayMs()).toBe(6000)
     expect(JSON.stringify(logs)).not.toContain('secret-host')
+  })
+})
+
+describe('GameDbSource: other teams\' set multipliers', () => {
+  const AFFINITY = [
+    { team: 't05', set_code: 'LAV', said: 1.6, said_confidence: 0.9, said_tick: 212, quote: '[laughs] <i>we pay x1.6</i>', inferred: '1.3', inferred_confidence: 0.72, inferred_tick: 230 },
+    { team: 'abuela', set_code: 'LAV', said: 1.1, said_confidence: null, said_tick: 1, quote: 'not a team', inferred: null, inferred_confidence: null, inferred_tick: null },
+  ]
+  const setup = (answers: Map<string, unknown[] | Error>, logs: Record<string, unknown>[] = []) => {
+    let now = 0
+    const db = fakeDb(answers)
+    const hub = new GameHub()
+    const statuses: GameEvent[] = []
+    hub.subscribe((b) => b.forEach((e) => e.type === 'agent.affinity' && statuses.push(e)))
+    const onMissing = vi.fn()
+    const source = new GameDbSource({ db, hub, log: (e) => logs.push(e), onMissing, now: () => now, affinityEveryMs: 15_000, affinityRecheckMs: 60_000, secrets: ['secret-host'] })
+    return { db, hub, statuses, source, onMissing, logs, at: (ms: number) => (now = ms) }
+  }
+  const affinityReads = (db: ReturnType<typeof fakeDb>) => db.calls.filter((c) => c.sql === DB_SQL.affinity)
+
+  it('publishes the cleaned rows as the sticky agent.affinity, again only when they change, at most every 15 s', async () => {
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.affinity, AFFINITY]])
+    const { db, hub, statuses, source, at } = setup(answers)
+    await source.pollOnce()
+    expect(affinityReads(db)).toHaveLength(1)
+    expect(affinityReads(db)[0]?.params).toEqual([200])
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]?.payload).toEqual({ rows: [{ team: 't05', set: 'LAV', said: 1.6, saidConfidence: 0.9, saidTick: 212, quote: 'we pay x1.6', inferred: 1.3, inferredConfidence: 0.72, inferredTick: 230 }] })
+    // a status: first in a late viewer's replay, never in the backlog
+    expect(hub.replay().filter((e) => e.type === 'agent.affinity')).toHaveLength(1)
+    expect(hub.size).toBe(1) // the clock alone
+
+    at(14_999)
+    await source.pollOnce()
+    expect(affinityReads(db)).toHaveLength(1)
+    at(15_000)
+    await source.pollOnce()
+    expect(affinityReads(db)).toHaveLength(2)
+    expect(statuses).toHaveLength(1)
+
+    answers.set(DB_SQL.affinity, [{ ...AFFINITY[0], inferred: 1.1 }])
+    at(30_000)
+    await source.pollOnce()
+    expect(statuses).toHaveLength(2)
+    expect(statuses[1]?.payload.rows).toMatchObject([{ team: 't05', inferred: 1.1 }])
+  })
+
+  it('a missing view is said once and looked for again each minute; the rest of the source never notices', async () => {
+    const logs: Record<string, unknown>[] = []
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.affinity, Object.assign(new Error('relation "show.game_team_affinity" does not exist'), { code: '42P01' })]])
+    const { db, statuses, source, onMissing, at } = setup(answers, logs)
+    await source.pollOnce()
+    at(30_000)
+    await source.pollOnce()
+    expect(source.viewsMissing).toBe(false)
+    expect(onMissing).not.toHaveBeenCalled()
+    expect(affinityReads(db)).toHaveLength(1)
+    expect(logs.filter((l) => l.event === 'db_affinity_missing')).toHaveLength(1)
+    expect(statuses).toHaveLength(0)
+
+    answers.set(DB_SQL.affinity, AFFINITY)
+    at(60_000)
+    await source.pollOnce()
+    expect(statuses).toHaveLength(1)
+    expect(logs.filter((l) => l.event === 'db_affinity_on')).toHaveLength(1)
+  })
+
+  it('an empty table is published once as no rows (the page says no data yet)', async () => {
+    const { statuses, source } = setup(new Map())
+    await source.pollOnce()
+    expect(statuses.map((e) => e.payload)).toEqual([{ rows: [] }])
+  })
+
+  it('any other failure is logged redacted and retried later, without backing off the source', async () => {
+    const logs: Record<string, unknown>[] = []
+    const err = Object.assign(new Error('connect to secret-host failed'), { code: 'ECONNRESET' })
+    const { source, statuses, at } = setup(new Map([[DB_SQL.affinity, err]]), logs)
+    await source.pollOnce()
+    expect(source.nextDelayMs()).toBe(3000)
+    expect(statuses).toHaveLength(0)
+    expect(logs.filter((l) => l.event === 'db_affinity_failed')).toHaveLength(1)
+    expect(JSON.stringify(logs)).not.toContain('secret-host')
+    at(15_000)
+    await source.pollOnce()
+    expect(logs.filter((l) => l.event === 'db_affinity_failed')).toHaveLength(1)
+  })
+
+  it('is not read when the main poll failed', async () => {
+    const { db, source } = setup(new Map([[DB_SQL.feedFirst, Object.assign(new Error('boom'), { code: 'XX000' })]]))
+    await source.pollOnce()
+    expect(affinityReads(db)).toHaveLength(0)
   })
 })
 

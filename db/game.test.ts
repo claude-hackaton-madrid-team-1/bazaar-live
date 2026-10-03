@@ -33,6 +33,23 @@ const TABLES = `
     card_id text, price int, fee int);
 `
 
+/** bazaar PR A's schema.sql, verbatim: team_affinity and its board (the view below reads the table, not the board). */
+const AFFINITY_TABLE = `
+  create table if not exists team_affinity (
+    team text not null, set_code text not null, multiplier numeric not null,
+    source text not null check (source in ('said','inferred')), confidence numeric, tick int not null,
+    thread_id bigint, quote text check (char_length(quote) <= 200), updated_at timestamptz not null default now(),
+    primary key (team, set_code, source));
+  create or replace view team_affinity_board as
+    select coalesce(s.team, i.team) as team, coalesce(s.set_code, i.set_code) as set_code,
+           s.multiplier as said, s.confidence as said_confidence, s.tick as said_tick, s.thread_id, s.quote,
+           i.multiplier as inferred, i.confidence as inferred_confidence, i.tick as inferred_tick
+    from (select * from team_affinity where source = 'said') s
+    full join (select * from team_affinity where source = 'inferred') i
+      on i.team = s.team and i.set_code = s.set_code;
+`
+const AFFINITY_THREAD = 987654
+
 const SECRET = 'SECRET-xyzzy'
 const SECRET_LIMIT = 4242
 
@@ -61,6 +78,7 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
   let admin: pg.Client
   let reader: pg.Client
   let adminDb: pg.Client
+  let affinityBefore: string | null = 'unset'
 
   beforeAll(async () => {
     const url = new URL(ADMIN_URL ?? '')
@@ -100,8 +118,16 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
       [JSON.stringify({ secret: SECRET }), JSON.stringify({ ...JSON.parse(why), tactic: 'scarcity', our_limit: SECRET_LIMIT })])
     await adminDb.query(`insert into tape (settlement_id, tick, persona, buyer, seller, items, card_id, price, fee) values (478, 400, 'abuela', 't09', 'abuela', '{"n": 1, "ref": "RET-07"}', 'RET-07', 21, 0)`)
     // The order the coordinator applies them in, then again: show.sql's re-run drops these grants, game.sql's puts them back.
+    // The first run is before bazaar's schema.sql has team_affinity: game.sql still applies and skips that one view.
     await adminDb.query(SHOW_SQL)
     await adminDb.query(GAME_SQL)
+    affinityBefore = (await adminDb.query(`select to_regclass('show.game_team_affinity') as v`)).rows[0]?.v ?? null
+    await adminDb.query(AFFINITY_TABLE)
+    await adminDb.query(`insert into team_affinity (team, set_code, multiplier, source, confidence, tick, thread_id, quote) values
+      ('t05', 'LAV', 1.6, 'said', 0.9, 212, ${AFFINITY_THREAD}, 'Lavapiés is our page, x1.6'), ('t05', 'LAV', 1.3, 'inferred', 0.72, 230, null, null),
+      ('t07', 'SAL', 1.1, 'said', null, 100, ${AFFINITY_THREAD}, '[shouts] <b>x1.1</b>'), ('t09', 'MAL', 0.5, 'inferred', 0.6, 150, null, null),
+      ('t01', 'LAV', 1.0, 'inferred', 0.99, 150, null, null), ('abuela', 'LAV', 1.0, 'said', null, 150, null, 'not a team'),
+      ('t08', 'lav', 1.0, 'said', null, 150, null, 'not a set')`)
     await adminDb.query(SHOW_SQL)
     await adminDb.query(GAME_SQL)
     await adminDb.query(`alter role bazaar_live_reader login password '${readerPassword}'`)
@@ -184,7 +210,22 @@ describe.skipIf(!ADMIN_URL)('db/game.sql privacy (local Postgres)', () => {
     expect(r.rows[0]).toMatchObject({ settlement_id: 478, card_id: 'RET-07', price: 21 })
   })
 
-  it.each(['public.me_snapshots', 'public.duels', 'public.messages', 'public.threads', 'public.tape', 'public.feed_events', 'public.decisions'])('cannot read %s directly', async (table) => {
+  it('skips show.game_team_affinity, and still applies, while public.team_affinity does not exist', () => {
+    expect(affinityBefore).toBeNull()
+  })
+
+  it('reads other teams\' set multipliers, said and inferred side by side, never the thread id, our team or a non-id', async () => {
+    const r = await reader.query('select * from show.game_team_affinity order by team, set_code')
+    expect(Object.keys(r.rows[0])).toEqual(['team', 'set_code', 'said', 'said_confidence', 'said_tick', 'quote', 'inferred', 'inferred_confidence', 'inferred_tick'])
+    expect(r.rows).toEqual([
+      { team: 't05', set_code: 'LAV', said: 1.6, said_confidence: 0.9, said_tick: 212, quote: 'Lavapiés is our page, x1.6', inferred: 1.3, inferred_confidence: 0.72, inferred_tick: 230 },
+      { team: 't07', set_code: 'SAL', said: 1.1, said_confidence: null, said_tick: 100, quote: '[shouts] <b>x1.1</b>', inferred: null, inferred_confidence: null, inferred_tick: null },
+      { team: 't09', set_code: 'MAL', said: null, said_confidence: null, said_tick: null, quote: null, inferred: 0.5, inferred_confidence: 0.6, inferred_tick: 150 },
+    ])
+    expect(JSON.stringify(r.rows)).not.toContain(String(AFFINITY_THREAD))
+  })
+
+  it.each(['public.team_affinity', 'public.team_affinity_board', 'public.me_snapshots', 'public.duels', 'public.messages', 'public.threads', 'public.tape', 'public.feed_events', 'public.decisions'])('cannot read %s directly', async (table) => {
     await expect(reader.query(`select 1 from ${table} limit 1`)).rejects.toMatchObject({ code: '42501' })
   })
 })
