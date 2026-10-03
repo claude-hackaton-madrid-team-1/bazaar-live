@@ -258,7 +258,9 @@ export function HistoryScreen() {
           <Chart points={snapshot.points} />
         </Panel>
       )}
-      {snapshot.board.length > 0 && store.state.team !== '' && <TeamsScorePanel board={snapshot.board} marks={snapshot.marks} us={store.state.team} />}
+      {store.state.team !== '' && (snapshot.board.length > 0 || (live && !snapshot.parts.board)) && (
+        <TeamsScorePanel board={snapshot.board} marks={snapshot.marks} us={store.state.team} missing={<Missing part="board" parts={snapshot.parts} live={live} />} />
+      )}
       <div className="gm-history-cols">
         <Panel
           title={t.history.moves}

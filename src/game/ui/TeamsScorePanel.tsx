@@ -4,7 +4,7 @@
  * place and the followed teams', and what moved our place. Hover, drag or the arrow keys read the board at a moment:
  * every team's score, highest first. Only the public board's numbers are compared (./views/teams.ts).
  */
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import type { ScoreMark, TeamScore } from '../../../shared/history.ts'
 import { agentName, whoName } from '../humanize.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
@@ -161,7 +161,8 @@ function spread(labels: EndLabel[], gap: number, lo: number, hi: number): EndLab
   return over > 0 ? out.map((l) => ({ ...l, y: Math.max(lo, l.y - over) })) : out
 }
 
-export function TeamsScorePanel({ board: rows, marks, us }: { board: readonly TeamScore[]; marks: readonly ScoreMark[]; us: string }) {
+/** `missing`: the page's note when db/teams_score.sql is not applied yet. */
+export function TeamsScorePanel({ board: rows, marks, us, missing }: { board: readonly TeamScore[]; marks: readonly ScoreMark[]; us: string; missing?: ReactNode }) {
   const t = useGameStrings()
   const T = useTeamsStrings()
   const b = useMemo(() => boardOf(rows), [rows])
@@ -196,7 +197,7 @@ export function TeamsScorePanel({ board: rows, marks, us }: { board: readonly Te
     el.style.top = `${Math.max(0, Math.min(top, bx.clientHeight - h))}px`
   })
 
-  if (end === null) return <Panel title={T.title}>{<Empty>{T.noBoard}</Empty>}</Panel>
+  if (end === null) return <Panel title={T.title} sub={missing}>{<Empty>{T.noBoard}</Empty>}</Panel>
   if (!b.series.has(us)) return <Panel title={T.title} sub={T.sub(b.teams.length)}>{<Empty>{T.noUs}</Empty>}</Panel>
 
   const slotOf = (team: string): number => picked.indexOf(team)
