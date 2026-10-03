@@ -10,6 +10,7 @@ import { fetchRemoteProviders, type RemoteName } from '../tts/remote'
 import { providerFactory, resolveChoice } from '../tts/select'
 import type { ProviderName } from '../tts/types'
 import { createWebSpeech, webSpeechAvailable } from '../tts/webspeech'
+import { useTranscript } from './useTranscript'
 
 export interface SpeechControls {
   readonly muted: boolean
@@ -56,6 +57,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
     return () => engine.stop()
   }, [engine])
   useSources(engine, config)
+  useTranscript(engine, config)
 
   return { state, speech: { muted, setMuted, choice, setChoice, available, active, lastError } }
 }

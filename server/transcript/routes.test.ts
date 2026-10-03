@@ -143,17 +143,17 @@ describe('GET /api/transcript/stream', () => {
     await d.body?.cancel()
   })
 
-  it('keeps the connection alive with comments', async () => {
+  it('keeps the connection alive with hb events the page can see', async () => {
     const { base } = await start({ heartbeatMs: 20 })
     const res = await fetch(`${base}/api/transcript/stream`)
     const reader = res.body?.getReader()
     let text = ''
     const decoder = new TextDecoder()
-    for (let i = 0; i < 6 && !text.includes(': hb'); i++) {
+    for (let i = 0; i < 6 && !text.includes('event: hb'); i++) {
       const { value } = (await reader?.read()) ?? {}
       if (value) text += decoder.decode(value)
     }
-    expect(text).toContain(': hb')
+    expect(text).toContain('event: hb')
     await reader?.cancel()
   })
 })

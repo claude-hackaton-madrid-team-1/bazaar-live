@@ -1,4 +1,5 @@
 import { MAKER_HTTP, TAKER_HTTP, toWs } from '../shared/endpoints.ts'
+import { parseLang, type Lang } from '../shared/lang.ts'
 import type { AgentId } from './model/events'
 
 export interface AgentEndpoint {
@@ -22,6 +23,8 @@ export interface ShowConfig {
   readonly speed: number
   /** `?tts=webspeech|elevenlabs|gemini|off|auto` (default auto: the best provider the proxy has). */
   readonly tts: TtsChoice
+  /** `?lang=en` for English; castellano by default. One language per line, never mixed. */
+  readonly lang: Lang
   /** `?mode=dry`: the mock's /health says dry run instead of live. */
   readonly mockMode: 'live' | 'dry'
 }
@@ -41,5 +44,6 @@ export function readConfig(search: string): ShowConfig {
     speed: Number.isFinite(speed) ? Math.min(8, Math.max(0.25, speed)) : 1,
     tts: (TTS_CHOICES as readonly string[]).includes(tts) ? (tts as TtsChoice) : 'auto',
     mockMode: params.get('mode') === 'dry' ? 'dry' : 'live',
+    lang: parseLang(params.get('lang')),
   }
 }

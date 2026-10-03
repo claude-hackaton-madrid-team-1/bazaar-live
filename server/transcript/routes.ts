@@ -4,7 +4,7 @@
  *
  * Public and read-only: they carry only items the poller built from the two views (clean text, closed
  * vocabularies). A per-address rate limit on the JSON route, a cap on open streams (per address and
- * in all), a heartbeat so a proxy does not cut an idle stream, and a drop for any client that stops reading.
+ * in all), an `hb` event so a proxy does not cut an idle stream and the page can tell a dead one, and a drop for any client that stops reading.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { TranscriptBatch, TranscriptItem } from '../../shared/transcript.ts'
@@ -92,7 +92,8 @@ export function createTranscriptRoutes(deps: TranscriptRouteDeps): (req: Incomin
     const off = store.subscribe((items: readonly TranscriptItem[]) => {
       send({ epoch: store.epoch, cursor: store.cursor, enabled: true, replay: false, items: items.slice(-BATCH_LIMIT) })
     })
-    const beat = setInterval(() => res.write(': hb\n\n'), heartbeatMs)
+    // A real event, not a comment: EventSource never shows comments to the page, and its watchdog needs a beat.
+    const beat = setInterval(() => res.write('event: hb\ndata: 1\n\n'), heartbeatMs)
     let ended = false
     function end(): void {
       if (ended) return
