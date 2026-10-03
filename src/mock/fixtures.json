@@ -1,0 +1,1308 @@
+{
+ "about": "Recorded-style scene for ?mock=1. Envelopes as WS /events sends them (docs/services.md).",
+ "loopMs": 67150,
+ "ticksPerLoop": 5,
+ "health": {
+  "taker": {
+   "ok": true,
+   "agent": "taker",
+   "mode": "live",
+   "tick": 300,
+   "last_tick_at": null,
+   "doors": "open",
+   "paused": false,
+   "next_opens": null,
+   "tick_seconds": 15.0,
+   "server_tick": 300
+  },
+  "maker": {
+   "ok": true,
+   "agent": "maker",
+   "mode": "live",
+   "tick": 300,
+   "last_tick_at": null,
+   "doors": "open",
+   "paused": false,
+   "next_opens": null,
+   "tick_seconds": 15.0,
+   "server_tick": 300
+  }
+ },
+ "state": {
+  "maker": {
+   "agent": "maker",
+   "mode": "live",
+   "tick": 300,
+   "team": "t01",
+   "open_offers": [
+    {
+     "id": 8990,
+     "side": "ask",
+     "ref": "SAL-02",
+     "price": 31,
+     "venue": "rastro"
+    },
+    {
+     "id": 8991,
+     "side": "ask",
+     "ref": "LAV-04",
+     "price": 12,
+     "venue": "rastro"
+    }
+   ]
+  },
+  "taker": {
+   "agent": "taker",
+   "mode": "live",
+   "tick": 300,
+   "team": "t01",
+   "threads": []
+  }
+ },
+ "steps": [
+  {
+   "at": 600,
+   "event": {
+    "id": -1,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "mode": "live",
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 750,
+   "event": {
+    "id": -1,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "mode": "live",
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 3350,
+   "event": {
+    "id": -2,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 401,
+     "tick": 301,
+     "kind": "post_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": {
+      "verdict": "aggressive"
+     },
+     "inputs": {
+      "side": "ask",
+      "ref": "LAT-09",
+      "rarity": "rare",
+      "price": 68,
+      "venue": "rastro"
+     },
+     "move": {
+      "give": {
+       "assets": [
+        771
+       ]
+      },
+      "want": {
+       "cash": 68
+      },
+      "venue": "rastro"
+     },
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 4250,
+   "event": {
+    "id": -3,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 401,
+     "tick": 301,
+     "method": "list_offer",
+     "request": {
+      "give": {
+       "assets": [
+        771
+       ]
+      },
+      "want": {
+       "cash": 68
+      },
+      "venue": "rastro"
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": 9101,
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 6850,
+   "event": {
+    "id": -4,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 402,
+     "tick": 301,
+     "kind": "post_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "side": "ask",
+      "ref": "MAL-03",
+      "rarity": "common",
+      "price": 24,
+      "venue": "rastro"
+     },
+     "move": {
+      "want": {
+       "cash": 24
+      },
+      "venue": "rastro"
+     },
+     "reason": "ours 17.5 + page bonus 24.0; value 41.5",
+     "line": "post ask MAL-03 at 24 (value 41.5)",
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 7750,
+   "event": {
+    "id": -5,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 402,
+     "tick": 301,
+     "method": "list_offer",
+     "request": {
+      "want": {
+       "cash": 24
+      },
+      "venue": "rastro"
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": 9102,
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 10350,
+   "event": {
+    "id": -2,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 403,
+     "tick": 301,
+     "kind": "accept_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": {
+      "verdict": "yes"
+     },
+     "inputs": {
+      "offer_id": 5512,
+      "venue": "rastro",
+      "maker": "t07",
+      "ref": "SAL-05",
+      "rarity": "uncommon",
+      "ask": 18,
+      "fee": 1.9
+     },
+     "move": {
+      "accept": 5512,
+      "price": 18
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 11250,
+   "event": {
+    "id": -3,
+    "tick": 301,
+    "t": 6.004,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 403,
+     "tick": 301,
+     "method": "accept",
+     "request": {
+      "offer": 5512
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": null,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 12450,
+   "event": {
+    "id": -4,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "mode": "live",
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 12600,
+   "event": {
+    "id": -6,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "mode": "live",
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 15200,
+   "event": {
+    "id": -5,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 404,
+     "tick": 302,
+     "kind": "dealer_open",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "dealer": "abuela",
+      "item": "sobre_barrio"
+     },
+     "move": {
+      "open_thread": "abuela",
+      "topic": {
+       "buy": "sobre_barrio"
+      }
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 16100,
+   "event": {
+    "id": -6,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 404,
+     "tick": 302,
+     "method": "open_thread",
+     "request": {
+      "with": "abuela",
+      "topic": {
+       "buy": {
+        "pack": "sobre_barrio"
+       }
+      }
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": 331,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 18700,
+   "event": {
+    "id": -7,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 405,
+     "tick": 302,
+     "kind": "dealer_bid",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": 331,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "dealer": "abuela",
+      "thread": 331,
+      "item": "sobre_barrio",
+      "her_ask": 30,
+      "final": false,
+      "price": 20
+     },
+     "move": {
+      "kind": "bid",
+      "price": 20
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 19600,
+   "event": {
+    "id": -8,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 405,
+     "tick": 302,
+     "method": "say",
+     "request": {
+      "thread": 331,
+      "price": 20
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": null,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 22200,
+   "event": {
+    "id": -7,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 406,
+     "tick": 302,
+     "kind": "reprice_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": {
+      "verdict": "fair",
+      "value": 0.71,
+      "probabilities": {
+       "aggressive": 0.2,
+       "fair": 0.71,
+       "quick_sale": 0.09
+      }
+     },
+     "inputs": {
+      "offer": {
+       "ref": "LAT-09",
+       "side": "ask",
+       "venue": "rastro"
+      },
+      "price": 62
+     },
+     "move": {
+      "reprice": 9101,
+      "price": 62
+     },
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 24800,
+   "event": {
+    "id": -9,
+    "tick": 302,
+    "t": 6.008,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 407,
+     "tick": 302,
+     "kind": "accept_ask",
+     "chosen": false,
+     "status": "rejected",
+     "dry_run": false,
+     "sent": "not sent",
+     "thread_id": null,
+     "guardrail": "denied: price 40 > max_price_uncommon 26",
+     "jev": null,
+     "inputs": {
+      "ref": "LAV-11",
+      "venue": "rastro"
+     },
+     "move": {},
+     "reason": "worth 25x1.6 = 40",
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 26000,
+   "event": {
+    "id": -10,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "mode": "live",
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 26150,
+   "event": {
+    "id": -8,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "mode": "live",
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 28750,
+   "event": {
+    "id": -11,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 408,
+     "tick": 303,
+     "kind": "dealer_bid",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": 331,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "dealer": "abuela",
+      "thread": 331,
+      "item": "sobre_barrio",
+      "her_ask": 27,
+      "final": false,
+      "price": 24
+     },
+     "move": {
+      "kind": "bid",
+      "price": 24
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 29650,
+   "event": {
+    "id": -12,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 408,
+     "tick": 303,
+     "method": "say",
+     "request": {
+      "thread": 331,
+      "price": 24
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": null,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 32250,
+   "event": {
+    "id": -13,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 409,
+     "tick": 303,
+     "kind": "dealer_accept",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": 331,
+     "guardrail": "allowed",
+     "jev": {
+      "verdict": "accept"
+     },
+     "inputs": {
+      "dealer": "abuela",
+      "thread": 331,
+      "item": "sobre_barrio",
+      "offer_id": 6120,
+      "ask": 25,
+      "final": true
+     },
+     "move": {
+      "accept": 6120,
+      "price": 25
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 33150,
+   "event": {
+    "id": -14,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 409,
+     "tick": 303,
+     "method": "accept",
+     "request": {
+      "offer": 6120
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": null,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 33650,
+   "event": {
+    "id": -9,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 410,
+     "tick": 303,
+     "kind": "hold_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": {
+      "verdict": "hold"
+     },
+     "inputs": {
+      "offer": {
+       "ref": "MAL-03",
+       "side": "ask",
+       "venue": "rastro"
+      }
+     },
+     "move": {
+      "hold": 9102
+     },
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 34150,
+   "event": {
+    "id": -10,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 411,
+     "tick": 303,
+     "kind": "hold_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": {
+      "verdict": "hold"
+     },
+     "inputs": {
+      "offer": {
+       "ref": "LAT-09",
+       "side": "ask",
+       "venue": "rastro"
+      }
+     },
+     "move": {
+      "hold": 9103
+     },
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 34650,
+   "event": {
+    "id": -11,
+    "tick": 303,
+    "t": 6.013,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 412,
+     "tick": 303,
+     "kind": "hold_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": {
+      "verdict": "hold"
+     },
+     "inputs": {
+      "offer": {
+       "ref": "SAL-02",
+       "side": "ask",
+       "venue": "rastro"
+      }
+     },
+     "move": {
+      "hold": 8990
+     },
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 35850,
+   "event": {
+    "id": -15,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "mode": "live",
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 36000,
+   "event": {
+    "id": -12,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "mode": "live",
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 38600,
+   "event": {
+    "id": -16,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 413,
+     "tick": 304,
+     "kind": "dealer_open",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "dealer": "chato",
+      "item": "rare"
+     },
+     "move": {
+      "open_thread": "chato",
+      "topic": {
+       "buy": "rare"
+      }
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 39500,
+   "event": {
+    "id": -17,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 413,
+     "tick": 304,
+     "method": "open_thread",
+     "request": {
+      "with": "chato",
+      "topic": {
+       "buy": {
+        "rarity": "rare"
+       }
+      }
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": 340,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 42100,
+   "event": {
+    "id": -18,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 414,
+     "tick": 304,
+     "kind": "dealer_bid",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": 340,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "dealer": "chato",
+      "thread": 340,
+      "item": "rare",
+      "her_ask": 95,
+      "final": false,
+      "price": 60
+     },
+     "move": {
+      "kind": "bid",
+      "price": 60
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 43000,
+   "event": {
+    "id": -19,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 414,
+     "tick": 304,
+     "method": "say",
+     "request": {
+      "thread": 340,
+      "price": 60
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": null,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 45600,
+   "event": {
+    "id": -20,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 415,
+     "tick": 304,
+     "kind": "dealer_walk",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": 340,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "dealer": "chato",
+      "thread": 340,
+      "item": "rare",
+      "her_ask": 88,
+      "final": true
+     },
+     "move": {
+      "kind": "walk"
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 46500,
+   "event": {
+    "id": -21,
+    "tick": 304,
+    "t": 6.017,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 415,
+     "tick": 304,
+     "method": "close_thread",
+     "request": {
+      "thread": 340
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": null,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 47700,
+   "event": {
+    "id": -22,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "mode": "live",
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 47850,
+   "event": {
+    "id": -13,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.tick",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "mode": "live",
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 50450,
+   "event": {
+    "id": -14,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 416,
+     "tick": 305,
+     "kind": "cancel_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "offer_id": 9102,
+      "side": "ask",
+      "ref": "MAL-03",
+      "price": 24,
+      "venue": "rastro"
+     },
+     "move": {
+      "cancel": 9102
+     },
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 51350,
+   "event": {
+    "id": -15,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 416,
+     "tick": 305,
+     "method": "cancel",
+     "request": {
+      "offer": 9102
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": null,
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 53950,
+   "event": {
+    "id": -16,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 417,
+     "tick": 305,
+     "kind": "post_bid",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "side": "bid",
+      "ref": "RET-02",
+      "rarity": "uncommon",
+      "price": 30,
+      "venue": "rastro"
+     },
+     "move": {
+      "want": {
+       "cards": [
+        "RET-02"
+       ]
+      },
+      "venue": "rastro"
+     },
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 54850,
+   "event": {
+    "id": -17,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 417,
+     "tick": 305,
+     "method": "list_offer",
+     "request": {
+      "want": {
+       "cards": [
+        "RET-02"
+       ]
+      },
+      "give": {
+       "cash": 30
+      },
+      "venue": "rastro"
+     },
+     "ok": true,
+     "error_code": null,
+     "created_id": 9104,
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 57450,
+   "event": {
+    "id": -23,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 418,
+     "tick": 305,
+     "kind": "accept_ask",
+     "chosen": true,
+     "status": "approved",
+     "dry_run": false,
+     "sent": "sending",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "offer_id": 5530,
+      "venue": "rastro",
+      "maker": "t03",
+      "ref": "CHA-07",
+      "rarity": "rare",
+      "ask": 44
+     },
+     "move": {
+      "accept": 5530,
+      "price": 44
+     },
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 58350,
+   "event": {
+    "id": -24,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.execution",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 418,
+     "tick": 305,
+     "method": "accept",
+     "request": {
+      "offer": 5530
+     },
+     "ok": false,
+     "error_code": "insufficient_cash",
+     "created_id": null,
+     "agent": "taker"
+    }
+   }
+  },
+  {
+   "at": 60950,
+   "event": {
+    "id": -18,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "maker",
+    "payload": {
+     "decision_id": 419,
+     "tick": 305,
+     "kind": "post_ask",
+     "chosen": false,
+     "status": "expired",
+     "dry_run": false,
+     "sent": "not sent",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "side": "ask",
+      "ref": "LAT-12",
+      "venue": "rastro"
+     },
+     "move": {},
+     "agent": "maker"
+    }
+   }
+  },
+  {
+   "at": 63150,
+   "event": {
+    "id": -25,
+    "tick": 305,
+    "t": 6.021,
+    "type": "agent.decision",
+    "scope": "team",
+    "actor": "t01",
+    "agent": "taker",
+    "payload": {
+     "decision_id": 420,
+     "tick": 305,
+     "kind": "accept_ask",
+     "chosen": false,
+     "status": "skipped",
+     "dry_run": false,
+     "sent": "not sent",
+     "thread_id": null,
+     "guardrail": "allowed",
+     "jev": null,
+     "inputs": {
+      "ref": "RET-07",
+      "venue": "rastro"
+     },
+     "move": {},
+     "agent": "taker"
+    }
+   }
+  }
+ ]
+}
