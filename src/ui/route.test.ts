@@ -20,6 +20,7 @@ describe('hrefOf', () => {
     expect(hrefOf('market', '?mock=1&lang=en&id=61')).toBe('/market?mock=1&lang=en')
     expect(hrefOf('show', '?id=3')).toBe('/')
     expect(hrefOf('duels', '?lang=es&dealer=pilar&id=7')).toBe('/duels?lang=es')
+    expect(hrefOf('album', '?token=x&team=t14')).toBe('/album?token=x')
     expect(hrefOf('debug', '')).toBe('/debug')
   })
 })
