@@ -156,7 +156,6 @@ export interface GameStrings {
     readonly cheapest: string
     readonly nothingMissing: string
     readonly book: string
-    readonly slotsLeft: (n: number) => string
     readonly worth: string
     readonly worthFoot: string
     readonly copies: (n: number) => string
@@ -463,7 +462,6 @@ const EN: GameStrings = {
     cheapest: 'Cheapest missing',
     nothingMissing: 'nothing missing',
     book: 'book',
-    slotsLeft: (n) => `${plural(n, 'slot', 'slots')} to fill`,
     worth: 'Album worth to us',
     worthFoot: 'every copy at book × our multiplier, page bonuses included',
     copies: (n) => plural(n, 'copy', 'copies'),
@@ -787,7 +785,6 @@ const ES: GameStrings = {
     cheapest: 'La que menos cuesta',
     nothingMissing: 'no falta nada',
     book: 'libro',
-    slotsLeft: (n) => `${plural(n, 'hueco', 'huecos')} por llenar`,
     worth: 'Lo que vale el álbum para nosotros',
     worthFoot: 'cada copia a libro × nuestro multiplicador, con los bonus de página',
     copies: (n) => plural(n, 'copia', 'copias'),
