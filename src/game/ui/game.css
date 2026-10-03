@@ -117,22 +117,36 @@
   background: color-mix(in srgb, var(--dry) 16%, transparent);
 }
 
+/* narrow: the game header keeps language and pause together on the brand's row (no voice controls here) */
 @media (max-width: 680px) {
   .gm-hdr {
     grid-template-areas:
-      'brand lang'
+      'brand controls'
       'nav nav'
-      'status status'
-      'pause pause';
+      'status status';
   }
 
-  .gm-pause {
-    grid-area: pause;
-    justify-content: center;
+  .gm-hdr .hdr-controls {
+    display: flex;
+  }
+
+  .gm-hdr .hdr-seg {
+    grid-area: auto;
   }
 
   .gm-clock {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 400px) {
+  .gm-pause {
+    padding: 0 var(--s-3);
+  }
+
+  .gm-hdr .hdr-seg button {
+    min-width: 40px;
+    padding: 0 var(--s-2);
   }
 }
 
