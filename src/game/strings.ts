@@ -194,7 +194,8 @@ export interface GameStrings {
     readonly rounds: (n: number) => string
     /** Repeated ended threads on one dealer and item, shown as one row. */
     readonly times: (n: number) => string
-    readonly timesTitle: (ids: string) => string
+    /** The summary that opens the older threads of a group. */
+    readonly timesTitle: (n: number) => string
     readonly details: string
     readonly detailsLine: (b: { round: number; tick: number | null; offerId: number | null; messageId: number | null; expiresTick: number | null }) => string
     readonly we: string
@@ -657,7 +658,7 @@ const EN: GameStrings = {
     opened: (p) => `opened at ${p} P`,
     rounds: (n) => `${n} ${n === 1 ? 'round' : 'rounds'}`,
     times: (n) => `×${n}`,
-    timesTitle: (ids) => `The same dealer and card, again: threads ${ids}`,
+    timesTitle: (n) => `${plural(n, 'earlier thread', 'earlier threads')} on this card`,
     details: 'details',
     detailsLine: (b) => `round ${b.round} · tick ${b.tick ?? '—'} · offer ${b.offerId ?? '—'} · message ${b.messageId ?? '—'} · expires t${b.expiresTick ?? '—'}`,
     we: 'we',
@@ -1143,7 +1144,7 @@ const ES: GameStrings = {
     opened: (p) => `abrió en ${p} P`,
     rounds: (n) => `${n} ${n === 1 ? 'ronda' : 'rondas'}`,
     times: (n) => `×${n}`,
-    timesTitle: (ids) => `El mismo tratante y el mismo cromo, otra vez: hilos ${ids}`,
+    timesTitle: (n) => `${plural(n, 'hilo anterior', 'hilos anteriores')} con este cromo`,
     details: 'detalles',
     detailsLine: (b) => `ronda ${b.round} · turno ${b.tick ?? '—'} · oferta ${b.offerId ?? '—'} · mensaje ${b.messageId ?? '—'} · caduca t${b.expiresTick ?? '—'}`,
     we: 'nosotros',

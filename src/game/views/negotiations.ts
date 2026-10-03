@@ -379,7 +379,7 @@ export function conversation(s: State, id: number): Conversation | null {
 
 // ---------------------------------------------------------------- ended threads, grouped
 
-/** Ended threads on the same counterparty, item and side: one row, the newest leading. */
+/** Ended threads without a deal on the same counterparty, item and side: one row, the newest leading. A deal is always its own row. */
 export type EndedGroup = { readonly key: string; readonly latest: NegRow; readonly rows: NegRow[]; readonly deals: number }
 
 /** Groups the ended rows (already newest first) by counterparty, item and side, in the order of their newest thread. */
@@ -387,7 +387,7 @@ export function endedGroups(rows: readonly NegRow[]): EndedGroup[] {
   const by = new Map<string, NegRow[]>()
   for (const r of rows) {
     if (r.status === 'open') continue
-    const key = `${r.with}|${r.topic}|${r.side}`
+    const key = r.ended?.how === 'deal' ? `deal|${r.id}` : `${r.with}|${r.topic}|${r.side}`
     const list = by.get(key)
     if (list) list.push(r)
     else by.set(key, [r])

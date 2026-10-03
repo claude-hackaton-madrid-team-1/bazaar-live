@@ -98,21 +98,21 @@ function Tactic({ id }: { id: string }) {
  * Ended threads on one dealer and card in one line: how the newest ended against our value, how far the dealer came
  * down, the tactics we used, and ×N when we tried more than once. Selecting it opens the newest.
  */
-function EndedLine({ g, selected, onSelect }: { g: EndedGroup; selected: boolean; onSelect: () => void }) {
+function EndedLine({ g, selected, onSelect }: { g: EndedGroup; selected: number | null; onSelect: (id: number) => void }) {
   const t = useGameStrings()
   const r = g.latest
   const first = r.ended?.firstAsk
   const many = g.rows.length > 1
   return (
     <li>
-      <button type="button" className="neg-ended" aria-current={selected ? 'true' : undefined} onClick={onSelect}>
+      <button type="button" className="neg-ended" aria-current={g.rows.some((x) => x.id === selected) ? 'true' : undefined} onClick={() => onSelect(r.id)}>
         <Pill state={r.state} />
         <span className="neg-who" title={r.with}>
           {r.with}
         </span>
         <RefChip topic={r.topic} />
         {many && (
-          <Badge tone="neutral" title={t.neg.timesTitle(g.rows.map((x) => `#${x.id}`).join(', '))}>
+          <Badge tone="neutral">
             {t.neg.times(g.rows.length)}
           </Badge>
         )}
@@ -127,6 +127,16 @@ function EndedLine({ g, selected, onSelect }: { g: EndedGroup; selected: boolean
           {t.neg.rounds(r.rounds)}
         </span>
       </button>
+      {many && (
+        <details className="neg-ended-more">
+          <summary>{t.neg.timesTitle(g.rows.length - 1)}</summary>
+          {g.rows.slice(1).map((x) => (
+            <button key={x.id} type="button" className="gm-eid" aria-pressed={x.id === selected} onClick={() => onSelect(x.id)}>
+              #{x.id}
+            </button>
+          ))}
+        </details>
+      )}
     </li>
   )
 }
@@ -322,7 +332,7 @@ export function NegotiationsScreen() {
             <Worked rows={dealerTactics(state, rows)} />
             <ul className="neg-ended-list">
               {endedGroups(ended).map((g) => (
-                <EndedLine key={g.key} g={g} selected={g.rows.some((r) => r.id === selected)} onSelect={() => select(g.latest.id)} />
+                <EndedLine key={g.key} g={g} selected={selected} onSelect={select} />
               ))}
             </ul>
           </Panel>

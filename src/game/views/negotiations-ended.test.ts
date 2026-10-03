@@ -74,3 +74,21 @@ test('repeated ended threads on the same dealer, item and side are one row with 
   assert.deepEqual(groups.map((g) => [g.latest.id, g.rows.map((r) => r.id), g.deals]), [[760, [760], 0], [751, [751, 743, 732], 0]])
   assert.equal(GAME_STRINGS.es.neg.times(3), '×3')
 })
+
+test('a won thread is never folded into a group of lost ones on the same card: a deal keeps its own row', () => {
+  const s = fresh(600)
+  for (const e of [ourAsk(740, 12, 500), herBid(740, 12, 500), ev('settlement', { settlement: 9, parties: ['abuela', 't01'], price: 12, items: [{ id: 41, ref: 'SAL-01', frm: 't01', to: 'abuela' }] }, 501)]) apply(s, e)
+  for (const [i, id] of [751, 760].entries()) thread776(s, id, 520 + 10 * i)
+  const groups = endedGroups(negRows(s))
+  assert.deepEqual(groups.map((g) => [g.latest.id, g.latest.state, g.rows.map((r) => r.id)]), [[760, 'lost', [760, 751]], [740, 'won', [740]]])
+})
+
+test('her final missed and then we walked: the row says why (her final), which is what the walk answered', () => {
+  const s = fresh(565)
+  thread776(s)
+  apply(s, ev('agent.decision', {
+    decision: 1, agent: 'taker', kind: 'dealer_walk', item: 'SAL-01', counterparty: 'abuela', price: null, value: null, status: 'done', verdict: 'allowed',
+    rule: null, text: null, jev: null, jevValue: null, method: 'close_thread', error: null, outcome: null, surplus: null, jevRight: null,
+  }, 560))
+  assert.equal(negRow(s, s.threads[776]!).ended?.how, 'final')
+})
