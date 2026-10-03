@@ -135,7 +135,8 @@ grant usage on schema show to bazaar_live_reader;
 grant execute on function show.as_int(jsonb), show.as_text(jsonb, int), show.card_in(jsonb) to bazaar_live_reader;
 grant select on show.thread_lines, show.duel_lines to bazaar_live_reader;
 
-alter role bazaar_live_reader connection limit 4;
+-- Eight: one server holds three, and during a redeploy the old and the new server overlap (3 + 3, two spare).
+alter role bazaar_live_reader connection limit 8;
 -- A superuser-only limit: the role cannot lift it. (statement_timeout and read-only below are only defaults.)
 alter role bazaar_live_reader set temp_file_limit = '16MB';
 alter role bazaar_live_reader set default_transaction_read_only = on;
