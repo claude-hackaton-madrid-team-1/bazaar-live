@@ -23,7 +23,7 @@
 --
 -- db/show.sql revokes everything in schema show from the reader, so apply this file after it and the other show
 -- files, every time:
---   psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/rival_board.sql
+--   psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql -f db/rival_board.sql
 
 begin;
 set local lock_timeout = '15s';

@@ -5,6 +5,7 @@
  * Without that pool the route answers `enabled: false`; the pool's owner (server/index.ts) closes it.
  */
 import { EMPTY_STRATEGY, type StrategySnapshot } from '../../shared/strategy.ts'
+import { readLimits } from '../game/decisions.ts'
 import type { SharedShowPool } from '../transcript/pg.ts'
 import { StrategyPoller } from './poller.ts'
 
@@ -31,5 +32,6 @@ export function startStrategy(
   const poller = new StrategyPoller({ db: shared.pool, log, secrets: shared.secrets })
   poller.start()
   log({ route: 'strategy', event: 'on' })
-  return { enabled: () => true, snapshot: () => poller.current(), token, poller, stop: () => poller.stop() }
+  const limits = readLimits(env)
+  return { enabled: () => true, snapshot: () => ({ ...poller.current(), limits }), token, poller, stop: () => poller.stop() }
 }

@@ -46,6 +46,10 @@ describe('poolOptions', () => {
     expect(o.query_timeout).toBeLessThanOrEqual(5000)
     expect(o.connectionTimeoutMillis).toBeLessThanOrEqual(10_000)
   })
+
+  it('turns JIT off for its sessions: every query is a small read, and JIT compiling costs ~240 ms each', () => {
+    expect(poolOptions(URL_OK).options).toBe('-c jit=off')
+  })
 })
 
 describe('secretsOf', () => {

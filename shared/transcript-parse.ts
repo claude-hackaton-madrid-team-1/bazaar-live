@@ -46,6 +46,8 @@ export function parseItem(raw: unknown): TranscriptItem | null {
     status: raw.status === 'deal' || raw.status === 'no_deal' ? raw.status : null,
     role: raw.role === 'buyer' || raw.role === 'seller' ? raw.role : null,
     history: raw.history === true,
+    // fail closed: only an item the server marked `muted: false` may ever have its quote voiced
+    muted: raw.muted !== false,
     lines: Array.isArray(raw.lines) ? raw.lines.slice(-12).flatMap((l) => lineOf(l) ?? []) : [],
   }
   return { ...draft, seq }

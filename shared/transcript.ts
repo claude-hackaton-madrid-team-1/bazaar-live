@@ -53,6 +53,11 @@ export interface TranscriptItem {
   readonly lines: readonly DuelLine[]
   /** Read while catching up (a backfill, a rescan): captions for the page, never a scene. */
   readonly history: boolean
+  /**
+   * Never voiced: the raw words, before cleaning, have a prompt-injection shape (shared/injections.ts). The quote stays a
+   * caption; the server never vouches it to the TTS proxy and the page never asks a voice to read it.
+   */
+  readonly muted: boolean
 }
 
 /** An item before the store gives it a cursor. */
@@ -72,5 +77,5 @@ export interface TranscriptBatch {
 
 export const EMPTY_ITEM: Draft = {
   id: '', kind: 'thread_line', tick: null, counterpart: null, who: null, thread: null, item: null, text: null,
-  offer: null, price: null, status: null, role: null, lines: [], history: false,
+  offer: null, price: null, status: null, role: null, lines: [], history: false, muted: false,
 }

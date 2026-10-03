@@ -34,6 +34,12 @@ export interface GameEvent {
 /** Types a late client always gets first, the latest of each, so its first screen already knows who we are. */
 export const STICKY = ['agent.hello', 'agent.me', 'clock', 'agent.phase', 'agent.ledger', 'agent.health', 'pages.changed'] as const
 
+/**
+ * Statuses a late client gets after the backlog, the latest of each: a snapshot rebuilt from the whole database (our
+ * open board offers, `offers.ours`) must come after the older events the backlog replays, or they would undo it.
+ */
+export const STICKY_LAST = ['offers.ours'] as const
+
 /** What every viewer shares: the latest sticky events, a bounded backlog, and the batches as they come. */
 export class GameHub {
   private readonly backlog: GameEvent[] = []
@@ -64,11 +70,12 @@ export class GameHub {
     this.listeners.forEach((l) => l([e]))
   }
 
-  /** The sticky events (hello, me, clock, phase), then the backlog without them. */
+  /** The sticky events (hello, me, clock, phase), then the backlog without them, then the snapshots of STICKY_LAST. */
   replay(): GameEvent[] {
     const first = STICKY.flatMap((t) => this.sticky.get(t) ?? [])
-    const sent = new Set(first)
-    return [...first, ...this.backlog.filter((e) => !sent.has(e))]
+    const last = STICKY_LAST.flatMap((t) => this.sticky.get(t) ?? [])
+    const sent = new Set([...first, ...last])
+    return [...first, ...this.backlog.filter((e) => !sent.has(e)), ...last]
   }
 
   subscribe(listener: (batch: readonly GameEvent[]) => void): () => void {

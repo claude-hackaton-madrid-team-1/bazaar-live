@@ -3,8 +3,9 @@
  * is each agent alive or silent, what it last did and what blocks it most, which guardrail blocks most in the
  * last game hour, where the money stands against its caps, and whether the settled deals beat our value.
  */
-import { AGENTS, type AgentName, type DecisionStatus, type GuardrailLimits } from '../../../shared/decisions.ts'
+import { AGENTS, type AgentName, type DecisionStatus, type LedgerTick } from '../../../shared/decisions.ts'
 import type { DecisionRow, OutcomeRow } from '../decisions.ts'
+import { moneyOf, moneyRulesOf, paceOf, releaseOf, type Money, type MoneyRules, type Release } from '../limits.ts'
 import type { State } from '../state.ts'
 
 export type StatusTone = 'good' | 'bad' | 'warn' | 'us' | 'neutral'
@@ -201,12 +202,13 @@ export function agentStatuses(s: State): AgentStatus[] {
 }
 
 export type Ledger = {
-  readonly spent: number
-  readonly cash: number
+  /** Cash against the floor, the hour's spend against its cap, what the next buy may cost and which limit binds. */
+  readonly money: Money
+  readonly rules: MoneyRules
+  /** The next spend to leave the hour's rolling window. */
+  readonly release: Release | null
   readonly accepts: number
-  readonly limits: GuardrailLimits
-  /** What the next purchase may still cost: the hour's budget and the cash above the floor, whichever is less. */
-  readonly headroom: number
+  readonly acceptsPerTick: number
   readonly tick: number
 }
 
@@ -219,15 +221,37 @@ function nowHours(s: State, ledgerT: number): number {
   return ledgerT
 }
 
-/** Spend over the last game hour (as guardrails.check() sums it: `t_hours` above now − 1), cash against the floor, accepts this tick. */
+/** Every denial our agents logged, for the limits they name. */
+function* denialsOf(s: State): Generator<DecisionRow> {
+  for (const a of AGENTS) for (const r of s.agents.decisions[a]) if (r.verdict === 'denied' && r.text) yield r
+}
+
+/** The money limits now: the newest denial newer than the docs, else the server's (GUARDRAIL_* else the docs). */
+export const moneyRules = (s: State): MoneyRules => moneyRulesOf(denialsOf(s), nowTick(s), s.agents.ledger?.limits)
+
+/**
+ * Spend over the last game hour (as guardrails.check() sums it: `t_hours` above now − 1), cash against the floor
+ * (with the venue's bond reserve only while it applies), accepts this tick, and when the window next frees spend.
+ */
 export function ledger(s: State): Ledger | null {
   const l = s.agents.ledger
   if (!l) return null
-  const now = nowHours(s, Math.max(0, ...l.ticks.map((t) => t.t)))
+  // the ledger only has rows for ticks that spent, accepted or listed: its last row moved on to the tick now, a tick
+  // lasting tick_seconds / 3600 game hours (as show.strategy_spend reads it), else the ledger's own pace
+  const pace = s.tickSeconds ? s.tickSeconds / 3600 : paceOf(l.ticks)
+  const last = l.ticks.reduce<LedgerTick | null>((a, t) => (a && a.t >= t.t ? a : t), null)
+  const now = nowHours(s, last ? last.t + (pace ? Math.max(0, nowTick(s) - last.tick) * pace : 0) : 0)
   const spent = l.ticks.filter((t) => t.t > now - 1).reduce((n, t) => n + t.spent, 0)
   const accepts = l.ticks.find((t) => t.tick === s.tick)?.accepts ?? 0
-  const headroom = Math.max(0, Math.min(l.limits.spendPerHour - spent, s.cash - l.limits.cashFloor))
-  return { spent, cash: s.cash, accepts, limits: l.limits, headroom, tick: s.tick }
+  const rules = moneyRules(s)
+  return {
+    money: moneyOf(s.team ? s.cash : null, Math.max(0, spent), rules, l.venue ?? null),
+    rules,
+    release: releaseOf(l.ticks, now, pace, s.tickSeconds || null),
+    accepts,
+    acceptsPerTick: l.limits.acceptsPerTick,
+    tick: s.tick,
+  }
 }
 
 /** A share of a cap, 0 to 1, for a meter. */

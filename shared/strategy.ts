@@ -4,6 +4,8 @@
  * refused a buy, so the route sits behind GAME_VIEW_TOKEN like every game screen.
  */
 
+import type { GuardrailLimits } from './decisions.ts'
+
 /** One album page of ours (a barrio): how many of its page cards we hold. */
 export interface StrategyPage {
   readonly set: string
@@ -126,6 +128,8 @@ export interface StrategySnapshot {
   readonly decisions: readonly StrategyDecision[]
   readonly asks: readonly OpenAsk[]
   readonly cards: readonly CatalogCard[]
+  /** The server's limits: a GUARDRAIL_* variable, else the docs (a fresh denial text still overrides them on the page). */
+  readonly limits?: GuardrailLimits | null
 }
 
 export const EMPTY_STRATEGY: StrategySnapshot = {

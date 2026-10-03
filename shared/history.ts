@@ -39,7 +39,20 @@ export interface Order {
   readonly kind: string
   readonly price: number | null
   readonly item: string | null
+  /** The ledger's source: an agent (taker, maker, duels) or a command run by hand (sell, dealer-sell, ...). */
   readonly agent: string
+  /** A listing posted by hand (item `hands-off:<offer>`): that offer, as the feed has it; null otherwise. */
+  readonly offer?: OrderOffer | null
+}
+
+/** A board offer of ours and what became of it (db/game.sql's show.game_our_offers). */
+export interface OrderOffer {
+  readonly id: number
+  readonly side: 'ask' | 'bid' | 'swap'
+  readonly card: string | null
+  readonly venue: string | null
+  readonly expiresTick: number | null
+  readonly status: 'open' | 'settled' | 'cancelled' | 'expired'
 }
 
 /** A feed event of ours that can move cash or stock other than a trade. */

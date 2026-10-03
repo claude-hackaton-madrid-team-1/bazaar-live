@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 const ADMIN_URL = process.env.SHOW_TEST_ADMIN_URL
 const SHOW_SQL = readFileSync(new URL('./show.sql', import.meta.url), 'utf8')
+const GAME_SQL = readFileSync(new URL('./game.sql', import.meta.url), 'utf8')
 const HISTORY_SQL = readFileSync(new URL('./history.sql', import.meta.url), 'utf8')
 
 /** The tables the views read, as the agents' schema declares them today. */
@@ -26,6 +27,12 @@ const TABLES = `
   create table ledger (id bigserial primary key, kind text, tick int, t_hours numeric, price int, item text, source text, created_at timestamptz default now());
   create table decisions (id bigserial primary key, intent_id bigint, thread_id bigint, tick int, state_digest text, rag_context jsonb,
     candidates jsonb, jev jsonb, jev_digest text, policy_checks jsonb, chosen jsonb, status text, reason text, agent text, kind text, dry_run boolean);
+  create table threads (id bigint primary key, counterpart text, kind text, topic jsonb, venue text, status text, opened_tick int,
+    closed_tick int, closed_reason text, ours boolean, updated_tick int, until_tick int);
+  create table messages (id bigint primary key, thread_id bigint, sender text, tick int, text text, price int, offer jsonb, final boolean,
+    embedding text, ours boolean, tactic text);
+  create table tape (settlement_id bigint primary key, tick int, venue text, persona text, buyer text, seller text, items jsonb,
+    card_id text, price int, fee int);
 `
 
 const SECRET = 'SECRET-plugh'
@@ -89,10 +96,13 @@ describe.skipIf(!ADMIN_URL)('db/history.sql score views (local Postgres)', () =>
         (10942, 161, 'schedule.fired', '', '{"note": "welcome", "action": "announce"}', '2026-10-03 09:29:30+02'),
         (10943, 162, 'thread.message', 't01', '{"text": "${SECRET}"}', '2026-10-03 09:30:00+02')`,
     )
-    // The order the coordinator applies them in, then again: show.sql's re-run drops these grants, history.sql's puts them back.
+    // The order the coordinator applies them in (game.sql first: show.our_orders reads show.game_our_offers), then again:
+    // show.sql's re-run drops these grants, history.sql's puts them back.
     await adminDb.query(SHOW_SQL)
+    await adminDb.query(GAME_SQL)
     await adminDb.query(HISTORY_SQL)
     await adminDb.query(SHOW_SQL)
+    await adminDb.query(GAME_SQL)
     await adminDb.query(HISTORY_SQL)
     await adminDb.query(`alter role bazaar_live_reader login password '${readerPassword}'`)
     reader = new pg.Client({ connectionString: withDb(ADMIN_URL ?? '', dbName).replace(/\/\/[^@]*@/, `//bazaar_live_reader:${readerPassword}@`) })

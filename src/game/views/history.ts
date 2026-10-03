@@ -189,12 +189,111 @@ export function cashChart(points: readonly CashPoint[], w: number, h: number, pa
   return { path: d, area, marks, yTicks, xTicks, end: { x: endX, y: endY } }
 }
 
-/** The ledger, newest first, optionally one agent's. */
-export function ordersOf(orders: readonly Order[], agent: string): Order[] {
-  return [...orders].filter((o) => agent === 'all' || o.agent === agent).sort((a, b) => b.id - a.id)
+/**
+ * The ledger's sources that are commands a person runs (bazaar's `cli.py` live ledgers: `bazaar sell ... --live`,
+ * the dealer sales and buys, `flatten`), not an agent. They read as "by hand".
+ */
+const BY_HAND = new Set(['sell', 'dealer-sell', 'dealer-buy', 'flatten'])
+
+/** Who committed a ledger row: `taker`, `maker`, `duels`, `hand` (a person, by a command), or the source as written. */
+export const whoOfSource = (source: string): string => (BY_HAND.has(source) ? 'hand' : source)
+
+export type OrderVerb = 'buy' | 'sell' | 'swap' | 'team' | 'duel' | 'spend' | 'refund' | 'hand' | 'other'
+
+/** What became of an offer: still on the board, filled (bought or sold), cancelled or expired. */
+export type OrderStatus = 'open' | 'bought' | 'sold' | 'swapped' | 'cancelled' | 'expired'
+
+/** One line of the orders: what was committed, in words, with the offer's fate when it was a board offer posted by hand. */
+export interface OrderLine {
+  readonly id: number
+  readonly day: string
+  readonly tick: number
+  readonly who: string
+  readonly verb: OrderVerb
+  /** A card ref, or another item (a duel, a pack) the line is about; null for none. */
+  readonly item: string | null
+  readonly price: number | null
+  readonly venue: string | null
+  readonly status: OrderStatus | null
+  /** Ticks until an open offer expires, from the newest tick we know; null when not open or unknown. */
+  readonly expiresIn: number | null
+  /** The ledger rows behind the line as written (its own and a spend folded into it): for the details only. */
+  readonly raw: readonly Order[]
+  /** The same order written again and again in a row (the taker's proposals to teams): one line, ×count, its newest tick. */
+  readonly count: number
 }
 
-export const agentsOf = (orders: readonly Order[]): string[] => [...new Set(orders.map((o) => o.agent))].sort()
+const isCard = (item: string | null): item is string => item !== null && /^[A-Z]{3}-\d{2}$/.test(item)
+
+function statusOf(o: NonNullable<Order['offer']>, now: number): OrderStatus {
+  if (o.status === 'settled') return o.side === 'bid' ? 'bought' : o.side === 'ask' ? 'sold' : 'swapped'
+  if (o.status === 'open' && o.expiresTick !== null && o.expiresTick < now) return 'expired'
+  return o.status
+}
+
+function lineOf(o: Order, now: number): Omit<OrderLine, 'raw' | 'count'> {
+  const base = { id: o.id, day: o.day, tick: o.tick, who: whoOfSource(o.agent), item: o.item, price: o.price, venue: null, status: null, expiresIn: null }
+  const offer = o.offer ?? null
+  if (o.kind === 'listing' && offer) {
+    const status = statusOf(offer, now)
+    return {
+      ...base, verb: offer.side === 'bid' ? 'buy' : offer.side === 'ask' ? 'sell' : 'swap', item: offer.card, venue: offer.venue, status,
+      expiresIn: status === 'open' && offer.expiresTick !== null ? offer.expiresTick - now : null,
+    }
+  }
+  const item = o.item ?? ''
+  // an offer id is never shown outside the details, whatever kind of row carries it
+  if (item.startsWith('hands-off:')) return { ...base, verb: o.kind === 'listing' ? 'hand' : 'other', item: null }
+  if (o.kind === 'listing' && item.startsWith('team:')) return { ...base, verb: 'team', item: null }
+  if (o.kind === 'listing' && isCard(o.item)) return { ...base, verb: 'sell' }
+  if (o.kind === 'accept' && /^duel[:#]\d+$/i.test(item)) return { ...base, verb: 'duel' }
+  if (o.kind === 'accept') return { ...base, verb: o.agent === 'dealer-sell' ? 'sell' : 'buy' }
+  // a negative spend gives back what a lapsed bid had committed (the maker books it at the bid's own tick)
+  if (o.kind === 'spend') return { ...base, verb: o.price !== null && o.price < 0 ? 'refund' : 'spend' }
+  return { ...base, verb: 'other' }
+}
+
+/** The card a row is about, for pairing a spend with its order: the offer's card on a hand listing. */
+const cardOf = (o: Order): string | null => o.offer?.card ?? o.item
+
+/** How far apart (in ticks) an order and its spend may be written: the taker books the spend at the next tick. */
+const SPEND_TICKS = 2
+
+/**
+ * The ledger as lines, newest first, optionally one who's (`whoOfSource`). A spend written with an accept or a hand
+ * bid (same source, price and card, within SPEND_TICKS: the cash that order commits) is one line with it, not two;
+ * the same order repeated in a row (the taker's proposals to teams) is one line with its count.
+ */
+export function orderLines(orders: readonly Order[], who: string, now: number): OrderLine[] {
+  const sorted = [...orders].filter((o) => who === 'all' || whoOfSource(o.agent) === who).sort((a, b) => b.id - a.id)
+  const folded = new Map<number, Order[]>()
+  const into = new Set<number>()
+  for (const s of sorted) {
+    if (s.kind !== 'spend' || s.price === null || s.price <= 0) continue
+    const host = sorted
+      .filter((o) => o.kind !== 'spend' && !into.has(o.id) && o.agent === s.agent && o.price === s.price && cardOf(o) === s.item && Math.abs(o.tick - s.tick) <= SPEND_TICKS)
+      .sort((a, b) => Math.abs(a.tick - s.tick) - Math.abs(b.tick - s.tick))[0]
+    if (!host) continue
+    into.add(host.id)
+    folded.set(s.id, [])
+    folded.set(host.id, [s])
+  }
+  const lines: OrderLine[] = []
+  for (const o of sorted) {
+    if (folded.get(o.id)?.length === 0) continue
+    const line: OrderLine = { ...lineOf(o, now), raw: [o, ...(folded.get(o.id) ?? [])], count: 1 }
+    const prev = lines.at(-1)
+    if (prev && prev.status === null && line.status === null && prev.day === line.day && prev.who === line.who && prev.verb === line.verb && prev.item === line.item && prev.price === line.price) {
+      lines[lines.length - 1] = { ...prev, raw: [...prev.raw, ...line.raw], count: prev.count + 1 }
+      continue
+    }
+    lines.push(line)
+  }
+  return lines
+}
+
+/** Who wrote the ledger, one entry per name the screen shows (every command run by hand is one: `hand`). */
+export const agentsOf = (orders: readonly Order[]): string[] => [...new Set(orders.map((o) => whoOfSource(o.agent)))].sort()
 
 /** The last change of cash in the page's own readings (the game's /me, live): its amount and tick. */
 export function lastCashChange(history: readonly { readonly tick: number; readonly cash: number }[]): { delta: number; tick: number } | null {

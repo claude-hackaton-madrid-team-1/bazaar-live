@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Db } from '../transcript/poller.ts'
-import { CAPS, HistoryPoller, SQL } from './poller.ts'
+import { CAPS, HistoryPoller, LEGACY_RETRY, LEGACY_SQL, SQL } from './poller.ts'
 
 const ROWS: Record<string, unknown[]> = {
   [SQL.points]: [{ day: '2026-10-03', tick: 1, cash: 400 }],
@@ -49,6 +49,30 @@ describe('HistoryPoller', () => {
     expect(poller.current().points).toHaveLength(1)
     expect(poller.current().parts.orders).toBe(true)
     expect(logs.some((l) => l.event === 'poll_error' && l.part === 'points')).toBe(true)
+  })
+
+  it('reads the older columns of show.our_orders while db/history.sql is not re-applied, and tries the new ones again later', async () => {
+    const logs: Record<string, unknown>[] = []
+    let outdated = true
+    const sqls: string[] = []
+    const d: Db = {
+      query: (sql) => {
+        sqls.push(sql)
+        if (sql === SQL.orders && outdated) return Promise.reject({ code: '42703', message: 'column "offer" does not exist' })
+        return Promise.resolve({ rows: sql === LEGACY_SQL.orders ? [{ id: 1, day: '2026-10-03', tick: 1, kind: 'listing', item: 'hands-off:7', agent: 'sell' }] : (ROWS[sql] ?? []) })
+      },
+    }
+    const poller = new HistoryPoller({ db: d, log: (e) => logs.push(e) })
+    await poller.pollOnce()
+    expect(poller.current().parts.orders).toBe(true)
+    expect(poller.current().orders).toEqual([{ id: 1, day: '2026-10-03', tick: 1, kind: 'listing', price: null, item: 'hands-off:7', agent: 'sell', offer: null }])
+    expect(logs.filter((l) => l.event === 'view_outdated')).toHaveLength(1)
+    expect(logs.some((l) => l.event === 'poll_error')).toBe(false)
+    outdated = false
+    for (let i = 0; i < LEGACY_RETRY; i += 1) await poller.pollOnce()
+    expect(sqls.filter((x) => x === SQL.orders)).toHaveLength(2)
+    expect(poller.current().orders[0]?.id).toBe(1)
+    expect(poller.current().orders[0]?.agent).toBe('maker')
   })
 
   it('a poke reads the six views now and the timer starts again from there; the same rows say nothing', async () => {
