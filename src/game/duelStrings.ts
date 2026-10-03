@@ -79,6 +79,28 @@ export interface DuelStrings {
   readonly topBlock: (rule: string, n: number) => string
   readonly noBlock: string
   readonly link: (n: number) => string
+  /** The live chat: one duel as a conversation (views/duelChat.ts). */
+  readonly chat: {
+    readonly title: string
+    readonly sub: string
+    readonly pick: string
+    readonly empty: string
+    readonly us: string
+    readonly live: string
+    readonly ended: string
+    readonly start: (side: 'buy' | 'sell', item: string, rival: string, limit: string | null, deadline: number | null, decay: string | null) => string
+    readonly offer: (price: string | null, days: number | null) => string
+    readonly inside: string
+    readonly outside: string
+    readonly round: (n: number, taken: string | null) => string
+    readonly jev: (verdict: string) => string
+    readonly wait: (ticks: number) => string
+    readonly accept: (done: boolean) => string
+    readonly refused: (action: 'offer' | 'accept' | 'other', why: string | null) => string
+    readonly deal: (price: string | null, rounds: number | null, gain: string | null) => string
+    readonly noDeal: (rounds: number | null) => string
+    readonly follow: string
+  }
 }
 
 const EN: DuelStrings = {
@@ -162,6 +184,28 @@ const EN: DuelStrings = {
   topBlock: (rule, n) => `blocked most by ${rule} ×${n} this game hour`,
   noBlock: 'nothing blocked this game hour',
   link: (n) => `${plural(n, 'live duel', 'live duels')} →`,
+  chat: {
+    title: 'Live chat',
+    sub: 'One duel as a conversation, tick by tick: each side\'s price and delivery day, what our duels agent did, and what every round costs. The stream carries the offers, not the words.',
+    pick: 'Duel',
+    empty: 'No duel yet.',
+    us: 'Us',
+    live: 'live',
+    ended: 'ended',
+    start: (side, item, rival, limit, deadline, decay) =>
+      `${side === 'buy' ? 'We buy' : 'We sell'} ${item} with ${rival}${limit ? ` · our ${side === 'buy' ? 'value' : 'cost'} ${limit}` : ''}${deadline != null ? ` · ends at tick ${deadline}` : ''}${decay ? ` · each round costs ${decay}` : ''}`,
+    offer: (price, days) => `${price ?? '—'}${days != null ? ` · delivery day ${days}` : ''}`,
+    inside: 'inside our limit',
+    outside: 'outside our limit',
+    round: (n, taken) => `round ${n}${taken ? `: ${taken} of the value gone` : ''}`,
+    jev: (verdict) => `Jev: ${verdict}`,
+    wait: (ticks) => `We wait ${plural(ticks, 'tick', 'ticks')}: silence costs no round`,
+    accept: (done) => (done ? 'We accept their offer' : 'We accept their offer (not sent yet)'),
+    refused: (action, why) => `${action === 'accept' ? 'Our accept' : action === 'offer' ? 'Our offer' : 'Our move'} was refused${why ? `: ${why}` : ''}`,
+    deal: (price, rounds, gain) => `Deal at ${price ?? '—'}${rounds != null ? ` · ${plural(rounds, 'round', 'rounds')}` : ''}${gain ? ` · we keep ${gain}` : ''}`,
+    noDeal: (rounds) => `No deal${rounds != null ? ` after ${plural(rounds, 'round', 'rounds')}` : ''}: it scores zero`,
+    follow: 'Follow the latest',
+  },
 }
 
 const ES: DuelStrings = {
@@ -245,6 +289,28 @@ const ES: DuelStrings = {
   topBlock: (rule, n) => `lo bloquea sobre todo ${rule} ×${n} esta hora de juego`,
   noBlock: 'nada bloqueado esta hora de juego',
   link: (n) => `${plural(n, 'duelo en curso', 'duelos en curso')} →`,
+  chat: {
+    title: 'Chat en vivo',
+    sub: 'Un duelo como conversación, turno a turno: el precio y el día de entrega de cada lado, qué hizo nuestro agente de duelos y cuánto cuesta cada ronda. El stream trae las ofertas, no las palabras.',
+    pick: 'Duelo',
+    empty: 'Aún no hay duelos.',
+    us: 'Nosotros',
+    live: 'en curso',
+    ended: 'terminado',
+    start: (side, item, rival, limit, deadline, decay) =>
+      `${side === 'buy' ? 'Compramos' : 'Vendemos'} ${item} con ${rival}${limit ? ` · nuestro ${side === 'buy' ? 'valor' : 'coste'} ${limit}` : ''}${deadline != null ? ` · termina en el turno ${deadline}` : ''}${decay ? ` · cada ronda cuesta un ${decay}` : ''}`,
+    offer: (price, days) => `${price ?? '—'}${days != null ? ` · entrega día ${days}` : ''}`,
+    inside: 'dentro de nuestro límite',
+    outside: 'fuera de nuestro límite',
+    round: (n, taken) => `ronda ${n}${taken ? `: se ha perdido un ${taken} del valor` : ''}`,
+    jev: (verdict) => `Jev: ${verdict}`,
+    wait: (ticks) => `Esperamos ${plural(ticks, 'turno', 'turnos')}: el silencio no gasta ronda`,
+    accept: (done) => (done ? 'Aceptamos su oferta' : 'Aceptamos su oferta (aún sin enviar)'),
+    refused: (action, why) => `${action === 'accept' ? 'Nuestra aceptación' : action === 'offer' ? 'Nuestra oferta' : 'Nuestro movimiento'} fue rechazad${action === 'other' ? 'o' : 'a'}${why ? `: ${why}` : ''}`,
+    deal: (price, rounds, gain) => `Trato a ${price ?? '—'}${rounds != null ? ` · ${plural(rounds, 'ronda', 'rondas')}` : ''}${gain ? ` · nos quedamos ${gain}` : ''}`,
+    noDeal: (rounds) => `Sin trato${rounds != null ? ` tras ${plural(rounds, 'ronda', 'rondas')}` : ''}: puntúa cero`,
+    follow: 'Seguir el último',
+  },
 }
 
 export const DUEL_STRINGS: Readonly<Record<Lang, DuelStrings>> = { es: ES, en: EN }

@@ -6,6 +6,7 @@ import { agoText, ruleName, spanText } from '../humanize.ts'
 import { useGameStrings } from '../strings.ts'
 import { nowTick } from '../views/decisions.ts'
 import { Badge, Empty, Panel } from './bits.tsx'
+import { DuelChat } from './DuelChat.tsx'
 import { Ago } from './words.tsx'
 
 function Pill({ r }: { r: LiveDuel }) {
@@ -268,6 +269,7 @@ export function DuelsScreen() {
           <Empty>{t.noLive}</Empty>
         )}
       </Panel>
+      <DuelChat />
       <div className="gm-split duel-split">
         <Panel title={t.record} sub={t.recordSub}>
           <Record rec={rec} />
