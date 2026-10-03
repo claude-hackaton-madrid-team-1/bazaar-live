@@ -3,7 +3,7 @@
  * market, our cash's movements, what our agents learned, the injection attempts (the judges' view), the raw stream) beside it. The server answers every path with the
  * same page (SPA fallback), so this only reads and writes `location`. Moving between screens keeps the
  * query (`?mock=1`, `?lang=`, `?theme=`, `?token=`) and drops what belongs to one screen (`?id=`, the
- * selected thread).
+ * selected thread; `?dealer=`, the negotiations' dealer).
  */
 import { useSyncExternalStore } from 'react'
 
@@ -26,7 +26,7 @@ export const PATHS: Readonly<Record<Route, string>> = {
 }
 
 /** Query parameters that belong to one screen and are dropped when moving to another. */
-const LOCAL_PARAMS = ['id']
+const LOCAL_PARAMS = ['id', 'dealer']
 
 const CHANGE = 'bazaar:route'
 

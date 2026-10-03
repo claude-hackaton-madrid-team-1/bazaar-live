@@ -76,6 +76,13 @@ const DECISIONS: Row[] = [
   { tick: 104, agent: 'broker', kind: 'venue_match', status: 'approved', guardrail: 'allowed', candidates: { ref: 'BRK-01' } },
   { tick: -1, agent: 'taker', kind: 'accept_ask', status: 'approved', guardrail: 'allowed', candidates: { ref: 'NEG-01' } },
   { tick: 105, agent: 'taker', kind: 'dealer_skip', status: 'rejected', guardrail: '-', candidates: { dealer: 'abuela', item: 'LAV-01' } },
+  // 14-18: dealer-sell selling the duplicate copy 501 of a card we hold twice (502 is the page copy, worth more).
+  // Never shown as decisions; the sale's outcome takes the value of copy 501 logged last before the sale.
+  { tick: 110, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 501, floor: 9, dealer: 'pilar', your_value: 4.5 } },
+  { tick: 112, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 501, floor: 9, dealer: 'pilar', your_value: 5 } },
+  { tick: 113, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 501, floor: 9, dealer: 'chato', your_value: 6 } },
+  { tick: 114, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 502, floor: 9, dealer: 'pilar', your_value: 60 } },
+  { tick: 125, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 501, floor: 9, dealer: 'pilar', your_value: 70 } },
 ]
 
 const dbName = `decisions_test_${randomBytes(4).toString('hex')}`
@@ -122,6 +129,10 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
     await adminDb.query(outcome, ['duel', 'duel:85', 7, 0.91, 'good', SECRET_EXPLANATION,
       { your_limit: SECRET_LIMIT, rival: SECRET_RIVAL, price: 52 }, 104, SECRET_LIMIT - 52, 'accept', true, '2026-10-03T10:00:02Z'])
     await adminDb.query(outcome, ['market_test', 'market_test:sat', null, 0.4, 'ok', SECRET_EXPLANATION, {}, 130, null, null, null, '2026-10-03T10:00:03Z'])
+    await adminDb.query(outcome, ['dealer', 'thread:190', null, 0.6, 'good', SECRET_EXPLANATION,
+      { dealer: 'pilar', item: 'assets:501', side: 'sell', fill_price: 20 }, 120, null, null, null, '2026-10-03T10:00:04Z'])
+    await adminDb.query(outcome, ['dealer', 'thread:191', null, 0.1, 'bad', SECRET_EXPLANATION,
+      { dealer: 'abuela', item: 'assets:503', side: 'sell', fill_price: 3 }, 121, null, null, null, '2026-10-03T10:00:05Z'])
     const ledger = 'insert into ledger (kind, tick, t_hours, price, item, source, slot) values ($1, $2, $3, $4, $5, $6, $7)'
     await adminDb.query(ledger, ['spend', 100, 1.6667, 24, 'LAV-08', SECRET_SOURCE, null])
     await adminDb.query(ledger, ['accept', 100, 1.6667, 24, 'LAV-08', SECRET_SOURCE, 1])
@@ -200,10 +211,19 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
 
   it('shows trade, dealer and duel outcomes, a duel without its surplus or score', async () => {
     const { rows } = await reader.query('select * from show.agent_outcomes order by scored_at')
-    expect(rows.map((r) => r.subject)).toEqual(['settlement:67', 'thread:187', 'duel:85'])
+    expect(rows.map((r) => r.subject)).toEqual(['settlement:67', 'thread:187', 'duel:85', 'thread:190', 'thread:191'])
     expect(rows[0]).toMatchObject({ target: 'trade', agent: 'taker', item: 'LAV-08', counterparty: 't05', side: 'buy', price: 24, our_value: '31.5', label: 'good', realized_surplus: '7.5', jev_verdict: 'yes', jev_right: true })
-    expect(rows[1]).toMatchObject({ target: 'dealer', agent: 'taker', item: 'LAV-08', counterparty: 'chato', price: 31, label: 'ok' })
+    expect(rows[1]).toMatchObject({ target: 'dealer', agent: 'taker', item: 'LAV-08', counterparty: 'chato', price: 31, label: 'ok', our_value: null })
     expect(rows[2]).toMatchObject({ target: 'duel', agent: 'duels', label: 'good', score: null, realized_surplus: null, price: null, item: null, counterparty: null })
+  })
+
+  it('values a dealer sale by the copy sold, as dealer-sell logged it last before the sale', async () => {
+    const { rows } = await reader.query(`select subject, side, price, our_value from show.agent_outcomes where target = 'dealer' and side = 'sell' order by subject`)
+    // copy 501 with pilar up to tick 120: not the other dealer's row, not the page copy 502, not the row after the sale
+    expect(rows).toEqual([
+      { subject: 'thread:190', side: 'sell', price: 20, our_value: '5.0' },
+      { subject: 'thread:191', side: 'sell', price: 3, our_value: null },
+    ])
   })
 
   it('sums the ledger per tick: spend net of refunds, accepts, listings', async () => {

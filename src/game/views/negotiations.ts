@@ -97,6 +97,11 @@ export type Ended = {
   readonly theirs?: number | null
   readonly ours?: number | null
   readonly price: number | null
+  /**
+   * Our value the deal is measured against: the one of the moment of the deal (a dealer sale: the copy we sold, from its
+   * scored outcome), never today's value of the card, which jumps when the copy left behind is the page card.
+   */
+  readonly value?: number | null
   /** What the deal made against our value: positive is good for us. */
   readonly edge: number | null
   readonly firstAsk: number | null
@@ -158,11 +163,14 @@ export function threadDecisions(s: State, th: Thread): DecisionRow[] {
     .sort((a, b) => a.decision - b.decision)
 }
 
-/** Our value: the latest one our agent decided with in this thread, else for this item anywhere, else /me's (held cards). */
-export function valueOf(s: State, th: Thread, own: DecisionRow[] = threadDecisions(s, th)): number | null {
+/**
+ * Our value: the latest one our agent decided with in this thread, else for this item anywhere (up to `until`: an
+ * ended thread is measured against a value of its time, not a later one), else /me's (held cards).
+ */
+export function valueOf(s: State, th: Thread, own: DecisionRow[] = threadDecisions(s, th), until = Infinity): number | null {
   const inThread = own.filter((d) => d.value != null).at(-1)?.value
   if (inThread != null) return inThread
-  const anywhere = decisionsOf(s).filter((d) => d.item === th.topic && d.value != null).sort((a, b) => a.decision - b.decision).at(-1)?.value
+  const anywhere = decisionsOf(s).filter((d) => d.item === th.topic && d.value != null && d.tick <= until).sort((a, b) => a.decision - b.decision).at(-1)?.value
   if (anywhere != null) return anywhere
   return s.values[th.topic] ?? null
 }
@@ -231,8 +239,10 @@ export function endedOf(s: State, th: Thread, value: number | null, own: Decisio
   const price = th.dealPrice ?? outcome?.price ?? null
   const firstAsk = th.offers.find((o) => o.side === 'them' && o.price != null)?.price ?? null
   if (price != null) {
-    const edge = value == null ? null : round1(th.side === 'buy' ? value - price : price - value)
-    return { how: 'deal', price, edge, firstAsk }
+    // The outcome's value is the one of the deal (a dealer sale: the copy we sold); ours may be the card's today.
+    const worth = outcome?.value ?? value
+    const edge = worth == null ? null : round1(th.side === 'buy' ? worth - price : price - worth)
+    return { how: 'deal', price, value: worth, edge, firstAsk }
   }
   const walked = own.some((d) => d.kind === 'dealer_walk' && d.status !== 'rejected')
   const lapsed = th.expiresTick != null && th.expiresTick < s.tick
@@ -285,7 +295,7 @@ export function statusOf(r: {
 export function verdictOf(r: Pick<NegRow, 'state' | 'side' | 'theirPrice' | 'gap' | 'cap' | 'value' | 'trend' | 'ended'>): Verdict {
   if (r.ended) {
     return r.ended.how === 'deal' && r.ended.price != null
-      ? { kind: 'won', price: r.ended.price, value: r.value, edge: r.ended.edge }
+      ? { kind: 'won', price: r.ended.price, value: r.ended.value ?? r.value, edge: r.ended.edge }
       : { kind: 'lost', how: r.ended.how, theirs: r.ended.theirs ?? null, ours: r.ended.ours ?? null }
   }
   const ask = r.theirPrice
@@ -325,7 +335,8 @@ const tacticsOf = (th: Thread): string[] => [...new Set(th.offers.flatMap((o) =>
 
 export function negRow(s: State, th: Thread): NegRow {
   const own = threadDecisions(s, th)
-  const value = valueOf(s, th, own)
+  const scoredAt = s.agents.outcomes.find((o) => o.subject === `thread:${th.id}`)?.tick
+  const value = valueOf(s, th, own, th.closedTick ?? scoredAt ?? Infinity)
   const ended = endedOf(s, th, value, own)
   const base = row(s, th, ended != null)
   const cap = th.side === 'buy' ? capOf(s, th, own) : null
