@@ -38,7 +38,8 @@ export type TeamThread = {
 
 export const TEAM_THREAD_LIMITS = { threads: 60, offers: 40, text: 280 }
 
-const TEAM_ID = /^t\d{1,3}$/
+/** A team's id (`t07`), as opposed to a dealer's (`abuela`). */
+export const TEAM_ID = /^t\d{1,3}$/
 
 /** A team thread: the game says `kind: team`; with no kind, both sides are team ids. */
 export function isTeamThread(p: Payload): boolean {
