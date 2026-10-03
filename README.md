@@ -14,7 +14,7 @@ generated once by hand, so it is added here when it exists; add `?mock=1` to pre
 
 ## Run
 
-Node 22.18 or newer (`.nvmrc` pins 22.22.0): the server runs TypeScript directly by stripping types.
+Node 22.18 or newer (`.nvmrc` pins 22.23.3): the server runs TypeScript directly by stripping types.
 
 ```sh
 npm ci
@@ -393,12 +393,15 @@ a url or money words only, often a venue's own format notice.
   - `shared/injections.ts` ports the recorder's own `injection_flags`, checked against its Python output. Python and
     Node ship different Unicode versions, so the port reads a text both ways: with every mark dropped (words joined)
     and with every other non-ASCII character as a break (words split). It also refuses a text that reads differently
-    than it looks: a mark other than a plain accent, or a compatibility character beyond `… º ª µ ½ ¼ ¾` and the
-    no-break space.
+    than it looks: a mark other than a plain accent (U+0300–036F, or an emoji's variation selector), a compatibility
+    character beyond `… º ª µ ½ ¼ ¾` and the no-break space, or a character that decomposes into several letters.
   - It flags whatever the recorder flags, on every code point: `server/injections/unicode-parity.test.ts` checks it
     against `server/injections/recorder-unicode.json`, which `scripts/recorder-unicode.py` writes from bazaar's Python.
     That covers what the recorder drops, what it calls odd, its look-alike letters, its case folds, and any character
-    between two words of a keyword phrase. Re-run the script after a change to `chooser.py` or a Python upgrade.
+    between two words of a keyword phrase; and no character the port lets through may read longer (a stretched gap) or
+    as nothing (two words joined) than it does to the recorder. The test's title names the runtime's Unicode version:
+    the pinned Node (`.nvmrc`, 22.23.3) ships Unicode 17, the recorder's Python 3.12 Unicode 15. Re-run the script after
+    a change to `chooser.py` or a Python upgrade.
   - The transcript mutes a dealer's quote when its RAW words have any of those shapes, or reach the view's
     1,000-character cap (`server/transcript/rows.ts`, `muted`). The server then never vouches it to the TTS proxy, and
     the page keeps it a caption, even with `?quotes=speak`. An item without the flag counts as muted.
