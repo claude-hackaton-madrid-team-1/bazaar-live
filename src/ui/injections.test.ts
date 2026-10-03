@@ -164,6 +164,16 @@ describe('empty and missing states', () => {
     expect(render(live([]))).toContain(en.empty)
   })
 
+  it('with no attempt but weak signals, says so with their count, on the screens and on the show', () => {
+    const weakOnly = live([1, 2, 3].map((id) => row(`format notice ${id}`, { id, severity: 'weak' })))
+    for (const html of [render(weakOnly), render(weakOnly, { max: 5, allHref: '/injections' })]) {
+      expect(html).toContain('No injection attempts recorded yet. 3 weak signals are logged')
+      expect(html).toContain('Show weak (3)')
+      expect(html).not.toContain('format notice 1')
+    }
+    expect(render(live([row('one', { severity: 'weak' })]))).toContain('1 weak signal is logged')
+  })
+
   it('says the log is not set up yet when the view is missing, never "nothing recorded"', () => {
     const html = render({ status: 'live', snapshot: EMPTY_INJECTIONS })
     expect(html).toContain(en.missing)
