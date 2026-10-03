@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DB_SQL, dayOf, duelRowEvents, feedRowEvent, GameDbSource, meRow } from './dbsource.ts'
+import { DB_SQL, dayOf, duelRowEvents, feedRowEvent, FIRST_OURS_ID, GameDbSource, meRow, ourOfferRows } from './dbsource.ts'
 import { duelEventId } from './duels.ts'
 import { GameHub, type GameEvent } from './relay.ts'
 import { startGame } from './start.ts'
@@ -92,6 +92,16 @@ function fakeDb(answers: Map<string, unknown[] | Error>) {
 
 const missing = (): Error => Object.assign(new Error('relation "show.game_feed" does not exist'), { code: '42P01' })
 
+describe('ourOfferRows', () => {
+  it('keeps listing rows with an offer id, with their hand flag', () => {
+    const row = { id: '7', tick: 3, type: 'offer.listed', actor: 't01', payload: { offer: { id: 9 } }, hand: true }
+    expect(ourOfferRows([row, { ...row, id: 8, hand: 'yes' }, { ...row, payload: { offer: { id: 'x' } } }, { ...row, type: 'settlement' }, null])).toEqual([
+      { id: 7, tick: 3, actor: 't01', payload: { offer: { id: 9 } }, hand: true },
+      { id: 8, tick: 3, actor: 't01', payload: { offer: { id: 9 } }, hand: false },
+    ])
+  })
+})
+
 describe('GameDbSource', () => {
   it('publishes clock, hello, me, our duels, then the feed; later polls read only what is newer', async () => {
     const answers = new Map<string, unknown[] | Error>([
@@ -100,7 +110,8 @@ describe('GameDbSource', () => {
     const db = fakeDb(answers)
     const hub = new GameHub()
     const batches: (readonly GameEvent[])[] = []
-    hub.subscribe((b) => batches.push(b))
+    // our open offers come as their own status (tested below)
+    hub.subscribe((b) => b[0]?.type !== 'offers.ours' && batches.push(b))
     const source = new GameDbSource({ db, hub, log: () => {} })
     await source.pollOnce()
     const first = batches[0] ?? []
@@ -112,7 +123,7 @@ describe('GameDbSource', () => {
     // Nothing new: nothing published. Then a new feed row, a new /me and a new message in the same duel.
     await source.pollOnce()
     expect(batches).toHaveLength(1)
-    const after = db.calls.slice(-3)
+    const after = db.calls.slice(-4, -1)
     expect(after.map((c) => c.sql)).toEqual([DB_SQL.feedAfter, DB_SQL.meAfter, DB_SQL.duelsAfter])
     expect(after[0]?.params).toEqual([21155, 500])
     expect(after[1]?.params).toEqual([ME.stamp])
@@ -125,6 +136,53 @@ describe('GameDbSource', () => {
     expect(batches[1]?.map((e) => e.type)).toEqual(['clock', 'agent.me', 'duel.message', 'settlement'])
     expect(batches[1]?.[0]?.tick).toBe(402)
     expect(batches[1]?.[2]?.id).toBe(duelEventId(274, 3))
+  })
+
+  it('publishes every open offer of ours, however far behind the feed replay it was listed, as a status replayed after the backlog', async () => {
+    // A bid listed 600 rows before the replay window, still open; a newer listing inside the window.
+    const OLD = { id: 100, tick: 300, type: 'offer.listed', actor: 't01', payload: { venue: 'v02', offer: { id: 1, maker: 't01', give: { cash: 16 }, want: { types: ['card:RET-08'] }, expires_tick: 600 } }, hand: true }
+    const answers = new Map<string, unknown[] | Error>([
+      [DB_SQL.feedFirst, FEED.slice(1)], [DB_SQL.day, [FEED[0]]], [DB_SQL.meFirst, [ME]], [DB_SQL.ours, [OLD, { id: 'odd' }]],
+    ])
+    const hub = new GameHub()
+    const statuses: GameEvent[] = []
+    hub.subscribe((b) => b.forEach((e) => e.type === 'offers.ours' && statuses.push(e)))
+    const source = new GameDbSource({ db: fakeDb(answers), hub, log: () => {}, feedBackfill: 2 })
+    await source.pollOnce()
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]).toMatchObject({ id: FIRST_OURS_ID, type: 'offers.ours', scope: 'team', payload: { offers: [{ id: 100, tick: 300, actor: 't01', hand: true, payload: OLD.payload }] } })
+    // the same offers: nothing new; one fewer: sent again
+    await source.pollOnce()
+    expect(statuses).toHaveLength(1)
+    answers.set(DB_SQL.ours, [])
+    await source.pollOnce()
+    expect(statuses.map((e) => e.payload.offers)).toEqual([[expect.objectContaining({ id: 100 })], []])
+    // a page that opens now gets the backlog first, then the latest list of ours
+    const replay = hub.replay()
+    expect(replay.at(-1)).toBe(statuses[1])
+    expect(replay.filter((e) => e.type === 'offers.ours')).toHaveLength(1)
+  })
+
+  it('keeps the source going when show.game_our_offers is not applied yet, and tries again later', async () => {
+    const logs: Record<string, unknown>[] = []
+    const onMissing = vi.fn()
+    const notYet = Object.assign(new Error('relation "show.game_our_offers" does not exist'), { code: '42P01' })
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.feedFirst, FEED.slice(1)], [DB_SQL.meFirst, [ME]], [DB_SQL.ours, notYet]])
+    const db = fakeDb(answers)
+    const hub = new GameHub()
+    const source = new GameDbSource({ db, hub, log: (e) => logs.push(e), onMissing, oursRetryPolls: 2 })
+    await source.pollOnce()
+    expect(source.viewsMissing).toBe(false)
+    expect(onMissing).not.toHaveBeenCalled()
+    expect(hub.replay().map((e) => e.type)).toContain('offer.listed')
+    await source.pollOnce()
+    await source.pollOnce()
+    expect(db.calls.filter((c) => c.sql === DB_SQL.ours)).toHaveLength(1)
+    answers.set(DB_SQL.ours, [])
+    await source.pollOnce()
+    expect(db.calls.filter((c) => c.sql === DB_SQL.ours)).toHaveLength(2)
+    expect(logs.filter((l) => l.event === 'db_our_offers_missing')).toHaveLength(1)
+    expect(hub.replay().at(-1)).toMatchObject({ type: 'offers.ours', payload: { offers: [] } })
   })
 
   it('says once that the views are missing, stops, and hands over', async () => {

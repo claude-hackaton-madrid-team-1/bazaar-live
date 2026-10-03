@@ -5,7 +5,8 @@
 --
 --   show.cash_points  our cash at every tick it changed (and the latest tick), with score and rank
 --   show.our_trades   our settlements (the feed's): buy or sell, counterparty, card, price, the fee
---   show.our_orders   what our agents committed in the ledger: listings, accepts, spends
+--   show.our_orders   what our agents committed in the ledger: listings, accepts, spends; a listing posted by hand
+--                     with its offer (side, card, venue, expiry, status) from show.game_our_offers
 --   show.our_events   feed events that move cash or stock other than a trade: a venue's bond, packs,
 --                     gifts, a level unlocked (public facts, ours only)
 --   show.score_points our score and its five parts (and cash) at every tick one of them changed (and the
@@ -14,8 +15,8 @@
 --                     and the game's own turns (a round, a Market Test, duels, a new day)
 --
 -- db/show.sql revokes everything in schema show from the reader, so apply this file after it (and after the
--- other show files), every time:
---   psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/history.sql
+-- other show files), every time. show.our_orders reads db/game.sql's show.game_our_offers: game.sql goes first.
+--   psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql
 
 create schema if not exists show;
 
@@ -63,9 +64,15 @@ select o.id, (o.received_at at time zone 'Europe/Madrid')::date as day, o.tick,
        coalesce(show.as_int(o.payload -> 'fee'), 0) as fee
   from ours o;
 
+-- A listing posted by hand (`bazaar sell ... --live` books it as item 'hands-off:<offer id>') carries that offer as
+-- show.game_our_offers (db/game.sql) has it: buy or sell, the card, the venue, when it expires and what became of it.
+-- Other rows have nulls there. New columns go last: `create or replace view` only appends.
 create or replace view show.our_orders with (security_barrier = true) as
-select l.id, (l.created_at at time zone 'Europe/Madrid')::date as day, l.kind, l.tick, l.price, l.item, l.source as agent
-  from public.ledger l;
+select l.id, (l.created_at at time zone 'Europe/Madrid')::date as day, l.kind, l.tick, l.price, l.item, l.source as agent,
+       o.offer, o.side as offer_side, o.card as offer_card, o.venue as offer_venue, o.expires_tick as offer_expires, o.status as offer_status
+  from public.ledger l
+  left join show.game_our_offers o
+    on l.kind = 'listing' and o.offer = case when l.item ~ '^hands-off:[0-9]{1,9}$' then substring(l.item from 11)::int end;
 
 create or replace view show.our_events with (security_barrier = true) as
 with us as (

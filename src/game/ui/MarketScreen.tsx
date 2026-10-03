@@ -106,6 +106,16 @@ function Side({ side, rows, tickSeconds, foot }: { side: 'buy' | 'sell'; rows: O
 
 // ---------------------------------------------------------------- ours: offers and prices
 
+/** An offer of ours posted by hand: no agent reprices or cancels it. */
+export function ByHand() {
+  const t = useGameStrings()
+  return (
+    <Badge tone="warn" title={t.market.byHandTitle}>
+      <span aria-hidden="true">✋</span> {t.market.byHand}
+    </Badge>
+  )
+}
+
 function OurOffers({ rows, tickSeconds }: { rows: OurOffer[]; tickSeconds: number }) {
   const t = useGameStrings()
   if (!rows.length) return <Empty>{t.market.noOffers}</Empty>
@@ -115,6 +125,7 @@ function OurOffers({ rows, tickSeconds }: { rows: OurOffer[]; tickSeconds: numbe
         <li key={o.offerId}>
           <Badge tone={o.side === 'ask' ? 'them' : 'us'}>{o.side === 'ask' ? t.market.weSell : t.market.weBuy}</Badge>
           <CardRef code={o.ref} />
+          {o.hand && <ByHand />}
           <span className="mkt-mine-meta">
             <b>{fmtP(o.price)}</b>
             <span className="gm-muted">

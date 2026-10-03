@@ -9,6 +9,11 @@
  * the duel events not sent before (`./duels.ts`), then the feed rows unchanged, oldest first. The first poll
  * replays a bounded window (the newest feed rows and duels). No exception ever leaves `pollOnce()`; the
  * views missing (db/game.sql not applied) is reported once, through `onMissing`, and the source stops.
+ *
+ * Our open board offers are not left to that window (an offer listed before it, still open, would vanish after a
+ * restart, and a page opened later only gets the hub's backlog): each poll also reads them all from
+ * show.game_our_offers and publishes them as one sticky status, `offers.ours`, when they changed. That view coming
+ * later than this code (an older db/game.sql) only turns that part off for a while, never the source.
  */
 import type { Db } from '../transcript/poller.ts'
 import { redact } from '../transcript/poller.ts'
@@ -31,7 +36,30 @@ export const DB_SQL = {
   duelsFirst: `select * from (select ${DUEL_COLUMNS}, ${stampOf('updated_at')}, updated_at from show.game_duels order by updated_at desc, duel desc limit $1) t order by updated_at, duel`,
   // Keyset on (updated_at, duel): the agents re-upsert every duel with one now(), so many rows share a stamp.
   duelsAfter: `select ${DUEL_COLUMNS}, ${stampOf('updated_at')} from show.game_duels where (updated_at, duel) > ($1::timestamptz, $2::int) order by updated_at, duel limit $3`,
+  /** Every board offer of ours still open, however old its listing: the listing row as the feed has it, and whether it was posted by hand. */
+  ours: `select ${FEED_COLUMNS}, hand from show.game_our_offers where status = 'open' order by id limit $1`,
 } as const
+
+/** The made-up ids of `offers.ours`: below the relay's, the decisions', the health's and the pages' own ranges. */
+export const FIRST_OURS_ID = -(2 ** 49)
+
+/** One open offer of ours in `offers.ours`: its listing row (an `offer.listed` event's fields) and whether it was posted by hand. */
+export interface OurOfferRow {
+  readonly id: number
+  readonly tick: number | null
+  readonly actor: string
+  readonly payload: Payload
+  readonly hand: boolean
+}
+
+/** `show.game_our_offers` rows → `offers.ours`' list: only listings with an offer id, never more than the row carries. */
+export function ourOfferRows(rows: readonly unknown[]): OurOfferRow[] {
+  return rows.flatMap((raw) => {
+    const e = feedRowEvent(raw)
+    if (e === null || e.type !== 'offer.listed' || !isRecord(e.payload.offer) || intOf(e.payload.offer.id) === null) return []
+    return [{ id: e.id, tick: e.tick ?? null, actor: e.actor ?? '', payload: e.payload, hand: isRecord(raw) && raw.hand === true }]
+  })
+}
 
 const isRecord = (v: unknown): v is Payload => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -113,6 +141,10 @@ export interface DbSourceDeps {
   readonly cap?: number
   /** Duels replayed on the first poll, and read per later poll. */
   readonly duelLimit?: number
+  /** Our open board offers read per poll. */
+  readonly oursLimit?: number
+  /** Polls to wait before trying show.game_our_offers again once it turned out missing. */
+  readonly oursRetryPolls?: number
   readonly maxDelayMs?: number
   readonly secrets?: readonly string[]
   readonly random?: () => number
@@ -140,11 +172,16 @@ export class GameDbSource {
   private missing = false
   private polling = false
   private again = false
+  /** What `offers.ours` last said, and how many polls to skip it for while its view is missing. */
+  private oursSent = ''
+  private oursSkip = 0
+  private oursFails = 0
+  private nextOurs = FIRST_OURS_ID
 
   constructor(deps: DbSourceDeps) {
     this.deps = deps
     this.o = {
-      intervalMs: 3000, feedBackfill: 2000, cap: 500, duelLimit: 50, maxDelayMs: 60_000, secrets: [],
+      intervalMs: 3000, feedBackfill: 2000, cap: 500, duelLimit: 50, oursLimit: 200, oursRetryPolls: 100, maxDelayMs: 60_000, secrets: [],
       random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
@@ -248,6 +285,41 @@ export class GameDbSource {
     return rows
   }
 
+  /**
+   * Our open board offers, all of them, as one sticky status sent again only when it changed (the hub replays it after
+   * its backlog, so a page opened late gets it after the older listings). Its own failures stay here: the source goes on.
+   */
+  private async publishOurs(): Promise<void> {
+    if (this.oursSkip > 0) {
+      this.oursSkip -= 1
+      return
+    }
+    try {
+      const { rows } = await this.deps.db.query(DB_SQL.ours, [this.o.oursLimit])
+      this.oursFails = 0
+      const offers = ourOfferRows(rows)
+      const sig = JSON.stringify(offers)
+      if (sig === this.oursSent) return
+      this.oursSent = sig
+      const id = this.nextOurs
+      this.nextOurs -= 1
+      this.deps.hub.publishStatus({ id, tick: this.tick ?? 0, type: 'offers.ours', scope: 'team', actor: '', payload: { offers } })
+    } catch (error: unknown) {
+      const code = (error as { code?: unknown } | null)?.code
+      if (isMissingViews(error)) {
+        if (this.oursSkip === 0 && this.oursFails === 0) this.deps.log({ route: 'game', event: 'db_our_offers_missing', code, note: 'apply db/game.sql; our older open offers wait for it' })
+        this.oursFails += 1
+        this.oursSkip = this.o.oursRetryPolls
+        return
+      }
+      this.oursFails += 1
+      if (this.oursFails === 1 || this.oursFails % 10 === 0) {
+        const text = error instanceof Error ? error.message : String(error)
+        this.deps.log({ route: 'game', event: 'db_our_offers_failed', fails: this.oursFails, code: typeof code === 'string' ? code : 'ERR', message: redact(text, this.o.secrets).slice(0, 160) })
+      }
+    }
+  }
+
   /** One poll. Never throws. */
   async pollOnce(): Promise<void> {
     if (this.missing) return
@@ -282,7 +354,10 @@ export class GameDbSource {
       this.fails = 0
     } catch (error: unknown) {
       this.failed(error)
+      return
     }
+    // After the feed: the view reads the same table, so it knows every listing the batch above carried.
+    await this.publishOurs()
   }
 
   private failed(error: unknown): void {

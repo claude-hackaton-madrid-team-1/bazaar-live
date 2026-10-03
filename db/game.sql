@@ -8,7 +8,7 @@
 -- show.sql starts by revoking everything in schema show from bazaar_live_reader: a later re-run of it
 -- drops these grants too, so re-run this file after it, every time.
 --
--- Idempotent. Six views, read by server/game/dbsource.ts behind GAME_VIEW_TOKEN (the same gate as the
+-- Idempotent. Seven views, read by server/game/dbsource.ts behind GAME_VIEW_TOKEN (the same gate as the
 -- relay of the game's API, which carries the same data):
 --   * show.game_feed      the game feed as the agents received it (public events; one world: the real game),
 --                         plus, on our own thread.message rows, the words we sent and their tactic
@@ -19,6 +19,8 @@
 --   * show.game_threads   our dealer threads
 --   * show.game_messages  the messages of our threads, with the tactic of each of ours (no embedding)
 --   * show.game_tape      the settlement tape (public)
+--   * show.game_our_offers every board offer of ours with what became of it (open, settled, cancelled, expired) and
+--                         whether it was posted by hand (a 'hands-off:<offer>' row in the ledger); db/history.sql reads it
 -- The views run with their OWNER's rights, so the role holds no grant on the tables. Never selected:
 -- collection_value, any key, an affinity that is not a number, badges, open threads; a duel's your_offer, limit_meaning,
 -- your_days_weight and its words; of a decision, anything but its tactic's id (no tactic_why,
@@ -113,6 +115,74 @@ select e.id::int as id, e.tick, e.type, e.actor,
   left join show.game_messages m
     on e.type = 'thread.message' and jsonb_typeof(e.payload) = 'object' and m.ours and m.id = show.as_int(e.payload -> 'message');
 
+-- Every board offer of ours (the feed's offer.listed with our team as the maker, whoever posted it: an agent or a
+-- person with `bazaar sell ... --live`) and what became of it, so the screens rebuild our open offers however far back
+-- they were listed (the feed replay of server/game/dbsource.ts is only the newest rows). The listing row leaves
+-- unchanged (it is in show.game_feed already), with:
+--   status  'settled' (a settlement after it moved the copy it gives, or, for a bid, brought us its card on its venue
+--           at its price before it expired: settlements name no offer), 'cancelled' (offer.cancelled, or its venue
+--           closing: that cancels every offer with no offer.cancelled each), 'expired' (its expires_tick is behind the
+--           feed's newest tick) or 'open'; whichever came first
+--   hand    a 'hands-off:<offer>' listing in the shared ledger: posted by hand, no agent manages it
+-- Our team is the one in the real world's latest /me snapshot. New columns go last.
+create or replace view show.game_our_offers with (security_barrier = true) as
+with us as (
+  select team from public.me_snapshots where world = 'real' and team is not null order by read_at desc limit 1
+), listed as materialized (
+  select e.id, e.tick, e.type, e.actor, e.payload, e.payload -> 'offer' as o, us.team,
+         show.as_int(e.payload -> 'offer' -> 'id') as offer,
+         coalesce(show.as_text(e.payload -> 'venue', 32), show.as_text(e.payload -> 'offer' -> 'venue', 32)) as venue,
+         show.as_int(e.payload -> 'offer' -> 'expires_tick') as expires_tick,
+         nullif(show.as_int(e.payload -> 'offer' -> 'want' -> 'cash'), 0) as wants,
+         nullif(show.as_int(e.payload -> 'offer' -> 'give' -> 'cash'), 0) as gives
+    from public.feed_events e
+    cross join us
+   where e.type = 'offer.listed' and jsonb_typeof(e.payload -> 'offer') = 'object' and e.payload -> 'offer' ->> 'maker' = us.team
+), shaped as materialized (
+  select l.id, l.tick, l.type, l.actor, l.payload, l.o, l.team, l.offer, l.venue, l.expires_tick,
+         case when l.wants is not null then 'ask' when l.gives is not null then 'bid' else 'swap' end as side,
+         coalesce(l.wants, l.gives) as price,
+         case when l.wants is null and l.gives is not null
+              then coalesce(show.card_in(l.o -> 'want' -> 'types'), show.as_text(l.o -> 'want' -> 'assets' -> 0 -> 'ref', 16))
+              else coalesce(show.as_text(l.o -> 'give' -> 'assets' -> 0 -> 'ref', 16), show.card_in(l.o -> 'give' -> 'types')) end as card,
+         array(select show.as_int(a -> 'id')
+                 from jsonb_array_elements(case when jsonb_typeof(l.o -> 'give' -> 'assets') = 'array' then l.o -> 'give' -> 'assets' else '[]'::jsonb end) a) as gives_assets
+    from listed l
+   where l.offer is not null
+), cancels as materialized (
+  select show.as_int(c.payload -> 'offer') as offer, c.id
+    from public.feed_events c
+   where c.type = 'offer.cancelled'
+), closings as materialized (
+  select show.as_text(c.payload -> 'venue', 32) as venue, c.id
+    from public.feed_events c
+   where c.type in ('venue.closing', 'venue.closed')
+), fills as materialized (
+  select x.id, x.tick, show.as_text(x.payload -> 'venue', 32) as venue, show.as_int(x.payload -> 'price') as price,
+         it ->> 'frm' as frm, it ->> 'to' as buyer, it ->> 'ref' as ref, show.as_int(it -> 'id') as asset
+    from public.feed_events x
+    cross join us
+    cross join lateral jsonb_array_elements(case when jsonb_typeof(x.payload -> 'items') = 'array' then x.payload -> 'items' else '[]'::jsonb end) it
+   where x.type = 'settlement' and jsonb_typeof(it) = 'object' and (it ->> 'frm' = us.team or it ->> 'to' = us.team)
+), ended as materialized (
+  select s.*,
+         (select min(k.id) from cancels k where k.offer = s.offer and k.id > s.id) as cancel_id,
+         (select min(v.id) from closings v where v.venue = s.venue and v.id > s.id) as close_id,
+         (select min(f.id) from fills f
+           where f.id > s.id and (s.expires_tick is null or f.tick is null or f.tick <= s.expires_tick)
+             and ((s.side = 'bid' and f.buyer = s.team and f.venue = s.venue and f.ref = s.card and f.price = s.price)
+               or (s.side <> 'bid' and f.frm = s.team and f.asset = any (s.gives_assets)))) as fill_id
+    from shaped s
+)
+select d.id::int as id, d.tick, d.type, d.actor, d.payload, d.offer, d.side, d.card, d.venue, d.price, d.expires_tick,
+       case when d.fill_id is not null and d.fill_id <= least(d.cancel_id, d.close_id) is not false then 'settled'
+            when coalesce(d.cancel_id, d.close_id) is not null then 'cancelled'
+            when d.expires_tick < (select max(f.tick) from public.feed_events f) then 'expired'
+            else 'open' end as status,
+       exists (select 1 from public.ledger l where l.kind = 'listing' and l.item = 'hands-off:' || d.offer) as hand
+  from ended d;
+
+
 create or replace view show.game_tape with (security_barrier = true) as
 select t.settlement_id::int as settlement_id, t.tick, t.venue, t.persona, t.buyer, t.seller, t.items, t.card_id, t.price, t.fee
   from public.tape t;
@@ -124,9 +194,9 @@ begin
   end if;
 end $$;
 
--- Its own grants (show.sql's re-run revokes them): USAGE on show, the helpers the views call, SELECT on six views.
+-- Its own grants (show.sql's re-run revokes them): USAGE on show, the helpers the views call, SELECT on seven views.
 grant usage on schema show to bazaar_live_reader;
-grant execute on function show.as_int(jsonb), show.as_text(jsonb, int) to bazaar_live_reader;
-grant select on show.game_feed, show.game_me, show.game_duels, show.game_threads, show.game_messages, show.game_tape to bazaar_live_reader;
+grant execute on function show.as_int(jsonb), show.as_text(jsonb, int), show.card_in(jsonb) to bazaar_live_reader;
+grant select on show.game_feed, show.game_me, show.game_duels, show.game_threads, show.game_messages, show.game_tape, show.game_our_offers to bazaar_live_reader;
 
 commit;

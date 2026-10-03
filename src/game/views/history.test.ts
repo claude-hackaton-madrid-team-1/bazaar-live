@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { CashPoint, TeamEvent, Trade } from '../../../shared/history.ts'
-import { cashChart, cashSummary, filterMovements, lastCashChange, movements, ordersOf, tradeAmount } from './history.ts'
+import type { CashPoint, Order, TeamEvent, Trade } from '../../../shared/history.ts'
+import { agentsOf, cashChart, cashSummary, filterMovements, lastCashChange, movements, orderLines, tradeAmount, whoOfSource } from './history.ts'
 
 const D = '2026-10-03'
 const P = (tick: number, cash: number, day = D): CashPoint => ({ day, tick, cash, score: null, rank: null })
@@ -84,8 +84,60 @@ describe('ledger and amounts', () => {
   })
 
   it('lists one agent\'s orders, newest first', () => {
-    const o = (id: number, agent: string) => ({ id, day: D, tick: id, kind: 'listing', price: 10, item: 'LAV-04', agent })
-    expect(ordersOf([o(1, 'maker'), o(3, 'taker'), o(2, 'maker')], 'maker').map((x) => x.id)).toEqual([2, 1])
+    const o = (id: number, agent: string) => ({ id, day: D, tick: id, kind: 'listing', price: 10 + id, item: 'LAV-04', agent })
+    expect(orderLines([o(1, 'maker'), o(3, 'taker'), o(2, 'maker')], 'maker', 10).map((x) => x.id)).toEqual([2, 1])
+  })
+})
+
+describe('the orders in words', () => {
+  const O = (id: number, kind: string, tick: number, price: number | null, item: string | null, agent: string, offer: Order['offer'] = null): Order => ({ id, day: D, tick, kind, price, item, agent, offer })
+  const bid = (id: number, status: NonNullable<Order['offer']>['status'], expiresTick = 120): Order['offer'] => ({ id, side: 'bid', card: 'RET-08', venue: 'v02', expiresTick, status })
+
+  it('reads a bid posted by hand as what it is: we buy that card on that venue, open, by hand, with its spend folded in', () => {
+    const lines = orderLines([O(1, 'spend', 100, 16, 'RET-08', 'sell'), O(2, 'listing', 100, 16, 'hands-off:7', 'sell', bid(7, 'open'))], 'all', 112)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({ id: 2, who: 'hand', verb: 'buy', item: 'RET-08', venue: 'v02', price: 16, status: 'open', expiresIn: 8 })
+    expect(lines[0]?.raw.map((r) => r.id)).toEqual([2, 1])
+  })
+
+  it('says what became of a hand offer: bought, sold, cancelled, expired (also when the database still says open past its tick)', () => {
+    const st = (offer: Order['offer'], now = 110) => orderLines([O(2, 'listing', 100, 16, 'hands-off:7', 'sell', offer)], 'all', now)[0]
+    expect(st(bid(7, 'settled'))).toMatchObject({ verb: 'buy', status: 'bought', expiresIn: null })
+    expect(st({ id: 7, side: 'ask', card: 'SAL-03', venue: 'rastro', expiresTick: 120, status: 'settled' })).toMatchObject({ verb: 'sell', status: 'sold' })
+    expect(st(bid(7, 'cancelled'))).toMatchObject({ status: 'cancelled', expiresIn: null })
+    expect(st(bid(7, 'expired'))).toMatchObject({ status: 'expired' })
+    expect(st(bid(7, 'open'), 121)).toMatchObject({ status: 'expired', expiresIn: null })
+    // the feed never listed it: still "an offer posted by hand", never its raw id
+    expect(st(null)).toMatchObject({ verb: 'hand', item: null, status: null })
+  })
+
+  it('maps every source to who wrote it: the agents by name, every command run by hand as one', () => {
+    expect(['taker', 'maker', 'duels', 'sell', 'dealer-sell', 'dealer-buy', 'flatten', 'mcp'].map(whoOfSource)).toEqual(['taker', 'maker', 'duels', 'hand', 'hand', 'hand', 'hand', 'mcp'])
+    expect(agentsOf([O(1, 'spend', 1, 1, 'X', 'sell'), O(2, 'accept', 1, 1, 'X', 'dealer-sell'), O(3, 'listing', 1, 1, 'X', 'maker')])).toEqual(['hand', 'maker'])
+    expect(orderLines([O(1, 'spend', 1, 1, 'LAV-01', 'sell'), O(2, 'listing', 2, 8, 'SAL-01', 'maker')], 'hand', 5).map((l) => l.id)).toEqual([1])
+  })
+
+  it('folds a spend booked a tick after its accept, and the same order repeated in a row, counted', () => {
+    const lines = orderLines([
+      O(1, 'accept', 11, 63, 'LAV-10', 'taker'), O(2, 'listing', 11, 0, 'team:1', 'taker'), O(3, 'spend', 12, 63, 'LAV-10', 'taker'),
+      O(4, 'listing', 13, 0, 'team:2', 'taker'), O(5, 'listing', 14, 0, 'team:3', 'taker'),
+    ], 'all', 20)
+    expect(lines.map((l) => [l.verb, l.count, l.tick, l.raw.map((r) => r.id)])).toEqual([['team', 3, 14, [5, 4, 2]], ['buy', 1, 11, [1, 3]]])
+  })
+
+  it('reads the agents\' rows: a sale listed, an accept with its spend, a proposal to a team, a duel, a refund', () => {
+    const lines = orderLines([
+      O(1, 'listing', 10, 8, 'SAL-01', 'maker'),
+      O(2, 'accept', 11, 63, 'LAV-10', 'taker'), O(3, 'spend', 11, 63, 'LAV-10', 'taker'),
+      O(4, 'listing', 12, 0, 'team:77', 'taker'),
+      O(5, 'accept', 13, 0, 'duel:9', 'duels'),
+      O(6, 'spend', 9, -16, 'RET-08', 'maker'),
+      O(7, 'accept', 14, 20, 'LAV-06', 'dealer-sell'),
+      O(8, 'spend', 15, 5, 'MAL-01', 'taker'),
+    ], 'all', 20)
+    expect(lines.map((l) => [l.id, l.verb, l.item])).toEqual([
+      [8, 'spend', 'MAL-01'], [7, 'sell', 'LAV-06'], [6, 'refund', 'RET-08'], [5, 'duel', 'duel:9'], [4, 'team', null], [2, 'buy', 'LAV-10'], [1, 'sell', 'SAL-01'],
+    ])
   })
 })
 

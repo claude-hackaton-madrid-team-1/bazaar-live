@@ -199,6 +199,9 @@ export class MockGame {
   private readonly board = new Map<number, Listing>()
   /** The opening board's two offers: no other team fills or cancels them, they expire. */
   private readonly pinned = new Set<number>()
+  /** Our listings as the feed carried them, for `offers.ours`; and the ones a person posted by hand. */
+  private readonly ourListings = new Map<number, GameEvent>()
+  private readonly byHand = new Set<number>()
   private packs: Asset[] = []
   private readonly decisionIds = counter(4100)
   /** The guardrail ledger per tick, as agent.ledger carries it; tick 0 is what was bought before the mock started. */
@@ -591,9 +594,20 @@ export class MockGame {
     const goods = l.asset ? { cash: 0, assets: [l.asset], types: [] } : { cash: 0, assets: [], types: [`card:${l.ref}`] }
     const cash = { cash: l.price, assets: [], types: [] }
     const [give, want] = l.side === 'ask' ? [goods, cash] : [cash, goods]
-    return this.ev('offer.listed', {
+    const e = this.ev('offer.listed', {
       venue: l.venue, offer: { id: l.id, maker: l.maker, to: null, venue: l.venue, thread: null, status: 'open', give, want, expires_tick: l.expires, created_tick: this.tick, final: false },
     }, l.maker)
+    if (l.maker === this.team) this.ourListings.set(l.id, e)
+    return e
+  }
+
+  /** What our database says of our open offers, as the server relays it each time they change (`offers.ours`). */
+  private oursNow(): GameEvent {
+    const offers = [...this.board.values()].filter((l) => l.maker === this.team).flatMap((l) => {
+      const e = this.ourListings.get(l.id)
+      return e ? [{ id: e.id, tick: e.tick, actor: e.actor, payload: e.payload, hand: this.byHand.has(l.id) }] : []
+    })
+    return { ...this.ev('offers.ours', { offers }), scope: 'team' }
   }
 
   /**
@@ -614,6 +628,14 @@ export class MockGame {
     }
     const spare = [...this.cards].filter(([, k]) => k > 1).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
     if (spare) out.push(this.post({ id: this.offerIds(), maker: 't04', venue: 't07-puesto', ref: spare, side: 'bid', price: book(spare), asset: null, expires: this.tick + 15 }))
+    // a bid of ours a person posted by hand (`bazaar sell bid --live`): no agent touches it, it stays up a long while
+    const lack = [...SET_CODES].sort((a, b) => (this.affinity[b] ?? 0) - (this.affinity[a] ?? 0))
+      .flatMap((set) => [8, 7, 6, 5].map((i) => `${set}-${pad2(i)}`)).find((r) => !this.count(r) && r !== want)
+    if (lack) {
+      const hand = this.post({ id: this.offerIds(), maker: this.team, venue: 'rastro', ref: lack, side: 'bid', price: Math.max(1, Math.round(book(lack) * 0.8)), asset: null, expires: this.tick + 60 })
+      this.byHand.add(hand.payload.offer.id)
+      out.push(hand)
+    }
     for (const e of out) this.pinned.add(e.payload.offer.id)
     return out
   }
@@ -661,7 +683,7 @@ export class MockGame {
         out.push(this.ev('agent.action', { kind: 'list', summary: `bid ${price} P for ${card(ref)} on t07-puesto` }), this.list(this.team, 't07-puesto', ref, 'bid', price))
       }
     }
-    const ours = [...this.board.values()].filter((l) => l.maker === this.team)
+    const ours = [...this.board.values()].filter((l) => l.maker === this.team && !this.byHand.has(l.id))
     if (ours.length && this.random() < 0.12) {
       const l = this.choice(ours)
       this.board.delete(l.id)
@@ -1114,7 +1136,7 @@ export class MockGame {
     const at = this.n % STEPS_PER_TICK
     if (at === 0) {
       this.tick += 1
-      out.push(this.ev('clock', { day: 'fri', tick_seconds: (STEPS_PER_TICK * MOCK_STEP_MS) / 1000 }), this.health(), ...this.expire(), ...this.settle(), ...this.observe())
+      out.push(this.ev('clock', { day: 'fri', tick_seconds: (STEPS_PER_TICK * MOCK_STEP_MS) / 1000 }), this.health(), ...this.expire(), ...this.settle(), ...this.observe(), this.oursNow())
     } else if (at === 2) {
       out.push(this.ev('agent.phase', { phase: 'decide' }))
       if (this.negs.size < 3) out.push(...this.open())

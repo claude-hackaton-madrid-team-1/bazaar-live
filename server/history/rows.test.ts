@@ -16,7 +16,11 @@ describe('history rows', () => {
   })
 
   it('reads an order and a team event, making text one line', () => {
-    expect(orderOf({ id: '77', day: '2026-10-03', tick: 397, kind: 'listing', price: 10, item: 'LAV-04', agent: 'maker' })).toEqual({ id: 77, day: '2026-10-03', tick: 397, kind: 'listing', price: 10, item: 'LAV-04', agent: 'maker' })
+    expect(orderOf({ id: '77', day: '2026-10-03', tick: 397, kind: 'listing', price: 10, item: 'LAV-04', agent: 'maker' })).toEqual({ id: 77, day: '2026-10-03', tick: 397, kind: 'listing', price: 10, item: 'LAV-04', agent: 'maker', offer: null })
+    // a listing posted by hand, with its offer as show.game_our_offers has it; an odd status drops the offer, never the row
+    const hand = { id: 2, day: '2026-10-03', tick: 300, kind: 'listing', price: 16, item: 'hands-off:7', agent: 'sell', offer: 7, offer_side: 'bid', offer_card: 'RET-08', offer_venue: 'v02', offer_expires: 320, offer_status: 'open' }
+    expect(orderOf(hand)?.offer).toEqual({ id: 7, side: 'bid', card: 'RET-08', venue: 'v02', expiresTick: 320, status: 'open' })
+    expect(orderOf({ ...hand, offer_status: 'gone' })).toMatchObject({ item: 'hands-off:7', offer: null })
     expect(teamEventOf({ id: 15697, day: '2026-10-03', tick: 262, type: 'venue.opened', venue: 'v19', bond: 250, why: 'a\nb' })).toMatchObject({ type: 'venue.opened', bond: 250, why: 'a b', pack: null })
     expect(dayOf(new Date())).toBeNull()
   })
