@@ -41,6 +41,8 @@ function Aim({ plan, levers, release }: { plan: Plan; levers: Levers; release: R
   return (
     <Panel title={t.aim} sub={t.aimSub}>
       <ul className="st-plan">
+        {t.scoring.map((line) => <li key={line}>{line}</li>)}
+        <li className="gm-muted">{t.inventory}</li>
         {plan.targets.map((pg) => (
           <li key={pg.set}>
             <b>{t.target(pg.name, pg.affinity, pg.have, pg.of)}</b>
