@@ -1,0 +1,26 @@
+.trading-depth { --depth-bid: var(--buyer-ink); --depth-ask: var(--seller-ink); }
+.trading-depth .gm-panel-head { flex-wrap: wrap; gap: 12px; }
+.trading-depth .gm-actions { flex-wrap: wrap; }
+.trading-depth label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.trading-depth select { max-width: 260px; padding: 7px 10px; border: 1px solid var(--hairline); border-radius: 6px; color: inherit; background: var(--material-solid); }
+.trading-depth-note, .trading-depth-warning { margin: 12px 16px; font-size: 12px; line-height: 1.6; color: var(--text-2); }
+.trading-depth-warning { color: var(--gm-warn); border-left: 3px solid currentColor; padding-left: 10px; }
+.trading-depth-card { border-top: 1px solid var(--hairline); padding: 16px; }
+.trading-depth-card > header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; font-size: 11px; color: var(--text-2); }
+.trading-depth-card h3 { margin: 0; font-size: 15px; color: var(--text); flex: 1; }
+.trading-depth-card h3 span { display: block; font-size: 11px; font-weight: 400; color: var(--text-2); margin-top: 4px; }
+.trading-depth-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.trading-depth-side { min-width: 0; border: 1px solid var(--hairline); border-radius: 8px; overflow: hidden; }
+.trading-depth-side h4 { margin: 0; padding: 10px 12px; display: flex; justify-content: space-between; font-size: 12px; }
+.trading-depth-side[data-side="bid"] h4 { color: var(--depth-bid); background: color-mix(in srgb, var(--depth-bid) 6%, transparent); }
+.trading-depth-side[data-side="ask"] h4 { color: var(--depth-ask); background: color-mix(in srgb, var(--depth-ask) 6%, transparent); }
+.trading-depth-table { width: 100%; font-variant-numeric: tabular-nums; }
+.trading-depth-table td, .trading-depth-table th { padding: 9px 10px; }
+.trading-depth-table small { display: block; font-size: 10px; color: var(--text-2); }
+.trading-depth-price { font-weight: 650; white-space: nowrap; }
+[data-side="bid"] .trading-depth-price { color: var(--depth-bid); }
+[data-side="ask"] .trading-depth-price { color: var(--depth-ask); }
+.trading-depth-own { display: inline-block; margin-left: 6px; color: var(--accent); font-size: 10px; }
+.trading-depth-table tr[data-ours] { background: var(--gm-well); }
+@media (max-width: 900px) { .trading-depth-pair { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .trading-depth-card { padding: 12px 8px; } .trading-depth select { max-width: 190px; } }

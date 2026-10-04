@@ -109,15 +109,15 @@ const pairOf = (m: Pick<BrokerRow, 'buyer' | 'seller' | 'makers'>, offers: strin
     : `${m.seller ?? '?'} → ${m.buyer ?? '?'}`
 
 const EN: OurMarketStrings = {
-  title: 'Our market',
+  title: 'Our broker',
   noVenue: 'We run no venue right now.',
-  venueSub: (id, mechanism) => `${id}${mechanism ? ` · ${mechanism}` : ''}`,
+  venueSub: (id, mechanism) => `${id}${mechanism ? ` · ${mechanism}` : ''} · Other teams trade here. Our cards are listed on external markets.`,
   facts: { status: 'Status', fee: 'Fee', bond: 'Bond', opened: 'Opened', trades: 'Trades', volume: 'Volume', traders: 'Traders', bench: 'Bench points' },
   status: { open: 'open', closing: 'closing', closed: 'closed' },
   fee: (bps, perCard) => (bps == null && perCard == null ? '—' : `${Math.round((bps ?? 0) / 10) / 10} %${perCard ? ` + ${p(perCard)} a card` : ''}`),
   tick: (n) => `tick ${n}`,
   tapeNote: 'Trades, volume and traders count the settlements this page has seen (its tape window).',
-  board: 'Our board now',
+  board: 'Other teams’ orders on our market',
   boardSub: (asks, bids, swaps) => [plural(asks, 'ask', 'asks'), plural(bids, 'bid', 'bids'), ...(swaps ? [plural(swaps, 'swap', 'swaps')] : [])].join(' · '),
   emptyBoard: 'Nothing on our board right now.',
   asks: 'Asks',
@@ -163,19 +163,19 @@ const EN: OurMarketStrings = {
 }
 
 const ES: OurMarketStrings = {
-  title: 'Nuestro mercado',
+  title: 'Nuestro bróker',
   noVenue: 'Ahora mismo no llevamos ningún puesto.',
-  venueSub: (id, mechanism) => `${id}${mechanism ? ` · ${mechanism}` : ''}`,
+  venueSub: (id, mechanism) => `${id}${mechanism ? ` · ${mechanism}` : ''} · Aquí operan otros equipos. Nuestras cartas se anuncian en mercados externos.`,
   facts: { status: 'Estado', fee: 'Comisión', bond: 'Fianza', opened: 'Abierto', trades: 'Tratos', volume: 'Volumen', traders: 'Equipos', bench: 'Puntos de banco' },
   status: { open: 'abierto', closing: 'cerrando', closed: 'cerrado' },
   fee: (bps, perCard) => (bps == null && perCard == null ? '—' : `${Math.round((bps ?? 0) / 10) / 10} %${perCard ? ` + ${p(perCard)} por cromo` : ''}`),
   tick: (n) => `turno ${n}`,
   tapeNote: 'Tratos, volumen y equipos cuentan las liquidaciones que esta página ha visto (su ventana de la cinta).',
-  board: 'Nuestro tablón ahora',
+  board: 'Órdenes de otros equipos en nuestro mercado',
   boardSub: (asks, bids, swaps) => [plural(asks, 'venta', 'ventas'), plural(bids, 'compra', 'compras'), ...(swaps ? [plural(swaps, 'intercambio', 'intercambios')] : [])].join(' · '),
   emptyBoard: 'Nada en nuestro tablón ahora mismo.',
-  asks: 'Ventas',
-  bids: 'Compras',
+  asks: 'Asks · ventas',
+  bids: 'Bids · compras',
   swaps: 'Intercambios',
   ours: 'nuestra',
   rival: 'rival',

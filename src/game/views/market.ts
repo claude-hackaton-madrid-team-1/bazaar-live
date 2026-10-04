@@ -427,3 +427,59 @@ export function watchPrices(s: State): { rows: WatchRow[]; untraded: number } {
     .sort((a, b) => NEED_ORDER[a.need] - NEED_ORDER[b.need] || b.trades - a.trades || a.ref.localeCompare(b.ref))
   return { rows, untraded: cards.size - rows.length }
 }
+
+// One-card ladders only: mixed trades have no comparable unit price.
+export type DepthOrder = Pick<BookOffer, 'id' | 'eventId' | 'maker' | 'to' | 'expiresTick' | 'assetIds' | 'wantAssetIds'> & {
+  price: number
+  quantity: 1
+  ours: boolean
+}
+export type CardLadder = {
+  key: string
+  venue: string
+  venueName: string
+  venueStatus: Venue['status'] | null
+  venueOwner: string | null
+  ref: string
+  bids: DepthOrder[]
+  asks: DepthOrder[]
+  /** Public quotes for this exact card on this exact venue, before fees. */
+  spread: number | null
+}
+export type TradingBook = { ladders: CardLadder[]; excluded: number }
+
+/** Observed book rows, not a fresh executable quote. Never turn missing prices into zero. */
+export function tradingBook(s: State): TradingBook {
+  const groups = new Map<string, CardLadder>()
+  let excluded = 0
+  for (const [venue, offers] of s.book) {
+    for (const o of offers.values()) {
+      if (!live(s, o)) continue
+      const goods = o.side === 'ask' ? o.give : o.want
+      const cash = o.side === 'ask' ? o.want : o.give
+      if (o.side === 'swap' || o.kind !== 'card' || o.price == null || !Number.isFinite(o.price) || o.price <= 0
+        || goods?.cards.length !== 1 || goods.cards[0] !== o.ref || goods.cash !== 0 || cash?.cards.length !== 0
+        || o.assetIds.length > 1 || o.wantAssetIds.length > 1) {
+        excluded += 1
+        continue
+      }
+      const key = `${venue}:${o.ref}`
+      let group = groups.get(key)
+      if (!group) {
+        const v = s.venues.get(venue)
+        group = { key, venue, venueName: v?.name ?? venue, venueStatus: v?.status ?? null, venueOwner: v?.owner ?? null, ref: o.ref, bids: [], asks: [], spread: null }
+        groups.set(key, group)
+      }
+      const order: DepthOrder = { id: o.id, eventId: o.eventId, maker: o.maker, to: o.to, expiresTick: o.expiresTick, assetIds: o.assetIds, wantAssetIds: o.wantAssetIds, price: o.price, quantity: 1, ours: Boolean(s.team) && o.maker === s.team }
+      ;(o.side === 'bid' ? group.bids : group.asks).push(order)
+    }
+  }
+  for (const g of groups.values()) {
+    g.bids.sort((a, b) => b.price - a.price || a.id - b.id)
+    g.asks.sort((a, b) => a.price - b.price || a.id - b.id)
+    const bid = g.bids.find((o) => o.to === null && o.wantAssetIds.length === 0)
+    const ask = g.asks.find((o) => o.to === null)
+    g.spread = bid && ask ? round1(ask.price - bid.price) : null
+  }
+  return { ladders: [...groups.values()].sort((a, b) => a.venue.localeCompare(b.venue) || a.ref.localeCompare(b.ref)), excluded }
+}
