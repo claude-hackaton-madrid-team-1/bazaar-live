@@ -43,7 +43,8 @@ export function readShowDatabase(env: Readonly<Record<string, string | undefined
  * postgres:17 with 300,000 feed events). work_mem is raised for the session: the role's temp_file_limit is 16 MB, and
  * show.game_feed's join with show.game_messages sorts feed_events (payloads included) before it can apply an ORDER BY id
  * LIMIT; at 35,600 rows that sort needed 16.5 MB on disk and every first poll of the game screens failed with 53400
- * (2026-10-04). In memory it takes 18 MB, once per poll, on two connections at most.
+ * (2026-10-04). In memory it takes 18 MB, once per poll. work_mem is per sort or hash node, for every query on this pool
+ * (the shared one holds three connections): a few hundred MB in the very worst case, far below what the server has.
  */
 export function poolOptions(url: string, max = 2): pg.PoolConfig {
   return {
