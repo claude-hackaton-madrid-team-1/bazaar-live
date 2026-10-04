@@ -5,9 +5,9 @@
  * Nothing here ever reaches the show's director, its speech queue or the TTS proxy: the panel only renders text.
  * server/injections/isolation.test.ts checks that no module of the show's voice pipeline imports this one.
  */
-import { useEffect, useState } from 'react'
 import { EMPTY_INJECTIONS, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
 import type { Lang } from '../../shared/lang.ts'
+import { usePolled } from '../net/poll.ts'
 
 export type InjectionsStatus = 'loading' | 'live' | 'off' | 'error' | 'mock'
 
@@ -142,31 +142,8 @@ export function injectionsStateOf(httpStatus: number, body: unknown, prev: Injec
 }
 
 export function useInjections(mock: boolean): InjectionsState {
-  const [state, setState] = useState<InjectionsState>({ status: 'loading', snapshot: EMPTY_INJECTIONS })
-  useEffect(() => {
-    if (mock) return
-    let stopped = false
-    let controller: AbortController | null = null
-    const read = async (): Promise<void> => {
-      controller?.abort()
-      controller = new AbortController()
-      try {
-        // revalidated with the server's ETag: an unchanged list costs a 304
-        const res = await fetch('/api/injections', { signal: controller.signal, cache: 'no-cache' })
-        const body: unknown = await res.json().catch(() => null)
-        if (!stopped) setState((s) => injectionsStateOf(res.status, body, s.snapshot))
-      } catch (error: unknown) {
-        if (!stopped && !(error instanceof DOMException && error.name === 'AbortError')) setState((s) => ({ status: 'error', snapshot: s.snapshot }))
-      }
-    }
-    void read()
-    const timer = setInterval(() => void read(), POLL_MS)
-    return () => {
-      stopped = true
-      clearInterval(timer)
-      controller?.abort()
-    }
-  }, [mock])
+  // revalidated with the server's ETag: an unchanged list costs a 304
+  const state = usePolled<InjectionsState>(mock ? null : '/api/injections', { status: 'loading', snapshot: EMPTY_INJECTIONS }, POLL_MS, null, injectionsStateOf, 'no-cache')
   return mock ? { status: 'mock', snapshot: MOCK_INJECTIONS } : state
 }
 
