@@ -145,3 +145,28 @@ it('displays the private ACK bridge history without speaking it, even when owner
   expect(item?.beat.lines[0]?.text).toBe('Oferta pública real en v19.')
   expect(item?.speak).toBe(false)
 })
+
+it('dispatches an acknowledged Sales quote after a busy dealer tick instead of pruning it', async () => {
+  const words = 'I can offer fifteen primas for your card.'
+  const spoken: string[] = []
+  const show = new ShowEngine({
+    speech: new SpeechQueue({ provider: { name: 'webspeech', speak: async (u) => { spoken.push(u.text) } } }),
+    lang: 'en', idle: false, sleep: () => Promise.resolve(),
+  })
+  show.ingestGame([
+    event(0, 'agent.hello', { team: 't01' }),
+    event(1, 'agent.decision', { decision: 1, agent: 'sales', kind: 'team_open', status: 'done', trade: { threadId: 44 } }),
+  ], true)
+  show.ingestGame([
+    event(2, 'duel.result', { duel: 3, deal: true }),
+    event(3, 'thread.message', { thread: 44, sender: 't01', text: words }),
+  ], false)
+  // The public worker heartbeat advances while the preceding scene occupies the stage.
+  show.ingest({ key: 'taker-tick101', id: 9, tick: 101, type: 'agent.tick', agent: 'taker', t: null, mode: 'live' }, false)
+  show.start()
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(spoken).toContain(words)
+    expect(show.getSnapshot().transcript.find((row) => row.text === words)?.kind).not.toBe('skipped')
+  } finally { show.stop() }
+})
