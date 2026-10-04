@@ -35,6 +35,11 @@ describe('Sales conversations in the existing protected feed', () => {
     expect(view.conversations[0]?.messages[0]?.text).toBe('I can exchange this card.')
   })
   it('hides private conversations while locked or showing replay', () => {
-    for (const props of [{ status: 'locked' as const }, { status: 'live' as const, replay: true }]) expect(renderToStaticMarkup(createElement(SalesPanel, { threads: conversation(), ...props }))).toBe('')
+    for (const props of [{ status: 'locked' as const }, { status: 'off' as const }, { status: 'live' as const, replay: true }]) {
+      const html = renderToStaticMarkup(createElement(SalesPanel, { threads: conversation(), ...props }))
+      expect(html).toContain('Agente de ventas')
+      expect(html).toContain('sesión autorizada')
+      for (const secret of ['t18', 'v28', 'RET-01', 'exchange', 'not executed']) expect(html).not.toContain(secret)
+    }
   })
 })

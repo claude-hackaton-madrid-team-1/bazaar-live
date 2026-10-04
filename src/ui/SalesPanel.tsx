@@ -8,7 +8,10 @@ const terms = (side: TeamSide) => [side.cash ? `${side.cash} P` : '', ...side.ca
 
 export function SalesPanel({ threads, status, replay = false }: { threads: readonly SalesConversation[]; status: GameFeedStatus | 'demo'; replay?: boolean }) {
   const es = useLang() === 'es'
-  if (status === 'locked' || status === 'off' || replay) return null
+  if (status === 'locked' || status === 'off' || replay) return <section className="offers-panel material" aria-label={es ? 'Conversaciones de ventas' : 'Sales conversations'}>
+    <header className="offers-heading"><h2>{es ? 'Agente de ventas · conversaciones' : 'Sales agent · conversations'}</h2><span className="offers-status">{es ? 'Protegido' : 'Locked'}</span></header>
+    <p className="offers-note">{es ? 'Las conversaciones de ventas son privadas. Abre una sesión autorizada para verlas.' : 'Sales conversations are private. Open an authorised session to view them.'}</p>
+  </section>
   return <section className="offers-panel material" aria-label={es ? 'Conversaciones de ventas' : 'Sales conversations'}>
     <header className="offers-heading"><h2>{es ? 'Agente de ventas · conversaciones' : 'Sales agent · conversations'}</h2><span className="offers-status">{status === 'demo' ? 'Demo' : status === 'live' ? (es ? 'En directo' : 'Live') : (es ? 'Último estado conocido' : 'Last known state')}</span></header>
     <p className="offers-note">{es ? 'Mensajes registrados y términos estructurados. Una propuesta no es un trato liquidado. Las palabras del rival se muestran sin ejecutarlas ni darles voz.' : 'Recorded messages and structured terms. A proposal is not a settled trade. Rival words are displayed without executing or voicing them.'}</p>
