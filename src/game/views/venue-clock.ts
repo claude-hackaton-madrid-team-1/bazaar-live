@@ -41,21 +41,24 @@ export function startsOf(sources: readonly (readonly BenchStart[])[], now: numbe
   return out.sort((a, b) => a.startTick - b.startTick)
 }
 
-/** The most common gap between consecutive starts (the cadence the game keeps), else DEFAULT_CADENCE. */
-export function cadenceOf(starts: readonly BenchStart[]): number {
-  const gaps = new Map<number, number>()
-  for (let i = 1; i < starts.length; i++) {
-    const gap = (starts[i]?.startTick ?? 0) - (starts[i - 1]?.startTick ?? 0)
-    if (gap > 0) gaps.set(gap, (gaps.get(gap) ?? 0) + 1)
-  }
+/** The most common of these gaps (the cadence the game keeps), else DEFAULT_CADENCE; a tie goes to DEFAULT_CADENCE. */
+export function commonGap(gaps: readonly number[]): number {
+  const count = new Map<number, number>()
+  for (const gap of gaps) if (gap > 0) count.set(gap, (count.get(gap) ?? 0) + 1)
   let best = DEFAULT_CADENCE
   let seen = 0
-  for (const [gap, n] of gaps) if (n > seen || (n === seen && gap === DEFAULT_CADENCE)) [best, seen] = [gap, n]
+  for (const [gap, n] of count) if (n > seen || (n === seen && gap === DEFAULT_CADENCE)) [best, seen] = [gap, n]
   return best
 }
 
-export function benchClock(starts: readonly BenchStart[], now: number): BenchClock {
-  const cadence = cadenceOf(starts)
+/** The gaps between consecutive starts of one run. */
+export const gapsOf = (starts: readonly BenchStart[]): number[] => starts.slice(1).map((s, i) => s.startTick - (starts[i]?.startTick ?? s.startTick))
+
+/** The most common gap between consecutive starts, else DEFAULT_CADENCE. */
+export const cadenceOf = (starts: readonly BenchStart[]): number => commonGap(gapsOf(starts))
+
+/** `cadence`: the gap the game keeps when known from elsewhere (earlier days, the mock); else read from these starts. */
+export function benchClock(starts: readonly BenchStart[], now: number, cadence: number = cadenceOf(starts)): BenchClock {
   const last = starts.at(-1) ?? null
   if (!last) return { running: null, next: null, last: null, cadence }
   const ticks = last.ticks > 0 ? last.ticks : DEFAULT_TICKS

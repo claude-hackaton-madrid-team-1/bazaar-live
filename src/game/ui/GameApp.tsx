@@ -1,5 +1,5 @@
 /**
- * The game screens: our agent, our strategy, negotiations, duels, album, the rivals' albums, market, our cash's movements, what our agents learned,
+ * The game screens: our agent, our strategy, negotiations, duels, album, the rivals' albums, market, our venue, our cash's movements, what our agents learned,
  * the raw stream and the approvals of big trades, fed by the server's relay of the game (or the mock game with `?mock=1`). Loaded on demand: the
  * show never pays for it.
  */
@@ -24,6 +24,7 @@ import { NegotiationsScreen } from './NegotiationsScreen.tsx'
 import { PricesScreen } from './PricesScreen.tsx'
 import { RivalsScreen } from './RivalsScreen.tsx'
 import { StrategyScreen } from './StrategyScreen.tsx'
+import { VenueScreen } from './VenueScreen.tsx'
 import './game.css'
 
 const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
@@ -34,6 +35,8 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   album: () => <AlbumScreen />,
   rivals: () => <RivalsScreen />,
   market: () => <MarketScreen />,
+  // our venue and the Market Test: the next session, the one on now, what our broker did with each book
+  venue: () => <VenueScreen />,
   // the live price guide: standard price, trend, best bid and ask, a good deal for us (the stream over a WebSocket)
   prices: () => <PricesScreen />,
   history: () => <HistoryScreen />,
