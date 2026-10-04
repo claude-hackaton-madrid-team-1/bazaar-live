@@ -12,7 +12,11 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "start": "node server/index.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run --exclude \"db/**\"",
+    "test:integration": "vitest run --no-file-parallelism db",
+    "format:check": "eslint . --config eslint.format.config.js",
+    "format": "eslint . --config eslint.format.config.js --fix"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

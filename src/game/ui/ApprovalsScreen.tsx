@@ -1,3 +1,4 @@
+import { OperatorDesk } from './OperatorDesk.tsx'
 /**
  * The Approvals screen (HA2): every buy or sell our agents may not make alone (priced at or above
  * `human_approval_above`) waits here for a human yes or no. A password unlocks it; the server holds every token and
@@ -50,7 +51,7 @@ export function ApprovalsScreen() {
     )
   }
   if (csrf === null) return <Unlock onIn={setCsrf} />
-  return <Approvals csrf={csrf} onExpired={expired} onLock={lock} />
+  return <><OperatorDesk csrf={csrf} /><Approvals csrf={csrf} onExpired={expired} onLock={lock} /></>
 }
 
 function loginMessage(t: ReturnType<typeof useApprovalsStrings>, out: Exclude<LoginOutcome, { kind: 'in' }>): string {

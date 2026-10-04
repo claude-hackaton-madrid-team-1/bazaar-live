@@ -9,7 +9,7 @@
  * Imported by the browser bundle and by the Node proxy (server/), so it has no imports of its own.
  */
 
-export const SPEAKERS = ['buyer', 'seller', 'abuela', 'chato', 'pilar', 'guest1', 'guest2', 'guest3', 'narrator'] as const
+export const SPEAKERS = ['buyer', 'seller', 'abuela', 'chato', 'pilar', 'guest1', 'guest2', 'guest3', 'narrator', 'jev'] as const
 export type Speaker = (typeof SPEAKERS)[number]
 
 /** The dealers we know by id: each has its own voice and caption. */

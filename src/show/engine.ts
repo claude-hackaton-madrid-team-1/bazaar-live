@@ -15,6 +15,8 @@ import { holdsBeat, situationBeat, situationBeatIfFresh, toBeat, type DialogueCo
 import { Director } from './director'
 import { LineMemory } from './memory'
 import { situationOf } from './situation'
+import { Broadcast, type Activity } from './broadcast'
+import type { GameFeedStatus } from '../game/feed'
 
 export interface BoardCard {
   readonly key: string
@@ -52,6 +54,9 @@ export interface Flash {
 }
 
 export interface ShowState {
+  readonly activity: readonly Activity[]
+  readonly gameClock: { readonly tick: number | null; readonly seconds: number | null }
+  readonly broadcastStatus: GameFeedStatus | 'demo'
   readonly beat: Beat | null
   readonly line: Line | null
   readonly board: readonly BoardCard[]
@@ -76,8 +81,6 @@ const IDLE_AFTER_MS = 35_000
 const IDLE_AFTER_CLOSED_MS = 22_000
 /** The neighbourhoods that arrive after day one (RULES.md: El Retiro on Saturday, Chamberí on Sunday). */
 const LATE_HOODS: ReadonlySet<string> = new Set(['RET', 'CHA'])
-/** The Market Test runs every two game hours (RULES.md): a session starts each time this slot changes. */
-const MARKET_TEST_HOURS = 2
 const NOTIFY_MS = 16
 /** How many situations the idle talk tries before it decides to keep quiet. */
 const AMBIENT_ATTEMPTS = 4
@@ -86,6 +89,9 @@ const INSTANT_VOICE_MS = 250
 const STALE_TICKS = 2
 
 export const INITIAL_STATE: ShowState = {
+  activity: [],
+  gameClock: { tick: null, seconds: null },
+  broadcastStatus: 'locked',
   beat: null,
   line: null,
   board: [],
@@ -184,6 +190,7 @@ export function syncBoard(
 }
 
 export class ShowEngine {
+  private readonly broadcast = new Broadcast()
   private state: ShowState = INITIAL_STATE
   private readonly listeners = new Set<() => void>()
   private readonly speech: SpeechQueue
@@ -199,7 +206,6 @@ export class ShowEngine {
   /** Late neighbourhoods already seen (or announced), and the Market Test slot last seen. */
   private readonly seenHoods = new Set<string>()
   private freshHood: string | null = null
-  private marketTestSlot: number | null = null
   private freshMarketTest = false
   /** When the stage last did something (a live event, a scene ended, a line of situation talk), in real time. */
   private activityAt = Date.now()
@@ -261,6 +267,27 @@ export class ShowEngine {
     this.set({ health: { ...this.state.health, [agent]: health } })
   }
 
+  setBroadcastStatus(status: ShowState['broadcastStatus']): void {
+    this.set({ broadcastStatus: status })
+  }
+
+  private activityWith(item: Activity): readonly Activity[] {
+    const rows = [...this.state.activity.filter((row) => row.id !== item.id), item]
+    // Keep three per category: a busy dealer cannot erase the latest duel or incident.
+    return rows.filter((row, i) => rows.slice(i + 1).filter((next) => next.category === row.category).length < 3)
+  }
+
+  /** Structured events from the existing authorized game stream, never game commands. */
+  ingestGame(events: readonly unknown[], replay: boolean): void {
+    for (const event of events) {
+      const item = this.broadcast.receive(event, replay, this.lang)
+      if (!item) continue
+      this.set({ activity: this.activityWith(item.activity), gameClock: { tick: this.broadcast.tick, seconds: this.broadcast.seconds } })
+      if (item.speak) this.ingestBeat(item.beat, false)
+      else if (replay) this.set({ transcript: this.appendLines(item.beat, 'history') })
+    }
+  }
+
   /**
    * Changes the language of everything said from now on: the beat being played stops, the queued beats
    * and the queued voices of the old language are dropped, and the next lines come from the new pack.
@@ -308,7 +335,7 @@ export class ShowEngine {
       const heartbeat = replay ? this.state.heartbeat : { ...this.state.heartbeat, [event.agent]: this.state.heartbeat[event.agent] + 1 }
       this.set({ ticks: { ...this.state.ticks, [event.agent]: event.tick }, heartbeat })
       if (!replay) {
-        this.noticeClock(event.t)
+        if (event.tick !== null) this.director.advanceTick(event.tick).forEach((beat) => this.set({ transcript: this.appendLines(beat, 'skipped') }))
         this.announce()
         this.wake?.()
       }
@@ -330,7 +357,12 @@ export class ShowEngine {
 
   /** A beat from any source (an agent's event, a real conversation): history to the captions, or a scene. */
   ingestBeat(beat: Beat, replay: boolean): void {
-    if (replay || this.isStale(beat.agent, beat.tick)) {
+    if (!beat.id.startsWith('broadcast:')) {
+      const category: Activity['category'] = beat.cue.kind === 'fail' ? 'incident' : beat.cue.kind === 'post' || beat.cue.kind === 'reprice' ? 'market' : 'dealer'
+      const text = beat.lines.find((line) => !line.silent)?.text ?? ''
+      if (text) this.set({ activity: this.activityWith({ id: beat.id, tick: beat.tick, category, text, reference: beat.note ?? '', history: replay }) })
+    }
+    if (replay || (!beat.id.startsWith('broadcast:') && this.isStale(beat.agent, beat.tick))) {
       this.set({ board: this.boardAfter(beat), transcript: this.appendLines(beat, 'history') })
       return
     }
@@ -350,14 +382,6 @@ export class ShowEngine {
     if (!LATE_HOODS.has(set) || this.seenHoods.has(set)) return
     this.seenHoods.add(set)
     if (live) this.freshHood = HOODS[set] ?? null
-  }
-
-  /** The Market Test starts a session every two game hours: a new slot on a live tick is one. */
-  private noticeClock(t: number | null): void {
-    if (t === null) return
-    const slot = Math.floor(t / MARKET_TEST_HOURS)
-    if (this.marketTestSlot !== null && slot > this.marketTestSlot) this.freshMarketTest = true
-    this.marketTestSlot = slot
   }
 
   /** What the stage knows about the world, for the situation it talks about when it is idle. */

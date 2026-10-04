@@ -11,7 +11,7 @@ export const MCP_TIMEOUT_MS = 8000
 const PROTOCOL_VERSION = '2025-06-18'
 const MAX_REPLY = 512 * 1024
 
-export type HumanTool = 'approvals' | 'approve' | 'revoke'
+export type HumanTool = 'approvals' | 'approve' | 'revoke' | 'operator_propose' | 'operator_review' | 'operator_approve' | 'operator_execute' | 'operator_snapshot'
 
 /** bazaar-mcp did not answer as the contract says: down, refused (401/403/429), timed out, or a malformed reply. */
 export class McpUnavailable extends Error {
@@ -103,7 +103,7 @@ export function createMcpClient(deps: McpClientDeps): (tool: HumanTool, args: Re
           'content-type': 'application/json',
           'mcp-protocol-version': PROTOCOL_VERSION,
           authorization: `Bearer ${deps.config.mcpToken}`,
-          'x-approver-token': deps.config.approverToken,
+          ...(tool === 'operator_propose' || tool === 'operator_snapshot' ? {} : { 'x-approver-token': deps.config.approverToken }),
         },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: tool, arguments: args } }),
         signal: AbortSignal.timeout(deps.timeoutMs ?? MCP_TIMEOUT_MS),

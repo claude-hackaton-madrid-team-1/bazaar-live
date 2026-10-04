@@ -1,3 +1,4 @@
+import { actionOf, proposalIdOf, proposalOf, record, resultOf, snapshotOf, termsOf } from '../../shared/operator.ts'
 /**
  * The Approvals screen's API (HA2): a human approves or denies the big trades our own agents refused, through
  * bazaar-mcp's human tools, called from here. The browser never sees a token: it holds a session cookie (HttpOnly,
@@ -32,9 +33,9 @@ const MAX_BODY = 1024
 const MAX_PASSWORD = 512
 const UNAVAILABLE = { error: 'approvals unavailable' }
 
-type Route = 'session' | 'login' | 'logout' | 'approvals' | 'approve' | 'revoke'
+type Route = 'session' | 'login' | 'logout' | 'approvals' | 'approve' | 'revoke' | 'proposal' | 'review' | 'confirm' | 'status'
 const METHOD: Readonly<Record<Route, 'GET' | 'POST'>> = {
-  session: 'GET', login: 'POST', logout: 'POST', approvals: 'GET', approve: 'POST', revoke: 'POST',
+  session: 'GET', login: 'POST', logout: 'POST', approvals: 'GET', approve: 'POST', revoke: 'POST', proposal: 'POST', review: 'POST', confirm: 'POST', status: 'POST',
 }
 const isRoute = (s: string): s is Route => Object.hasOwn(METHOD, s)
 
@@ -131,13 +132,13 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
   }
 
   /** A JSON body of at most MAX_BODY bytes, parsed; or the reply already sent. */
-  async function body(req: IncomingMessage, res: ServerResponse, reply: Reply): Promise<{ ok: true; value: unknown } | { ok: false }> {
+  async function body(req: IncomingMessage, res: ServerResponse, reply: Reply, maxBody = MAX_BODY): Promise<{ ok: true; value: unknown } | { ok: false }> {
     const mediaType = String(req.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase()
     if (mediaType !== 'application/json') {
       reply(415, { error: 'json_only' })
       return { ok: false }
     }
-    const raw = await deps.readBody(req, MAX_BODY)
+    const raw = await deps.readBody(req, maxBody)
     if (raw === null) {
       res.on('finish', () => req.socket.destroy())
       reply(413, { error: 'too_large' }, { Connection: 'close' })
@@ -259,6 +260,40 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     reply(answer.status, answer.body, answer.extra)
   }
 
+  async function operator(req: IncomingMessage, res: ServerResponse, reply: Reply, route: 'proposal' | 'review' | 'confirm' | 'status'): Promise<void> {
+    const session = writer(req, reply)
+    if (!session) return
+    const parsed = await body(req, res, reply, 4096)
+    if (!parsed.ok) return
+    const input = parsed.value
+    if (!record(input)) return reply(400, { error: 'bad_request' })
+    if (!writeAllowed(session, reply)) return
+    if (route === 'status') {
+      const answer = await tool('operator_snapshot', {}, snapshotOf)
+      return reply(answer.status, answer.body)
+    }
+    if (route === 'proposal') {
+      const action = actionOf(input.action)
+      if (!action) return reply(400, { error: 'bad_request' })
+      const answer = await tool('operator_propose', { action, ttl_ticks: 4 }, proposalOf)
+      return reply(answer.status, answer.body)
+    }
+    if (!proposalIdOf(input.proposal_id)) return reply(400, { error: 'bad_request' })
+    const args = { proposal_id: input.proposal_id }
+    const reviewed = await tool('operator_review', args, proposalOf)
+    if (route === 'review' || reviewed.status !== 200) return reply(reviewed.status, reviewed.body)
+    const proposal = proposalOf(reviewed.body)
+    const expected = actionOf(input.action)
+    const expectedTerms = termsOf(input.terms)
+    if (!proposal || proposal.proposal_id !== input.proposal_id || !expected || !expectedTerms || JSON.stringify(expectedTerms) !== JSON.stringify(proposal.terms) || !proposal.allowed || JSON.stringify(proposal.action) !== JSON.stringify(expected)) return reply(409, { error: 'proposal_changed' })
+    const approved = await tool('operator_approve', args, (v) => record(v) && v.status === 'approved' ? { status: 'approved' } : null)
+    if (approved.status !== 200) return reply(approved.status, approved.body)
+    const answer = await tool('operator_execute', args, resultOf)
+    generation += 1
+    snapshot = null
+    reply(answer.status, answer.body)
+  }
+
   return async (req, res, path) => {
     if (!path.startsWith(PREFIX)) return false
     const route = path.slice(PREFIX.length)
@@ -308,6 +343,12 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
         reply(answer.status, answer.body, answer.extra)
         return true
       }
+      case 'status':
+      case 'proposal':
+      case 'review':
+      case 'confirm':
+        await operator(req, res, reply, route)
+        return true
       case 'approve':
       case 'revoke':
         await write(req, res, reply, route)

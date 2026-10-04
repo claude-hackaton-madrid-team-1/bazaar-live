@@ -133,7 +133,7 @@ describe.skipIf(!ADMIN_URL)('db/history.sql score views (local Postgres)', () =>
   })
 
   it("puts an agent's start on its day by order, though Sunday's clock runs past Saturday's tick", async () => {
-    const r = await reader.query("select kind, id::int, day::text as day, tick, agent, action, note from show.score_marks order by day, tick, kind")
+    const r = await reader.query('select kind, id::int, day::text as day, tick, agent, action, note from show.score_marks order by day, tick, kind')
     expect(r.rows).toEqual([
       { kind: 'game', id: 10907, day: '2026-10-03', tick: 159, agent: null, action: 'day', note: 'Saturday' },
       { kind: 'game', id: 10941, day: '2026-10-03', tick: 160, agent: null, action: 'round', note: 'Round 2 starts' },

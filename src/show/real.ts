@@ -12,7 +12,7 @@ import { detectLang, type QuoteLang } from '../../shared/detect-lang.ts'
 import { looksLikeInjection } from '../../shared/injections.ts'
 import type { Lang } from '../../shared/lang.ts'
 import { duelEndLine, duelOfferLine, offerLine, openedLine, settlementLine } from '../../shared/real-lines.ts'
-import { dealerSpeaker, isGuest } from '../../shared/tags.ts'
+import { dealerSpeaker, guestSpeaker, isGuest } from '../../shared/tags.ts'
 import type { DuelLine, OfferView, TranscriptItem, Who } from '../../shared/transcript.ts'
 import { PRIORITY, type Beat, type Cue, type Line, type Speaker } from './beat'
 import { dealerId } from './words'
@@ -46,7 +46,7 @@ export function planQuote(text: string, selected: Lang): QuotePlan {
 const MAX_REPLAY_LINES = 6
 
 /** Every dealer speaks with its own voice: a known one by id, any other dealer with a guest voice. */
-const speakerOfDealer = (counterpart: string | null): Speaker => dealerSpeaker(counterpart) ?? 'narrator'
+const speakerOfDealer = (counterpart: string | null): Speaker => dealerSpeaker(counterpart) ?? (counterpart && /^t\d{1,3}$/i.test(counterpart) ? guestSpeaker(counterpart) : 'narrator')
 
 /** A guest voice's lines carry the dealer's id, so the captions can show its name, not the voice's slot. */
 const dealerLines = (counterpart: string | null, lines: readonly Line[]): Line[] =>
@@ -95,15 +95,15 @@ function threadLine(item: TranscriptItem, lang: Lang, opts: RealOptions): Beat |
     cue,
     // A dealer's words are voiced by its own voice; a counterpart with no dealer voice (a team) is a caption, and so
     // is a quote the server muted (its raw words had an injection's shape).
-    lines: dealerLines(item.counterpart, quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, { speakQuotes: opts.speakQuotes && speakerOfDealer(item.counterpart) !== 'narrator' && item.muted !== true })),
+    lines: dealerLines(item.counterpart, quoteLines(speakerOfDealer(item.counterpart), item.text, generated, lang, { speakQuotes: opts.speakQuotes && dealerSpeaker(item.counterpart) !== null && item.muted !== true })),
   })
 }
 
 function duelReplay(item: TranscriptItem, lang: Lang): Beat | null {
   const ours: Speaker = item.role === 'seller' ? 'seller' : 'buyer'
-  const theirs: Speaker = ours === 'seller' ? 'buyer' : 'seller'
+  const theirs: Speaker = guestSpeaker(item.counterpart ?? 'rival')
   const chair = (who: Who): Speaker => (who === 'us' ? ours : theirs)
-  const said = (l: DuelLine): Line[] => quoteLines(chair(l.speaker), l.text, l.price === null ? null : duelOfferLine(l.speaker, l.price, lang), lang, NO_VOICE)
+  const said = (l: DuelLine): Line[] => dealerLines(l.speaker === 'us' ? null : item.counterpart, quoteLines(chair(l.speaker), l.text, l.price === null ? null : duelOfferLine(l.speaker, l.price, lang), lang, NO_VOICE))
   const status = item.status === 'deal' ? 'deal' : 'no_deal'
   const lines = [...item.lines.slice(-MAX_REPLAY_LINES).flatMap(said), spoken('narrator', duelEndLine(status, item.price, lang), lang)]
   return beatOf(item, {

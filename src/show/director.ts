@@ -1,6 +1,6 @@
 /**
- * The director decides what the stage plays next. Beats play in arrival order (the story reads
- * left to right: list, reach, handshake), but a busy tick cannot wait forever: past `maxQueue` the
+ * The director decides what the stage plays next. Urgent results play before routine updates, while equal-priority events retain arrival order.
+ * A busy tick cannot wait forever: past `maxQueue` the
  * least interesting beat is dropped, a low-priority beat that waited longer than `maxAgeMs` is skipped,
  * and a run of holds becomes one line. Dropped beats are returned so the transcript still has them.
  */
@@ -19,7 +19,7 @@ export interface DirectorOptions {
 
 const DEFAULTS: DirectorOptions = {
   maxQueue: 8,
-  maxAgeMs: 40_000,
+  maxAgeMs: 15_000,
   keepPriority: PRIORITY.dealer,
   now: () => Date.now(),
   mergeHolds: (holds) => holdsBeat(holds, { lang: 'es' }),
@@ -54,9 +54,23 @@ export class Director {
     return dropped
   }
 
+  /** Old routine activity stays in history, without holding up the current game tick. */
+  advanceTick(tick: number): Beat[] {
+    const stale = this.queue.filter(({ beat }) => beat.tick !== null && beat.tick < tick && beat.priority < PRIORITY.dealer)
+    const removed = new Set(stale)
+    this.queue = this.queue.filter((q) => !removed.has(q))
+    return stale.map((q) => q.beat)
+  }
+
   /** The next beat to play and the stale ones skipped on the way. */
   next(): { beat: Beat | null; skipped: Beat[] } {
     const skipped: Beat[] = []
+    // ponytail: one queue, no scheduler; urgent outcomes outrank routine narration.
+    const urgent = this.queue.findIndex(({ beat }) => beat.priority >= PRIORITY.dealer)
+    if (urgent > 0) {
+      const [entry] = this.queue.splice(urgent, 1)
+      if (entry) this.queue.unshift(entry)
+    }
     const now = this.opts.now()
     while (this.queue.length > 0) {
       const [head, ...rest] = this.queue

@@ -423,7 +423,7 @@ describe('one language per line (the proxy contract, both languages)', () => {
     const req = elevenRequest(config, 'abuela', 'es', '[sighs] Ay, qué calor.')
     expect(req.url).toBe(`https://api.elevenlabs.io/v1/text-to-speech/${config.voices.abuela}?output_format=mp3_44100_128`)
     expect(req.body).toEqual({ text: '[sighs] Ay, qué calor.', model_id: 'eleven_v4', language_code: 'es', voice_settings: { stability: 0.55, similarity_boost: 0.8 } })
-    expect(Object.keys(ELEVEN_SETTINGS).sort()).toEqual(['abuela', 'buyer', 'chato', 'guest1', 'guest2', 'guest3', 'narrator', 'pilar', 'seller'])
+    expect(Object.keys(ELEVEN_SETTINGS).sort()).toEqual(['abuela', 'buyer', 'chato', 'guest1', 'guest2', 'guest3', 'jev', 'narrator', 'pilar', 'seller'])
     for (const s of Object.values(ELEVEN_SETTINGS)) {
       expect(s.stability).toBeGreaterThanOrEqual(0)
       expect(s.stability).toBeLessThanOrEqual(1)
@@ -451,8 +451,8 @@ describe('a quote the server vouches for is voiced only in its own language (rev
   })
 
   it('speaks an English quote in English only, and refuses one whose language it cannot tell', () => {
-    expect(ask('en', 'chato', "That is not enough for a card like that, you are wasting my time.")).toMatchObject({ lang: 'en' })
-    expect(ask('es', 'chato', "That is not enough for a card like that, you are wasting my time.")).toMatch(/own lines/)
+    expect(ask('en', 'chato', 'That is not enough for a card like that, you are wasting my time.')).toMatchObject({ lang: 'en' })
+    expect(ask('es', 'chato', 'That is not enough for a card like that, you are wasting my time.')).toMatch(/own lines/)
     expect(ask('es', 'chato', 'Xyzzy plugh.')).toMatch(/own lines/)
     expect(ask(undefined, 'chato', 'Xyzzy plugh.')).toMatch(/own lines/)
   })

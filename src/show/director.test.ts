@@ -7,12 +7,12 @@ function beat(id: string, priority: number, cue: Cue = { kind: 'talk' }, agent: 
 }
 
 describe('Director', () => {
-  it('plays beats in arrival order', () => {
+  it('plays urgent outcomes before routine updates', () => {
     const d = new Director()
     d.push(beat('post', PRIORITY.post))
     d.push(beat('deal', PRIORITY.deal))
-    expect(d.next().beat?.id).toBe('post')
     expect(d.next().beat?.id).toBe('deal')
+    expect(d.next().beat?.id).toBe('post')
     expect(d.next().beat).toBeNull()
   })
 
@@ -33,8 +33,9 @@ describe('Director', () => {
     d.push(beat('deal', PRIORITY.deal))
     now = 5000
     const { beat: next, skipped } = d.next()
-    expect(skipped.map((b) => b.id)).toEqual(['hold'])
+    expect(skipped).toEqual([])
     expect(next?.id).toBe('deal')
+    expect(d.next().skipped.map((b) => b.id)).toEqual(['hold'])
   })
 
   it('merges the queued holds of one agent into the first', () => {
@@ -50,3 +51,13 @@ describe('Director', () => {
     expect(d.size).toBe(0)
   })
 })
+
+ it('returns old routine beats for the complete transcript but retains outcomes', () => {
+   const d = new Director()
+   d.push(beat('old-post', PRIORITY.post))
+   d.push(beat('deal', PRIORITY.deal))
+   d.push({ ...beat('current', PRIORITY.post), tick: 2 })
+   expect(d.advanceTick(2).map((b) => b.id)).toEqual(['old-post'])
+   expect(d.next().beat?.id).toBe('deal')
+   expect(d.next().beat?.id).toBe('current')
+ })

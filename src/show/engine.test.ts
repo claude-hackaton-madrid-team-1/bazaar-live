@@ -242,7 +242,7 @@ describe('the idle brain: the characters know what is going on', () => {
     fresh.show.stop()
   })
 
-  it('notices a Market Test session when the game clock crosses a two-hour mark', async () => {
+  it('never invents a Market Test from elapsed game hours', async () => {
     const { show, spoken } = engine()
     show.start()
     const tickAt = (id: number, t: number) => parseEnvelope({ id, tick: id, t, type: 'agent.tick', agent: 'maker', payload: { mode: 'live' } })!
@@ -252,7 +252,7 @@ describe('the idle brain: the characters know what is going on', () => {
     show.ingest(tickAt(-2, 4.1), false) // slot 1 → 2: a session started
     await settle()
     await settle()
-    expect(spoken.map((u) => u.text).join(' ')).toMatch(/Test de Mercado/)
+    expect(spoken.map((u) => u.text).join(' ')).not.toMatch(/Test de Mercado/)
     show.stop()
   })
 })

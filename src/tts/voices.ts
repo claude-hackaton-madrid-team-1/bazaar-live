@@ -20,14 +20,14 @@ type Gender = 'f' | 'm'
 
 /** The voice each role should sound like; the pitch and rate in webspeech.ts finish the job. */
 const ROLE_GENDER: Readonly<Record<Speaker, Gender>> = {
-  abuela: 'f', buyer: 'f', chato: 'm', seller: 'm', pilar: 'f', guest1: 'm', guest2: 'f', guest3: 'm', narrator: 'm',
+  abuela: 'f', buyer: 'f', chato: 'm', seller: 'm', pilar: 'f', guest1: 'm', guest2: 'f', guest3: 'm', narrator: 'm', jev: 'm',
 }
 /**
  * Who picks first: the leads speak most, so they get the most native voices before the dealers do; the
  * guest voices (dealers that arrive later) pick last and share a voice when the browser runs out (their
  * pitch and rate in webspeech.ts still tell them apart).
  */
-const PICK_ORDER: readonly Speaker[] = ['seller', 'buyer', 'abuela', 'chato', 'pilar', 'narrator', 'guest1', 'guest2', 'guest3']
+const PICK_ORDER: readonly Speaker[] = ['seller', 'buyer', 'abuela', 'chato', 'pilar', 'narrator', 'jev', 'guest1', 'guest2', 'guest3']
 
 const FEMALE = /\b(flo|sandy|shelley|sonia|monica|mónica|paulina|helena|laura|sabina|marisol|lucia|lucía|elvira|dalia|luciana|samantha|karen|moira|tessa|serena|kate|fiona|victoria|susan|zira|female|mujer)\b/i
 const MALE = /\b(grandpa|reed|rocko|eddy|ryan|jorge|juan|diego|carlos|pablo|alvaro|álvaro|enrique|miguel|alonso|daniel|alex|fred|oliver|arthur|thomas|david|mark|male|hombre)\b/i

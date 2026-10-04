@@ -1,3 +1,4 @@
+import { guestSpeaker } from '../../shared/tags.ts'
 import { describe, expect, it } from 'vitest'
 import { detectLang } from '../../shared/detect-lang.ts'
 import type { Lang } from '../../shared/lang.ts'
@@ -90,9 +91,9 @@ describe('a dealer thread line', () => {
     expect(lines.some((l) => !l.silent && l.text === EN_QUOTE)).toBe(true)
   })
 
-  it('leaves a team counterpart to the narrator, as a caption', () => {
+  it('uses a stable team voice, with raw words only captioned', () => {
     const lines = realBeat(dealerLine(EN_QUOTE, { counterpart: 't05' }), 'en', SPEAK)?.lines ?? []
-    expect(lines.map((l) => l.speaker)).toEqual(['narrator', 'narrator'])
+    expect(lines.map((l) => l.speaker)).toEqual([guestSpeaker('t05'), guestSpeaker('t05')])
     expect(lines[0]).toMatchObject({ text: EN_QUOTE, silent: true })
   })
 
@@ -153,10 +154,10 @@ describe('duels', () => {
   it('plays the replay once, with the rival in the opposite chair, then the verdict', () => {
     const beat = realBeat(replay('seller'), 'es', SPEAK)
     expect(shown(beat).map((l) => [l.speaker, l.silent === true])).toEqual([
-      ['buyer', true], // the rival's own words: a caption, even in the show's language and with speakQuotes
-      ['buyer', false], // what the structure says the rival asked, spoken
+      [guestSpeaker('Rival Noche'), true], // the rival's own words: a caption, even in the show's language and with speakQuotes
+      [guestSpeaker('Rival Noche'), false], // what the structure says the rival asked, spoken
       ['seller', false], // our offer, from the structure
-      ['buyer', true], // an English quote is only shown
+      [guestSpeaker('Rival Noche'), true], // an English quote is only shown
       ['narrator', false],
     ])
     expect(shown(beat)[1]?.text).toBe('60 primas es mi precio.')
@@ -166,7 +167,7 @@ describe('duels', () => {
   })
 
   it('swaps the chairs when we were the buyer', () => {
-    expect(realBeat(replay('buyer'), 'en')?.lines[0]?.speaker).toBe('seller')
+    expect(realBeat(replay('buyer'), 'en')?.lines[0]?.speaker).toBe(guestSpeaker('Rival Noche'))
   })
 
 })

@@ -23,7 +23,7 @@ async function get(app: ReturnType<typeof createApp>, url: string): Promise<{ st
   return { status, body: JSON.parse(raw) as Record<string, unknown> }
 }
 
-const app = (strategy?: Parameters<typeof createApp>[0]["strategy"]) => createApp({ config: readProviderConfig({}), distDir: '/nonexistent', log: () => undefined, strategy })
+const app = (strategy?: Parameters<typeof createApp>[0]['strategy']) => createApp({ config: readProviderConfig({}), distDir: '/nonexistent', log: () => undefined, strategy })
 const SNAPSHOT = { ...EMPTY_STRATEGY, at: '2026-10-03T10:00:00.000Z', spend: { ledgerTick: 629, tHours: 6.57, spent: 0, buys: 0 } }
 
 describe('GET /api/strategy', () => {

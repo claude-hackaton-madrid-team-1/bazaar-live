@@ -14,6 +14,7 @@ import type { Lang } from '../../shared/lang.ts'
 import { getLang, subscribeLang, useLang } from './lang'
 import { hasUserGesture } from './soundChoice'
 import { useTranscript } from './useTranscript'
+import { GameFeed } from '../game/feed'
 
 export interface SpeechControls {
   readonly muted: boolean
@@ -42,7 +43,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
       }),
     [providerFor],
   )
-  const engine = useMemo(() => new ShowEngine({ speech: queue, lang: getLang(), idleAfterMs: config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.idleSeconds])
+  const engine = useMemo(() => new ShowEngine({ speech: queue, lang: getLang(), idleAfterMs: config.replay ? 600_000 : config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.idleSeconds, config.replay])
   const state = useSyncExternalStore(engine.subscribe, engine.getSnapshot)
 
   const [muted, setMutedState] = useState(true)
@@ -111,8 +112,33 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   }, [engine])
   useSources(engine, config)
   useTranscript(engine, config)
+  useBroadcast(engine, config)
 
   return { state, speech: { muted, setMuted, choice, setChoice, available: available ?? [], active, lastError, noVoiceFor, elevenMissing } }
+}
+
+/** Rich live activity stays on the existing token-protected game stream. */
+function useBroadcast(engine: ShowEngine, config: ShowConfig): void {
+  useEffect(() => {
+    if (config.replay) return
+    if (config.mock) {
+      engine.setBroadcastStatus('demo')
+      let stopped = false
+      let timer: ReturnType<typeof setInterval> | undefined
+      void import('../game/mock').then(({ MockGame }) => {
+        if (stopped || config.mockDoors === 'closed') return
+        const game = new MockGame(7)
+        engine.ingestGame(game.step(), true)
+        timer = setInterval(() => engine.ingestGame(game.step(), false), 4000 / config.speed)
+      })
+      return () => { stopped = true; clearInterval(timer) }
+    }
+    const token = new URLSearchParams(window.location.search).get('token')
+    if (!token) { engine.setBroadcastStatus('locked'); return }
+    const feed = new GameFeed({ url: '/api/game', token, requireToken: true, onEvents: (events, replay) => engine.ingestGame(events, replay), onStatus: (status) => engine.setBroadcastStatus(status) })
+    feed.start()
+    return () => feed.stop()
+  }, [engine, config.mock, config.replay, config.speed, config.mockDoors])
 }
 
 /** The language the browser has no voice for (so the show only shows its text), or null. Voices load late: it listens. */
@@ -130,8 +156,9 @@ function useMissingVoice(watching: boolean): Lang | null {
 }
 
 function useSources(engine: ShowEngine, config: ShowConfig): void {
-  const { mock, speed, mockMode, mockDoors } = config
+  const { mock, speed, mockMode, mockDoors, replay } = config
   useEffect(() => {
+    if (replay) return
     if (mock) {
       // The fixtures load only with ?mock=1: a normal visit never downloads them.
       let player: { stop(): void } | null = null
@@ -190,5 +217,5 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
       clearInterval(boardTimer)
       window.removeEventListener('online', online)
     }
-  }, [engine, mock, speed, mockMode, mockDoors])
+  }, [engine, mock, speed, mockMode, mockDoors, replay])
 }

@@ -61,7 +61,7 @@ const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.
 const flush = () => new Promise((r) => setTimeout(r, 0))
 const ev = (id: number, type = 'settlement') => ({ id, tick: 1, type, payload: {} })
 
-function setup(info: () => Promise<Response> = () => json({ enabled: true, target: 'real', tokenRequired: false }), token: string | null = null) {
+function setup(info: () => Promise<Response> = () => json({ enabled: true, target: 'real', tokenRequired: false }), token: string | null = null, requireToken = false) {
   const sources: FakeSource[] = []
   const timers = new FakeTimers()
   const got: { ids: number[]; replay: boolean }[] = []
@@ -69,6 +69,7 @@ function setup(info: () => Promise<Response> = () => json({ enabled: true, targe
   const feed = new GameFeed({
     url: '/api/game',
     token,
+    requireToken,
     onEvents: (events, replay) => got.push({ ids: events.map((e) => e.id), replay }),
     onStatus: (s) => statuses.push(s),
     createSource: (url) => {
@@ -93,6 +94,20 @@ describe('parseEvents', () => {
 })
 
 describe('GameFeed', () => {
+  it('requires an actually protected stream for rich narration, not merely a supplied token', async () => {
+    const publicStream = setup(() => json({ enabled: true, tokenRequired: false }), 'token', true)
+    publicStream.feed.start()
+    await flush()
+    expect(publicStream.sources).toEqual([])
+    expect(publicStream.statuses.at(-1)).toBe('locked')
+    publicStream.feed.stop()
+    const privateStream = setup(() => json({ enabled: true, tokenRequired: true }), 'token', true)
+    privateStream.feed.start()
+    await flush()
+    expect(privateStream.sources).toHaveLength(1)
+    expect(privateStream.sources[0]?.url).toBe('/api/game/stream?token=token')
+    privateStream.feed.stop()
+  })
   it('opens the stream when the relay is on, and the first batch after an open is a replay', async () => {
     const { feed, sources, got, statuses } = setup()
     feed.start()

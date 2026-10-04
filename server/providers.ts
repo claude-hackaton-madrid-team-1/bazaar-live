@@ -52,6 +52,7 @@ const ELEVEN_VOICES: Readonly<Record<Speaker, string>> = {
   guest2: '1eHrpOW5l98cxiSRjbzJ', // Raquel: young, bright, cheerful
   guest3: 'orF2qy9215xjwqqxqsWW', // Rafael: old, theatrical, a little raspy
   narrator: 'onwK4e9ZLuTAKqWW03F9',
+  jev: 'onwK4e9ZLuTAKqWW03F9',
 }
 
 const GEMINI_VOICES: Readonly<Record<Speaker, string>> = {
@@ -64,6 +65,7 @@ const GEMINI_VOICES: Readonly<Record<Speaker, string>> = {
   guest2: 'Leda',
   guest3: 'Iapetus',
   narrator: 'Charon',
+  jev: 'Charon',
 }
 
 /** Who each character is, for Gemini's turn-level style. */
@@ -77,6 +79,7 @@ const PERSONA: Readonly<Record<Speaker, string>> = {
   guest2: 'a young card dealer at a Madrid flea market, bright and quick',
   guest3: 'an old card dealer at a Madrid flea market, theatrical like an auctioneer',
   narrator: 'a friendly radio host, clear and upbeat',
+  jev: 'a calm coordinator reporting a recorded verdict, clear and measured',
 }
 
 /** The accent of the whole line: castellano from Madrid, or English with a light Madrid accent. */
@@ -104,6 +107,7 @@ export const ELEVEN_SETTINGS: Readonly<Record<Speaker, ElevenSettings>> = {
   guest2: { stability: 0.45, similarity_boost: 0.75 },
   guest3: { stability: 0.5, similarity_boost: 0.75 },
   narrator: { stability: 0.6, similarity_boost: 0.75 },
+  jev: { stability: 0.6, similarity_boost: 0.75 },
 }
 
 /** `<PREFIX>_POOL`: comma-separated voice ids for the guest voices (dealers we do not know yet), in order. */
@@ -131,6 +135,7 @@ const voices = (env: Env, prefix: string, defaults: Readonly<Record<Speaker, str
     guest2: pick('guest2', 1),
     guest3: pick('guest3', 2),
     narrator: pick('narrator', null),
+    jev: pick('narrator', null),
   }
 }
 

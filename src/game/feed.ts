@@ -22,6 +22,8 @@ export interface GameFeedOptions {
   readonly url: string
   /** GAME_VIEW_TOKEN, from the page's `?token=`; sent on the stream only. */
   readonly token?: string | null
+  /** Rich voice narration must use an actually protected stream, never token presence alone. */
+  readonly requireToken?: boolean
   /** A batch of events; `replay` is true for the first one after a (re)connect: start from a clean state. */
   readonly onEvents: (events: readonly GameEvent[], replay: boolean) => void
   readonly onStatus?: (status: GameFeedStatus) => void
@@ -90,6 +92,7 @@ export class GameFeed {
       idleMs: 45_000,
       stableAfterMs: 10_000,
       offRecheckMs: 120_000,
+      requireToken: false,
       ...options,
     }
   }
@@ -134,7 +137,7 @@ export class GameFeed {
       this.setStatus('off')
       return this.later(this.o.offRecheckMs)
     }
-    if (info.tokenRequired === true && !this.o.token) {
+    if ((info.tokenRequired === true && !this.o.token) || (this.o.requireToken && info.tokenRequired !== true)) {
       this.setStatus('locked')
       return
     }

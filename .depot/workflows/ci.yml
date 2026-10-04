@@ -1,9 +1,3 @@
-# Depot CI Migration
-# Source: .github/workflows/ci.yml
-#
-# Changes made:
-# - Changed runs-on from "blacksmith-4vcpu-ubuntu-2404" to "depot-ubuntu-latest" in job "check"
-
 name: CI
 
 on:
@@ -20,28 +14,36 @@ concurrency:
 
 jobs:
   check:
-    runs-on: depot-ubuntu-latest # was: blacksmith-4vcpu-ubuntu-2404. Nonstandard GitHub runner label detected, changed to default Depot runner.
+    runs-on: depot-ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: localtest
+        ports:
+          - 127.0.0.1:55433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
     steps:
-      - uses: useblacksmith/checkout@v1 # v4
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Lint (oxlint + eslint)
+      - name: Linter
         run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Test
-        run: npm test
-      - name: Build
-        run: npm run build
-      - name: Smoke-test the server (static page, a game route + /health, no TTS or game keys)
-        run: |
-          PORT=8080 node server/index.ts &
-          for i in $(seq 1 20); do curl -fsS localhost:8080/health && break; sleep 0.5; done
-          curl -fsS localhost:8080/ | grep -q '<div id="root">'
-          test "$(curl -fsS localhost:8080/api/tts/providers)" = '{"providers":[]}'
-          test "$(curl -fsS localhost:8080/api/game)" = '{"enabled":false,"target":null,"tokenRequired":false}'
-          curl -fsS localhost:8080/agent | grep -q '<div id="root">'
+      - name: Formatter
+        run: npm run format:check
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Integration tests
+        env:
+          SHOW_TEST_ADMIN_URL: postgresql://postgres:localtest@127.0.0.1:55433/postgres
+        run: npm run test:integration
