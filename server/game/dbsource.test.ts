@@ -105,7 +105,7 @@ describe('ourOfferRows', () => {
 describe('GameDbSource', () => {
   it('publishes clock, hello, me, our duels, then the feed; later polls read only what is newer', async () => {
     const answers = new Map<string, unknown[] | Error>([
-      [DB_SQL.feedFirst, FEED.slice(1)], [DB_SQL.day, [FEED[0]]], [DB_SQL.meFirst, [ME]], [DB_SQL.duelsFirst, [DUEL_DEAL]],
+      [DB_SQL.feedWindow, FEED.slice(1)], [DB_SQL.day, [FEED[0]]], [DB_SQL.meFirst, [ME]], [DB_SQL.duelsFirst, [DUEL_DEAL]],
     ])
     const db = fakeDb(answers)
     const hub = new GameHub()
@@ -119,15 +119,18 @@ describe('GameDbSource', () => {
     expect(first[0]).toMatchObject({ tick: 401, scope: 'team', payload: { day: 'Saturday · Gran Vía', tick_seconds: 30 } })
     expect(first[1]?.payload).toEqual({ team: 't01', name: 'Team 1' })
     expect(JSON.stringify(first)).not.toMatch(/collection_value|sk-never/)
+    // /me first: its tick bounds the first feed read (the newest 2000 rows of the last 300 ticks), never the whole feed
+    expect(db.calls.slice(0, 3).map((c) => c.sql)).toEqual([DB_SQL.meFirst, DB_SQL.duelsFirst, DB_SQL.feedWindow])
+    expect(db.calls[2]?.params).toEqual([2000, 101])
 
     // Nothing new: nothing published. Then a new feed row, a new /me and a new message in the same duel.
     await source.pollOnce()
     expect(batches).toHaveLength(1)
     const after = db.calls.slice(-4, -1)
-    expect(after.map((c) => c.sql)).toEqual([DB_SQL.feedAfter, DB_SQL.meAfter, DB_SQL.duelsAfter])
-    expect(after[0]?.params).toEqual([21155, 500])
-    expect(after[1]?.params).toEqual([ME.stamp])
-    expect(after[2]?.params).toEqual([DUEL_DEAL.stamp, 274, 50])
+    expect(after.map((c) => c.sql)).toEqual([DB_SQL.meAfter, DB_SQL.duelsAfter, DB_SQL.feedAfter])
+    expect(after[0]?.params).toEqual([ME.stamp])
+    expect(after[1]?.params).toEqual([DUEL_DEAL.stamp, 274, 50])
+    expect(after[2]?.params).toEqual([21155, 500])
 
     answers.set(DB_SQL.feedAfter, [{ id: 21160, tick: 402, type: 'settlement', actor: '', payload: { parties: ['t01', 'abuela'], price: 21 } }])
     answers.set(DB_SQL.meAfter, [{ ...ME, tick: 402, stamp: '2026-10-03T09:30:47.000000Z' }])
@@ -142,7 +145,7 @@ describe('GameDbSource', () => {
     // A bid listed 600 rows before the replay window, still open; a newer listing inside the window.
     const OLD = { id: 100, tick: 300, type: 'offer.listed', actor: 't01', payload: { venue: 'v02', offer: { id: 1, maker: 't01', give: { cash: 16 }, want: { types: ['card:RET-08'] }, expires_tick: 600 } }, hand: true }
     const answers = new Map<string, unknown[] | Error>([
-      [DB_SQL.feedFirst, FEED.slice(1)], [DB_SQL.day, [FEED[0]]], [DB_SQL.meFirst, [ME]], [DB_SQL.ours, [OLD, { id: 'odd' }]],
+      [DB_SQL.feedWindow, FEED.slice(1)], [DB_SQL.day, [FEED[0]]], [DB_SQL.meFirst, [ME]], [DB_SQL.ours, [OLD, { id: 'odd' }]],
     ])
     const hub = new GameHub()
     const statuses: GameEvent[] = []
@@ -171,7 +174,7 @@ describe('GameDbSource', () => {
     const logs: Record<string, unknown>[] = []
     const onMissing = vi.fn()
     const notYet = Object.assign(new Error('relation "show.game_our_offers" does not exist'), { code: '42P01' })
-    const answers = new Map<string, unknown[] | Error>([[DB_SQL.feedFirst, FEED.slice(1)], [DB_SQL.meFirst, [ME]], [DB_SQL.ours, notYet]])
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.feedWindow, FEED.slice(1)], [DB_SQL.meFirst, [ME]], [DB_SQL.ours, notYet]])
     const db = fakeDb(answers)
     const hub = new GameHub()
     const source = new GameDbSource({ db, hub, log: (e) => logs.push(e), onMissing, oursRetryPolls: 2 })
@@ -207,6 +210,49 @@ describe('GameDbSource', () => {
     await source.pollOnce()
     expect(source.viewsMissing).toBe(true)
     expect(onMissing).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failing feed read (temp_file_limit, 53400) still publishes /me and the clock, backs off, and recovers', async () => {
+    const logs: Record<string, unknown>[] = []
+    const tooBig = Object.assign(new Error('temporary file size exceeds "temp_file_limit" (16384kB)'), { code: '53400' })
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.feedWindow, tooBig], [DB_SQL.meFirst, [ME]], [DB_SQL.duelsFirst, [DUEL_DEAL]]])
+    const db = fakeDb(answers)
+    const hub = new GameHub()
+    const source = new GameDbSource({ db, hub, log: (e) => logs.push(e), random: () => 0.5 })
+    await source.pollOnce()
+    expect(hub.replay().map((e) => e.type)).toEqual(['agent.hello', 'agent.me', 'clock', 'duel.started', 'duel.message', 'duel.message', 'duel.message', 'duel.result'])
+    expect(hub.replay()[1]?.payload).toMatchObject({ id: 't01', cash: 176 })
+    expect(logs).toEqual([expect.objectContaining({ event: 'db_poll_failed', fails: 1, parts: ['feed'], code: '53400' })])
+    expect(source.nextDelayMs()).toBe(6000)
+    expect(db.calls.some((c) => c.sql === DB_SQL.ours)).toBe(false)
+    // the backoff never waits longer than a tick
+    for (let i = 0; i < 5; i += 1) await source.pollOnce()
+    expect(source.nextDelayMs()).toBe(15_000)
+    // the window is read again (no mark was taken), and the feed comes back
+    answers.set(DB_SQL.feedWindow, FEED.slice(1))
+    await source.pollOnce()
+    expect(db.calls.filter((c) => c.sql === DB_SQL.feedWindow)).toHaveLength(7)
+    expect(hub.replay().map((e) => e.type)).toContain('thread.message')
+    expect(logs.at(-1)).toMatchObject({ event: 'db_poll_recovered', after: 6 })
+    expect(source.nextDelayMs()).toBe(3000)
+  })
+
+  it('an empty window is read again next time, never as `id > 0` (the whole feed, sorted)', async () => {
+    const db = fakeDb(new Map([[DB_SQL.meFirst, [ME]]]))
+    const source = new GameDbSource({ db, hub: new GameHub(), log: () => undefined })
+    await source.pollOnce()
+    await source.pollOnce()
+    expect(db.calls.filter((c) => c.sql === DB_SQL.feedWindow)).toHaveLength(2)
+    expect(db.calls.some((c) => c.sql === DB_SQL.feedAfter)).toBe(false)
+  })
+
+  it('without any /me yet, the first read takes the newest rows by id, as before', async () => {
+    const db = fakeDb(new Map([[DB_SQL.feedFirst, FEED.slice(1)]]))
+    const source = new GameDbSource({ db, hub: new GameHub(), log: () => undefined })
+    await source.pollOnce()
+    expect(db.calls.filter((c) => c.sql === DB_SQL.feedFirst)).toHaveLength(1)
+    await source.pollOnce()
+    expect(db.calls.at(-1)?.sql === DB_SQL.ours ? db.calls.at(-2)?.params : db.calls.at(-1)?.params).toEqual([21155, 500])
   })
 
   it('logs any other failure redacted, and keeps going', async () => {
@@ -259,7 +305,7 @@ function manual() {
   const reads = { count: 0 }
   const db = {
     query: async (sql: string) => {
-      if (sql === DB_SQL.feedFirst || sql === DB_SQL.feedAfter) reads.count += 1
+      if (sql === DB_SQL.meFirst || sql === DB_SQL.meAfter) reads.count += 1
       if (gated) await new Promise<void>((r) => gates.push(r))
       if (fail) throw fail
       return { rows: [] }
