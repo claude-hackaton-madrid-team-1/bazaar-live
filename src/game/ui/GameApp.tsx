@@ -20,6 +20,7 @@ import { HistoryScreen } from './HistoryScreen.tsx'
 import { Inspector } from './Inspector.tsx'
 import { LearnScreen } from './LearnScreen.tsx'
 import { MarketScreen } from './MarketScreen.tsx'
+import { OurMarketScreen } from './OurMarketScreen.tsx'
 import { NegotiationsScreen } from './NegotiationsScreen.tsx'
 import { PricesScreen } from './PricesScreen.tsx'
 import { RivalsScreen } from './RivalsScreen.tsx'
@@ -37,6 +38,8 @@ const SCREENS: Readonly<Record<Exclude<Route, 'show'>, () => ReactElement>> = {
   market: () => <MarketScreen />,
   // our venue and the Market Test: the next session, the one on now, what our broker did with each book
   venue: () => <VenueScreen />,
+  // our venue, our broker's matches, the bench sessions, and what people are asking of us on every board
+  ourmarket: () => <OurMarketScreen />,
   // the live price guide: standard price, trend, best bid and ask, a good deal for us (the stream over a WebSocket)
   prices: () => <PricesScreen />,
   history: () => <HistoryScreen />,

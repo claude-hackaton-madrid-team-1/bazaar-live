@@ -46,6 +46,8 @@ export interface NegLiveStrings {
   readonly teams: string
   readonly teamsSub: (live: number) => string
   readonly noTeams: string
+  /** Until the server reads our team-scoped events, team swaps never reach the page. */
+  readonly swapsNotWired: string
   readonly swapLine: (n: Names, weGive: TeamSide | null, theyGive: TeamSide | null) => string
   readonly duelLine: (rival: string, side: 'buy' | 'sell', item: string | null, ours: number | null, theirs: number | null) => string
   readonly status: Readonly<Record<'open' | 'closed' | 'deal' | 'no deal', string>>
@@ -98,6 +100,7 @@ const EN: NegLiveStrings = {
   teams: 'Teams negotiating with us',
   teamsSub: (live) => plural(live, 'live', 'live'),
   noTeams: 'No team swap or duel with us right now.',
+  swapsNotWired: 'Team swaps do not reach this page yet: they are private events of ours, and the server reads the public feed. Only duels show here for now.',
   swapLine: (n, weGive, theyGive) => `${n.who}: we give ${sideText(weGive, 'nothing')} · they give ${sideText(theyGive, 'nothing')}`,
   duelLine: (rival, side, item, ours, theirs) =>
     `${rival}: we ${side === 'buy' ? 'buy' : 'sell'} ${item ?? 'the item'} · ours ${ours == null ? '—' : p(ours)} · theirs ${theirs == null ? '—' : p(theirs)}`,
@@ -151,6 +154,7 @@ const ES: NegLiveStrings = {
   teams: 'Equipos negociando con nosotros',
   teamsSub: (live) => `${live} en curso`,
   noTeams: 'Ningún intercambio ni duelo con nosotros ahora mismo.',
+  swapsNotWired: 'Los intercambios con equipos aún no llegan a esta página: son eventos privados nuestros y el servidor lee el feed público. De momento aquí solo salen los duelos.',
   swapLine: (n, weGive, theyGive) => `${n.who}: damos ${sideText(weGive, 'nada')} · nos dan ${sideText(theyGive, 'nada')}`,
   duelLine: (rival, side, item, ours, theirs) =>
     `${rival}: ${side === 'buy' ? 'compramos' : 'vendemos'} ${item ?? 'el objeto'} · nuestro ${ours == null ? '—' : p(ours)} · suyo ${theirs == null ? '—' : p(theirs)}`,

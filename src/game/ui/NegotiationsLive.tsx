@@ -190,6 +190,7 @@ export function TeamsWithUs() {
       ) : (
         <p className="gm-empty">{l.noTeams}</p>
       )}
+      {state.teamThreads.size === 0 && <p className="nl-note gm-muted">{l.swapsNotWired}</p>}
     </Panel>
   )
 }
