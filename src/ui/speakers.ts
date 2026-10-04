@@ -7,6 +7,8 @@ const title = (id: string): string => id.replace(/[_-]+/g, ' ').replace(/\b\p{L}
 
 export function speakerName(t: Strings, speaker: Speaker, dealer: string | undefined, names: DealerNames): string {
   switch (speaker) {
+    case 'jev':
+      return 'Jev';
     case 'buyer':
       return t.buyer
     case 'seller':

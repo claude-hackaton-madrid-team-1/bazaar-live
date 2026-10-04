@@ -76,8 +76,6 @@ const IDLE_AFTER_MS = 35_000
 const IDLE_AFTER_CLOSED_MS = 22_000
 /** The neighbourhoods that arrive after day one (RULES.md: El Retiro on Saturday, Chamberí on Sunday). */
 const LATE_HOODS: ReadonlySet<string> = new Set(['RET', 'CHA'])
-/** The Market Test runs every two game hours (RULES.md): a session starts each time this slot changes. */
-const MARKET_TEST_HOURS = 2
 const NOTIFY_MS = 16
 /** How many situations the idle talk tries before it decides to keep quiet. */
 const AMBIENT_ATTEMPTS = 4
@@ -199,7 +197,6 @@ export class ShowEngine {
   /** Late neighbourhoods already seen (or announced), and the Market Test slot last seen. */
   private readonly seenHoods = new Set<string>()
   private freshHood: string | null = null
-  private marketTestSlot: number | null = null
   private freshMarketTest = false
   /** When the stage last did something (a live event, a scene ended, a line of situation talk), in real time. */
   private activityAt = Date.now()
@@ -308,7 +305,7 @@ export class ShowEngine {
       const heartbeat = replay ? this.state.heartbeat : { ...this.state.heartbeat, [event.agent]: this.state.heartbeat[event.agent] + 1 }
       this.set({ ticks: { ...this.state.ticks, [event.agent]: event.tick }, heartbeat })
       if (!replay) {
-        this.noticeClock(event.t)
+        if (event.tick !== null) this.director.advanceTick(event.tick).forEach((beat) => this.set({ transcript: this.appendLines(beat, 'skipped') }))
         this.announce()
         this.wake?.()
       }
@@ -350,14 +347,6 @@ export class ShowEngine {
     if (!LATE_HOODS.has(set) || this.seenHoods.has(set)) return
     this.seenHoods.add(set)
     if (live) this.freshHood = HOODS[set] ?? null
-  }
-
-  /** The Market Test starts a session every two game hours: a new slot on a live tick is one. */
-  private noticeClock(t: number | null): void {
-    if (t === null) return
-    const slot = Math.floor(t / MARKET_TEST_HOURS)
-    if (this.marketTestSlot !== null && slot > this.marketTestSlot) this.freshMarketTest = true
-    this.marketTestSlot = slot
   }
 
   /** What the stage knows about the world, for the situation it talks about when it is idle. */

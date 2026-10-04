@@ -42,7 +42,7 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
       }),
     [providerFor],
   )
-  const engine = useMemo(() => new ShowEngine({ speech: queue, lang: getLang(), idleAfterMs: config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.idleSeconds])
+  const engine = useMemo(() => new ShowEngine({ speech: queue, lang: getLang(), idleAfterMs: config.replay ? 600_000 : config.idleSeconds === null ? undefined : config.idleSeconds * 1000 }), [queue, config.idleSeconds, config.replay])
   const state = useSyncExternalStore(engine.subscribe, engine.getSnapshot)
 
   const [muted, setMutedState] = useState(true)
@@ -130,8 +130,9 @@ function useMissingVoice(watching: boolean): Lang | null {
 }
 
 function useSources(engine: ShowEngine, config: ShowConfig): void {
-  const { mock, speed, mockMode, mockDoors } = config
+  const { mock, speed, mockMode, mockDoors, replay } = config
   useEffect(() => {
+    if (replay) return
     if (mock) {
       // The fixtures load only with ?mock=1: a normal visit never downloads them.
       let player: { stop(): void } | null = null
@@ -190,5 +191,5 @@ function useSources(engine: ShowEngine, config: ShowConfig): void {
       clearInterval(boardTimer)
       window.removeEventListener('online', online)
     }
-  }, [engine, mock, speed, mockMode, mockDoors])
+  }, [engine, mock, speed, mockMode, mockDoors, replay])
 }

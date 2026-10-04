@@ -30,6 +30,7 @@ const VOICING: Readonly<Record<Speaker, Voicing>> = {
   guest2: { pitch: 1.32, rate: 1.12 },
   guest3: { pitch: 0.94, rate: 0.84 },
   narrator: { pitch: 1.0, rate: 1.0 },
+  jev: { pitch: 0.95, rate: 0.94 },
 }
 
 const RATE_RANGE = [0.5, 1.8] as const

@@ -78,8 +78,7 @@ function ShowApp() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="app">
-        <Header state={state} speech={{ ...speech, setMuted }} mock={config.mock} />
-        <Notice state={state} mock={config.mock} />
+        {config.replay ? <header className="header material" style={{ padding: 24 }}><h1>Bazaar Live</h1><p>RECORDED REAL EVENTS · Historical negotiation replay · No game actions</p><a href="?lang=en">Return to live view</a></header> : <><Header state={state} speech={{ ...speech, setMuted }} mock={config.mock} /><Notice state={state} mock={config.mock} /></>}
         <main className="main">
           <ErrorBoundary fallback={<div className="fallback material">{t.fallback}</div>}>
             <Stage state={state} />

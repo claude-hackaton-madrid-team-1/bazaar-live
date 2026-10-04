@@ -524,3 +524,32 @@ describe('reading approvals through bazaar-mcp', () => {
     expect(await res.json()).toEqual({ error: 'rate_limited' })
   })
 })
+
+const PROPOSAL = { proposal_id: 'proposal-12345678', created_tick: 912, expires_tick: 916, status: 'proposed', action: { kind: 'sell_bid', ref: 'RET-02', price: 8, venue: 'rastro', expires: 40 }, allowed: true, reason: 'Validated', summary: 'Bid 8 for RET-02', world: 'real' }
+
+describe('exact operator confirmation', () => {
+  it('uses existing auth and never sends altered reviewed terms', async () => {
+    const mock = fakeMcp((call) => toolReply(call, PROPOSAL))
+    const { base } = await start({ config: CONFIG, fetchImpl: mock.fetchImpl })
+    expect((await post(base, '/api/approver/confirm', { proposal_id: PROPOSAL.proposal_id, action: PROPOSAL.action })).status).toBe(401)
+    expect(mock.calls).toHaveLength(0)
+    const user = await login(base)
+    const headers = { Cookie: user.cookie, 'x-csrf-token': user.csrf }
+    const res = await post(base, '/api/approver/confirm', { proposal_id: PROPOSAL.proposal_id, action: { ...PROPOSAL.action, price: 9 } }, headers)
+    expect(res.status).toBe(409)
+    expect(mock.calls.map((c) => c.body.params.name)).toEqual(['operator_review'])
+  })
+  it('reviews, approves and submits once only after an explicit confirmation request', async () => {
+    const mock = fakeMcp((call) => toolReply(call, call.body.params.name === 'operator_execute' ? { proposal_id: PROPOSAL.proposal_id, status: 'submitted', sent: true, reason: 'Queued' } : call.body.params.name === 'operator_approve' ? { status: 'approved' } : PROPOSAL))
+    const { base } = await start({ config: CONFIG, fetchImpl: mock.fetchImpl })
+    const user = await login(base)
+    const headers = { Cookie: user.cookie, 'x-csrf-token': user.csrf }
+    const before = await post(base, '/api/approver/proposal', { action: PROPOSAL.action }, headers)
+    expect(before.status).toBe(200)
+    expect(mock.calls.map((c) => c.body.params.name)).toEqual(['operator_propose'])
+    const res = await post(base, '/api/approver/confirm', { proposal_id: PROPOSAL.proposal_id, action: PROPOSAL.action }, headers)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ sent: true, status: 'submitted' })
+    expect(mock.calls.map((c) => c.body.params.name)).toEqual(['operator_propose', 'operator_review', 'operator_approve', 'operator_execute'])
+  })
+})

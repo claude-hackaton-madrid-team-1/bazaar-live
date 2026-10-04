@@ -18,6 +18,7 @@ export const TTS_CHOICES: readonly TtsChoice[] = ['auto', 'elevenlabs', 'off', '
 export const TTS_PICKER: readonly TtsChoice[] = ['elevenlabs', 'off']
 
 export interface ShowConfig {
+  readonly replay?: boolean
   /** `?mock=1`: play the recorded fixtures instead of the live feeds. */
   readonly mock: boolean
   /** `?speed=2`: mock playback speed (0.25 to 8). */
@@ -52,6 +53,7 @@ export function readConfig(search: string): ShowConfig {
   const tts = (params.get('tts') ?? 'auto').toLowerCase()
   return {
     mock: flag(params.get('mock')),
+    replay: flag(params.get('replay')),
     speed: Number.isFinite(speed) ? Math.min(8, Math.max(0.25, speed)) : 1,
     tts: (TTS_CHOICES as readonly string[]).includes(tts) ? (tts as TtsChoice) : 'auto',
     mockMode: params.get('mode') === 'dry' ? 'dry' : 'live',

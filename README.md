@@ -8,9 +8,9 @@ Nice-to-have N10 of the main repo's plan
 ([`bazaar/.ai/specs/98-nice-to-haves.md`](https://github.com/claude-hackaton-madrid-team-1/bazaar/blob/main/.ai/specs/98-nice-to-haves.md)).
 Stack: Vite + React + TypeScript + [Motion](https://motion.dev) (`motion` package, `motion/react`).
 
-**Public URL:** pending the first deploy of the Railway service `bazaar-live` (project
-`heartfelt-warmth`, declared in the bazaar repo's `.railway/railway.py`, bazaar PR #85). Its domain is
-generated once by hand, so it is added here when it exists; add `?mock=1` to preview without the game.
+**Public URL:** https://bazaar-live-production.up.railway.app. The public show is read-only;
+the password-protected `/approvals` operator desk can propose and explicitly approve actions.
+
 
 ## Run
 
@@ -41,6 +41,7 @@ npm run test:coverage  # with v8 coverage
 | Parameter | Effect |
 |---|---|
 | `?mock=1` | On the show, plays `src/mock/fixtures.json` on a loop instead of the live feeds (on the game screens, a made-up match: see below): a recorded-style afternoon (lists, a reprice with Jev, a guardrail denial, Abuela and El Chato, a deal, a refused accept, a late row). Use it when the doors are closed. |
+| `?replay=1&lang=en` | Replays the latest 12 recorded public transcript events once. Clearly labelled historical; no live feeds, idle stories or game actions. |
 | `?speed=2` | Mock playback speed, 0.25 to 8. |
 | `?lang=es\|en` | The language of every line, spoken and written. Castellano with a Madrid flavour by default; `en` has its own native English lines (not translated ones). One language per line, never mixed. |
 | `?doors=closed` | With `?mock=1`: the mock's `/health` says the doors are closed (no events, a countdown to the opening), to hear the idle talk. |
@@ -80,10 +81,9 @@ Contracts: [`bazaar/docs/services.md`](https://github.com/claude-hackaton-madrid
   the stage, even from an agent that still publishes them. That is why Jev's bubble shows a verdict
   meter (the option Jev picked among its siblings, e.g. quick sale · fair · aggressive) and not
   probabilities: the probabilities are private.
-- **Read-only.** The page never sends anything to the agents or the game.
+- **Public show is read-only.** Only the authenticated operator desk can send an explicitly reviewed action.
 - **The exception: the game screens** (below) read the game with the team key, server-side, and show
-  our private state (cash, assets with their values, the album). They are still read-only: nothing is
-  ever posted to the game.
+  our private state (cash, assets with their values, the album). They are read-only except the authenticated `/approvals` operator desk described below.
 
 ## Game screens (from bazaar's web view)
 
@@ -666,3 +666,23 @@ shared/       the language packs (lines.es.ts, lines.en.ts), vocab and slot patt
 docs/         voices.md: the ElevenLabs settings per role
 server/       the Node server: static files, /health, /api/tts, and the game screens' routes (server/approvals: the Approvals screen)
 ```
+
+## Reviewed operator commands
+
+The existing `/approvals` password, session cookie and CSRF protection also guard the operator desk.
+No new credential or provider is needed. The MCP server must expose `operator_snapshot`,
+`operator_propose`, `operator_review`, `operator_approve` and `operator_execute`.
+
+Type `bid RET-02 8`, `sell asset-id 20`, `accept 123`, `cancel 123`, `open t09`,
+`say 123 Your message`, `offer-buy 123 RET-02 8`, `offer-sell 123 asset-id 20`, or `close 123`.
+Review shows the stored action, world and tick expiry. **Approve exact terms and send**
+reviews again, approves that proposal, then asks MCP to execute it. The backend owns fresh
+validation, guardrails, shared tick limits and durable once-only execution. A submission is
+not a confirmed settlement. Unknown outcomes are never retried automatically; check status.
+Listings default to El Rastro and 40 ticks. Refresh private status is manual to avoid adding a poller.
+
+Optional browser dictation only fills the editable command field. It never submits or approves.
+Browser support and permission are required, and browser recognition may send audio to its service.
+Typing is the tested fallback. The show voices only recorded Jev verdict labels, not private reasoning.
+Team identities get stable character voices for safe structured lines; arbitrary team messages remain captions.
+Important outcomes take priority; old routine beats remain in the transcript without delaying current speech.

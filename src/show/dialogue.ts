@@ -1,3 +1,4 @@
+import { jevLine } from '../../shared/jev-lines.ts'
 /**
  * Event → beat: one public decision or execution becomes a short BUYER ↔ SELLER exchange plus the
  * cue the stage acts out. The words come from the language pack in shared/ (the templates the TTS
@@ -190,11 +191,13 @@ function decisionBeat(event: DecisionEvent, dialogue: DialogueContext): Beat {
   const ctx = ctxOf(d, dialogue)
   const isTaker = event.agent === 'taker'
   const built = d.sent ? sentDecision(d, ctx, seed, isTaker) : unsentDecision(d, ctx, seed, isTaker)
+  const verdict = jevLine(d.jevVerdict, dialogue.lang)
   return {
     id: event.key,
     agent: event.agent,
     tick: event.tick,
     ...built,
+    lines: verdict ? [...built.lines, { speaker: 'jev', text: verdict, lang: dialogue.lang }] : built.lines,
     denied: d.guardrail === 'denied',
     jev: d.jevVerdict,
     practice: !d.sent,
