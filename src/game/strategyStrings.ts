@@ -24,6 +24,8 @@ export interface StrategyStrings {
   // 1. what we aim for
   readonly aim: string
   readonly aimSub: string
+  readonly scoring: readonly string[]
+  readonly inventory: string
   readonly target: (name: string, affinity: number | null, have: number, of: number) => string
   readonly lacks: (n: number) => string
   readonly complete: (names: string) => string
@@ -97,7 +99,15 @@ const EN: StrategyStrings = {
   missingView: 'not applied yet (db/strategy.sql)',
   rarity: (r) => (r ? (RARITY_EN[r] ?? r) : '—'),
   aim: 'What we aim for',
-  aimSub: 'pages our affinity pays for, and what we can spend',
+  aimSub: 'value created in negotiations and markets',
+  scoring: [
+    'Team trades: buy below our private marginal value; sell true duplicates above our your_value. Account for the accepting side’s venue fees.',
+    'Dealer ladder: negotiate toward the dealer’s final price. The best three deals per level count each round.',
+    'Duels: capture our share of the pie before round decay. No cards or cash move; album rules do not apply.',
+    'Market-making: Market Test matching efficiency and value other teams create on our venue.',
+    'Holdings, completed pages, trade count, fee revenue and pack luck earn no points.',
+  ],
+  inventory: 'Inventory context: affinity and missing cards affect private values, not points for holding them',
   target: (name, a, have, of) => `${name}${aff(a)} · ${have}/${of}`,
   lacks: (n) => `lacks ${n}:`,
   complete: (names) => `${names} complete`,
@@ -200,7 +210,15 @@ const ES: StrategyStrings = {
   missingView: 'aún sin aplicar (db/strategy.sql)',
   rarity: (r) => (r ? (RARITY_ES[r] ?? r) : '—'),
   aim: 'Qué buscamos',
-  aimSub: 'las páginas que nuestra afinidad paga, y lo que podemos gastar',
+  aimSub: 'valor creado al negociar y hacer mercado',
+  scoring: [
+    'Tratos con equipos: comprar por debajo de nuestro valor marginal privado; vender solo repetidas por encima de nuestro your_value. Contar las comisiones de quien acepta.',
+    'Escalera de tratantes: negociar hacia su precio final. Cuentan los tres mejores tratos por nivel en cada ronda.',
+    'Duelos: capturar nuestra parte del beneficio antes de que decaiga por ronda. No mueven cartas ni dinero; las reglas del álbum no se aplican.',
+    'Mercado: eficiencia al cruzar ofertas del Market Test y valor creado entre otros equipos en nuestro mercado.',
+    'Tener cartas, completar páginas, contar tratos, cobrar comisiones y la suerte de los sobres no dan puntos.',
+  ],
+  inventory: 'Contexto del inventario: afinidad y cartas pendientes afectan al valor privado, no dan puntos por tenerlas',
   target: (name, a, have, of) => `${name}${aff(a)} · ${have}/${of}`,
   lacks: (n) => `faltan ${n}:`,
   complete: (names) => `${names} completa`,
