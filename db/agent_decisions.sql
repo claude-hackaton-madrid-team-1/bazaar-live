@@ -1,4 +1,4 @@
--- Bazaar Live: what the Agent screen may read of our agents' decisions (taker, maker, duels).
+-- Bazaar Live: what the Agent screen may read of our agents' decisions (taker, maker, duels, sales).
 --
 -- Applied by the coordinator with the ADMIN url, AFTER db/show.sql (never by this repo, never by the show):
 --     psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql
@@ -8,7 +8,7 @@
 -- `agent_decisions off` once and the game screens run as before.
 --
 -- Idempotent. Five views, granted to bazaar_live_reader (the role show.sql creates), no table grant:
---   * show.agent_decisions  one row per live decision of taker / maker / duels, with its last execution's
+--   * show.agent_decisions  one row per live decision of taker / maker / duels / sales, with its last execution's
 --                           method and error code and its trade outcome (bazaar sql/schema.sql: decisions,
 --                           executions, outcomes, written by decisions.DecisionLog and evals.store)
 --   * show.agent_outcomes   the scored outcomes (trade, dealer, duel), keyed by scored_at for polling; a dealer
@@ -47,7 +47,7 @@ with live as (
          coalesce(d.policy_checks ->> 'guardrail', '') as g,
          coalesce(d.kind, '') like 'duel%' or d.agent = 'duels' as duel
     from public.decisions d
-   where d.agent in ('taker', 'maker', 'duels') and d.dry_run is not true and d.tick >= 0
+   where d.agent in ('taker', 'maker', 'duels', 'sales') and d.dry_run is not true and d.tick >= 0
 ),
 -- The last request per decision (most have one). Plain joins: no index on decision_id, and these tables are small.
 last_exec as (
@@ -140,7 +140,7 @@ select o.target,
   from public.outcomes o
   left join public.decisions d on d.id = o.decision_id
  where o.target in ('trade', 'dealer', 'duel')
-   and (o.decision_id is null or (d.agent in ('taker', 'maker', 'duels') and d.dry_run is not true));
+   and (o.decision_id is null or (d.agent in ('taker', 'maker', 'duels', 'sales') and d.dry_run is not true));
 
 -- What guardrails.context_from() sums: spend per game hour (t_hours, a refund is a negative spend) and accepts per tick.
 create or replace view show.agent_ledger with (security_barrier = true) as

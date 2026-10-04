@@ -12,7 +12,7 @@ export function speakerName(t: Strings, speaker: Speaker, dealer: string | undef
     case 'buyer':
       return t.buyer
     case 'seller':
-      return t.seller
+      return dealer === 'sales' ? (t.seller === 'VENDEDOR' ? 'Ventas' : 'Sales') : t.seller
     case 'abuela':
     case 'chato':
     case 'pilar':

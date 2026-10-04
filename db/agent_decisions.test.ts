@@ -198,6 +198,19 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
     expect(rows.map((r) => r.agent)).not.toContain('broker')
   })
 
+  it('projects a live Sales worker thread without exposing its raw request or private reasoning', async () => {
+    const { rows: inserted } = await adminDb.query(`insert into decisions (tick, agent, kind, status, dry_run, thread_id, candidates, reason, rag_context)
+      values (200, 'sales', 'team_cash_offer', 'done', false, 44, $1, $2, $3) returning id`,
+    [{ ref: 'RET-01', side: 'sell', venue: 'v28', counterparty: 't18', price: 15 }, SECRET_REASON, { key: SECRET_KEY }])
+    const id = inserted[0].id
+    try {
+      const { rows } = await reader.query('select * from show.agent_decisions where id = $1', [id])
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ agent: 'sales', counterparty: 't18', status: 'done', trade_context: { threadId: 44, venue: 'v28', side: 'sell' } })
+      expect(JSON.stringify(rows)).not.toMatch(new RegExp(`${SECRET_REASON}|${SECRET_KEY}`))
+    } finally { await adminDb.query('delete from decisions where id = $1', [id]) }
+  })
+
   it('adds only trade identifiers, with recipient distinct from venue owner and no duel context', async () => {
     await adminDb.query('update decisions set candidates = candidates || $1::jsonb where id = 4', [JSON.stringify({ venue: 'rastro', to: 't02', side: 'ask' })])
     const { rows } = await reader.query('select id, trade_context from show.agent_decisions where id in (1, 4, 7) order by id')

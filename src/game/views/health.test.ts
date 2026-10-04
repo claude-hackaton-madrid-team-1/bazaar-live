@@ -38,7 +38,7 @@ test('agent.health is kept apart: never in the event lists, only the latest repo
 test('one reason per chip: /health for the taker and the maker, decisions for the duels', () => {
   const s = game(10, [decided(1, 'taker', 10), decided(2, 'maker', 9), decided(3, 'duels', 10)])
   apply(s, ev('agent.health', { agents: [report('taker', { ledger: 'down', since: { ledger_down: '2026-10-03T09:40:00Z' } }), report('maker', { tickMs: 14_200 })] }))
-  assert.deepEqual(brief(s), [['taker', 'bad', 'ledger_down'], ['maker', 'warn', 'tick_slow'], ['duels', 'good', null]])
+  assert.deepEqual(brief(s), [['taker', 'bad', 'ledger_down'], ['maker', 'warn', 'tick_slow'], ['duels', 'good', null], ['sales', 'bad', 'silent']])
   assert.equal(healthChips(s, NOW)[0]?.since, '2026-10-03T09:40:00Z')
 })
 
@@ -67,6 +67,6 @@ test('the mock: the taker red (ledger down), the maker amber (tick budget), the 
   const s = createState()
   for (let i = 0; i < 8 * 6; i++) for (const e of game.step()) apply(s, e)
   assert.deepEqual(healthChips(s, NOW).map((c) => [c.agent, c.tone, c.health?.reason?.kind ?? c.reason?.kind ?? null]), [
-    ['taker', 'bad', 'ledger_down'], ['maker', 'warn', 'tick_slow'], ['duels', 'good', null],
+    ['taker', 'bad', 'ledger_down'], ['maker', 'warn', 'tick_slow'], ['duels', 'good', null], ['sales', 'warn', 'quiet'],
   ])
 })

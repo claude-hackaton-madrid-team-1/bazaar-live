@@ -754,3 +754,5 @@ Browser support and permission are required, and browser recognition may send au
 Typing is the tested fallback. The show voices only recorded Jev verdict labels, not private reasoning.
 Team identities get stable character voices for safe structured lines; arbitrary team messages remain captions.
 Important outcomes take priority; old routine beats remain in the transcript without delaying current speech.
+
+Sales conversations on **Live agents** use the existing private game stream: the Sales worker, counterpart, market, recorded words and structured swap/cash terms appear together. Proposals remain distinct from settled trades. Recorded outgoing Sales words can use the configured seller voice; rival words stay text-only. This requires the existing game-view token and the updated `db/agent_decisions.sql` view. See [LIVE-SALES](docs/specs/LIVE-SALES.md) for boundaries and rollout requirements.

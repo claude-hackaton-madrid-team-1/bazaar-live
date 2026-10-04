@@ -387,3 +387,21 @@ describe('GameDbSource.poke', () => {
     s.stop()
   })
 })
+
+describe('late acknowledged words', () => {
+  it('updates a missing own quote once after the feed cursor passed it, without resending the offer', async () => {
+    const missing = { id: 30000, tick: 401, type: 'thread.message', payload: { sender: 't01', thread: 44, message: 50, text: null } }
+    const answers = new Map<string, unknown[]>([[DB_SQL.feedFirst, [missing]], [DB_SQL.feedWindow, [missing]], [DB_SQL.meFirst, [ME]]])
+    const db = fakeDb(answers)
+    const hub = new GameHub()
+    const source = new GameDbSource({ db, hub, log: () => undefined })
+    await source.pollOnce()
+    expect(hub.replay().filter((e) => e.type === 'thread.message.quote')).toHaveLength(0)
+    answers.set(DB_SQL.quotes, [{ ...missing, payload: { ...missing.payload, text: 'I can trade my Retiro card.' } }])
+    await source.pollOnce()
+    await source.pollOnce()
+    expect(hub.replay().filter((e) => e.type === 'thread.message')).toHaveLength(1)
+    expect(hub.replay().filter((e) => e.type === 'thread.message.quote')).toMatchObject([{ tick: 401, scope: 'team', payload: { feed_id: 30000, text: 'I can trade my Retiro card.' } }])
+    expect(db.calls.filter((c) => c.sql === DB_SQL.quotes)).toHaveLength(2)
+  })
+})

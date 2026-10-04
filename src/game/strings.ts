@@ -597,7 +597,7 @@ const RARITY_PL_ES: Readonly<Record<string, string>> = { common: 'comunes', unco
 const JEV_EN: Readonly<Record<string, string>> = { yes: 'yes', no: 'no', undecided: 'unsure', aggressive: 'aggressive', counter: 'counter', accept: 'accept', fair: 'fair' }
 
 const HUM_EN: GameStrings['hum'] = {
-  agents: { taker: 'Taker', maker: 'Maker', duels: 'Duels' },
+  agents: { taker: 'Taker', maker: 'Maker', duels: 'Duels', sales: 'Sales' },
   rules: {
     max_price: 'price cap', max_price_common: 'price cap for commons', max_price_uncommon: 'price cap for uncommons', max_price_rare: 'price cap for rares',
     max_price_epic: 'price cap for epics', max_price_legendary: 'price cap for legendaries', cash_floor: 'cash floor',
@@ -639,7 +639,7 @@ const HUM_EN: GameStrings['hum'] = {
 const JEV_ES: Readonly<Record<string, string>> = { yes: 'sí', no: 'no', undecided: 'no lo ve claro', aggressive: 'agresivo', counter: 'contraoferta', accept: 'aceptar', fair: 'justo' }
 
 const HUM_ES: GameStrings['hum'] = {
-  agents: { taker: 'Taker', maker: 'Maker', duels: 'Duelos' },
+  agents: { taker: 'Taker', maker: 'Maker', duels: 'Duelos', sales: 'Ventas' },
   rules: {
     max_price: 'tope de precio', max_price_common: 'tope para comunes', max_price_uncommon: 'tope para poco comunes', max_price_rare: 'tope para raras',
     max_price_epic: 'tope para épicas', max_price_legendary: 'tope para legendarias', cash_floor: 'suelo de caja',
@@ -803,7 +803,7 @@ const EN: GameStrings = {
   },
   agt: {
     agents: 'Agents',
-    agentsSub: (x, n) => `${n.taker} silent after ${plural(x.taker.silent, 'tick', 'ticks')} without deciding · ${n.maker} after ${x.maker.silent} · ${n.duels} after ${x.duels.silent}`,
+    agentsSub: (x, n) => `${n.taker} silent after ${plural(x.taker.silent, 'tick', 'ticks')} without deciding · ${n.maker} after ${x.maker.silent} · ${n.duels} after ${x.duels.silent} · ${n.sales} after ${x.sales.silent}`,
     state: { none: 'NO LOG', silent: 'SILENT', quiet: 'QUIET', stuck: 'BLOCKED', ok: 'OK' },
     ago: (n, sec) => (n === 0 ? 'decided this tick' : `last decision ${HUM_EN.ago(n, sec)}`),
     never: 'never decided',
@@ -1251,7 +1251,7 @@ const EN: GameStrings = {
       untilNext: 'until the next mark',
       start: (agent, count) => `${agent} restart${count > 1 ? ` ×${count}` : ''}`,
       startWhy: 'the process started: a deploy or a restart',
-      game: { round: 'New round', bench: 'Market Test', duels: 'Duels', day: 'New day' },
+      game: { round: 'New round', bench: 'Market Test', duels: 'Duels', sales: 'Sales', day: 'New day' },
       from: 'since',
       to: 'until',
       now: 'now',
@@ -1394,7 +1394,7 @@ const ES: GameStrings = {
   },
   agt: {
     agents: 'Agentes',
-    agentsSub: (x, n) => `${n.taker} en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · ${n.maker} tras ${x.maker.silent} · ${n.duels} tras ${x.duels.silent}`,
+    agentsSub: (x, n) => `${n.taker} en silencio tras ${plural(x.taker.silent, 'turno', 'turnos')} sin decidir · ${n.maker} tras ${x.maker.silent} · ${n.duels} tras ${x.duels.silent} · ${n.sales} tras ${x.sales.silent}`,
     state: { none: 'SIN REGISTRO', silent: 'EN SILENCIO', quiet: 'CALLADO', stuck: 'BLOQUEADO', ok: 'OK' },
     ago: (n, sec) => (n === 0 ? 'ha decidido este turno' : `última decisión ${HUM_ES.ago(n, sec)}`),
     never: 'nunca ha decidido',
@@ -1842,7 +1842,7 @@ const ES: GameStrings = {
       untilNext: 'hasta la siguiente',
       start: (agent, count) => `${agent} reiniciado${count > 1 ? ` ×${count}` : ''}`,
       startWhy: 'arrancó el proceso: un despliegue o un reinicio',
-      game: { round: 'Nueva ronda', bench: 'Prueba de mercado', duels: 'Duelos', day: 'Nuevo día' },
+      game: { round: 'Nueva ronda', bench: 'Prueba de mercado', duels: 'Duelos', sales: 'Ventas', day: 'Nuevo día' },
       from: 'desde',
       to: 'hasta',
       now: 'ahora',
