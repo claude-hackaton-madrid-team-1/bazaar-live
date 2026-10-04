@@ -27,21 +27,21 @@
 /* the layout, in cqw: the room is 100 wide and 62.5 tall (16 / 10) */
 .stage .room {
   --orb: 15.5cqw;
-  --orb-y: 21cqw;
-  --seller-x: 14.5cqw;
-  --buyer-x: 85.5cqw;
-  --floor: 32.8cqw;
-  --plate-y: 34.6cqw;
-  --board-top: 9.8cqw;
-  --board-w: 46cqw;
+  --orb-y: 17cqw;
+  --seller-x: 17cqw;
+  --buyer-x: 83cqw;
+  --floor: 27cqw;
+  --plate-y: 29cqw;
+  --board-top: 40cqw;
+  --board-w: 72cqw;
   --board-h: 22cqw;
   --board-pad: 1.2cqw;
   --board-gap: 0.9cqw;
   --dealer-orb: 6.4cqw;
-  --dealer-y: 40.6cqw;
+  --dealer-y: 69cqw;
   --edge: 2.6cqw;
   position: relative;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 13;
 }
 
 /* ---------------------------------------------------------------- the light */
@@ -214,8 +214,8 @@
   .stage .room {
     --orb: 20cqw;
     --orb-y: 16.5cqw;
-    --seller-x: 21cqw;
-    --buyer-x: 79cqw;
+    --seller-x: 17cqw;
+    --buyer-x: 83cqw;
     --floor: 29.5cqw;
     --plate-y: 31.5cqw;
     --board-top: 44cqw;
@@ -224,7 +224,7 @@
     --board-pad: 2cqw;
     --board-gap: 1.6cqw;
     --dealer-orb: 10cqw;
-    --dealer-y: 12cqw;
+    --dealer-y: 94cqw;
     --edge: 3cqw;
     aspect-ratio: 4 / 5;
   }

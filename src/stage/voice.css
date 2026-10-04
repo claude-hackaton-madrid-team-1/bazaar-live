@@ -57,6 +57,13 @@
   --v-ink: var(--text-2);
 }
 
+.stage [data-voice='sales'] {
+  --v1: var(--guest1-1);
+  --v2: var(--guest1-2);
+  --v-ink: var(--text);
+  --toward: 1;
+}
+
 /* ---------------------------------------------------------------- placement */
 
 .stage .voice {
@@ -79,6 +86,10 @@
 
 .stage .voice.lead[data-voice='buyer'] {
   left: calc(var(--buyer-x) - var(--orb) / 2);
+}
+
+.stage .voice.lead[data-voice='sales'] {
+  left: calc(50cqw - var(--orb) / 2);
 }
 
 /* ---------------------------------------------------------------- the orb */

@@ -101,6 +101,7 @@ const EN: StrategyStrings = {
   aim: 'What we aim for',
   aimSub: 'value created in negotiations and markets',
   scoring: [
+    'Sales analyses market and rival intelligence to propose targeted offers coordinated with Maker.',
     'Team trades: buy below our private marginal value; sell inventory allowed by current guardrails above our your_value, preserving sole copies on protected complete pages. Account for the accepting side’s venue fees.',
     'Dealer ladder: negotiate toward the dealer’s final price. The best three deals per level count each round.',
     'Duels: capture our share of the pie before round decay. No cards or cash move; album rules do not apply.',
@@ -212,6 +213,7 @@ const ES: StrategyStrings = {
   aim: 'Qué buscamos',
   aimSub: 'valor creado al negociar y hacer mercado',
   scoring: [
+    'Ventas analiza el mercado y el conocimiento de los rivales para proponer ofertas dirigidas, coordinadas con Maker.',
     'Tratos con equipos: comprar por debajo de nuestro valor marginal privado; vender inventario permitido por las reglas vigentes por encima de nuestro your_value, conservando las únicas copias de páginas completas protegidas. Contar las comisiones de quien acepta.',
     'Escalera de tratantes: negociar hacia su precio final. Cuentan los tres mejores tratos por nivel en cada ronda.',
     'Duelos: capturar nuestra parte del beneficio antes de que decaiga por ronda. No mueven cartas ni dinero; las reglas del álbum no se aplican.',
