@@ -51,3 +51,9 @@ no dependency was added. Local evidence: `npm run test:unit` reports 110 files /
 1166 tests passed; `sh scripts/test-sql.sh` reports 10 files / 101 tests passed against
 Postgres 17. `npm run format:check` passes; lint has zero errors and its existing
 Fast Refresh warning. Hosted CI verification follows the feature-branch push.
+
+Main+PR follow-up: the first hosted run caught six quote-style violations in two
+files newly merged to main. Merged `origin/main` (`f70d784`) into this branch and
+formatted those lines. Expanded local suites: 118 files / 1217 unit tests passed;
+11 files / 115 Postgres integration tests passed. This supersedes the earlier
+pre-merge test counts. Hosted verification is recorded on PR #58.

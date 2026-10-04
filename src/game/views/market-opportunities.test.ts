@@ -130,7 +130,7 @@ test("sell: a bid for another team's named copy asks them, not us; one naming ou
     },
   }, 20, maker)
   apply(s, named('t03', 'SAL-01', 9, 9001))
-  assert.deepEqual(opportunities(s).sell, [], "SAL-01 #3 of another team: not ours to sell")
+  assert.deepEqual(opportunities(s).sell, [], 'SAL-01 #3 of another team: not ours to sell')
   apply(s, named('t04', 'SAL-01', 8, 17))
   assert.deepEqual(opportunities(s).sell.map((o) => [o.ref, o.maker, o.price]), [['SAL-01', 't04', 8]], 'our copy (asset 17) named: ours to sell')
 })

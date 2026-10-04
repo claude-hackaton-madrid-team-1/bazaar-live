@@ -23,8 +23,8 @@ async function get(app: ReturnType<typeof createApp>, url: string): Promise<{ st
   return { status, body: JSON.parse(raw) as Record<string, unknown> }
 }
 
-const app = (venue?: Parameters<typeof createApp>[0]["venue"]) => createApp({ config: readProviderConfig({}), distDir: '/nonexistent', log: () => undefined, venue })
-const SNAPSHOT = { ...EMPTY_VENUE, at: '2026-10-03T10:00:00.000Z', venues: [{ venue: "v19", name: null, mechanism: "board", feeBps: 0, feePerCard: 0, status: "open" as const, openedTick: 900, current: true, counted: true }] }
+const app = (venue?: Parameters<typeof createApp>[0]['venue']) => createApp({ config: readProviderConfig({}), distDir: '/nonexistent', log: () => undefined, venue })
+const SNAPSHOT = { ...EMPTY_VENUE, at: '2026-10-03T10:00:00.000Z', venues: [{ venue: 'v19', name: null, mechanism: 'board', feeBps: 0, feePerCard: 0, status: 'open' as const, openedTick: 900, current: true, counted: true }] }
 
 describe('GET /api/venue', () => {
   it('is not served without the token even when the token is wrong', async () => {
@@ -41,6 +41,6 @@ describe('GET /api/venue', () => {
     expect((await get(a, '/api/venue')).status).toBe(401)
     const ok = await get(a, '/api/venue?token=secret')
     expect(ok.status).toBe(200)
-    expect(ok.body).toMatchObject({ enabled: true, venues: [{ venue: "v19" }] })
+    expect(ok.body).toMatchObject({ enabled: true, venues: [{ venue: 'v19' }] })
   })
 })
