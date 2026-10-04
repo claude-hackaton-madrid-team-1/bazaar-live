@@ -366,3 +366,15 @@ test('isOurs on the board: our listings and their cancels, our packs, gifts, thr
   const nobody = createState()
   assert.strictEqual(isOurs(nobody, ev('pack.opened', { pack: 'sobre_barrio' })), false, 'no team yet: an empty actor is not ours')
 })
+
+test('a Market Test session: announced once, its venues kept, closed by bench.finished', () => {
+  const s = createState()
+  const start = { name: 'The Market Test: every venue gets the same synthetic book', ticks: 16, venues: ['v01', 'v19', 7], session: 6, start_tick: 1401 }
+  apply(s, ev('bench.started', start, 1401))
+  apply(s, ev('bench.started', start, 1401))
+  assert.lengthOf(s.bench, 1)
+  assert.deepInclude(s.bench[0], { session: 6, startTick: 1401, ticks: 16, venues: ['v01', 'v19'], finishedTick: null })
+  apply(s, ev('bench.finished', { session: 6 }, 1417))
+  assert.strictEqual(s.bench[0]?.finishedTick, 1417)
+  assert.isTrue(KNOWN_TYPES.has('bench.started') && KNOWN_TYPES.has('bench.finished'))
+})
