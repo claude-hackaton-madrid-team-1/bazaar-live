@@ -180,6 +180,7 @@ export class GameDbSource {
   private readonly deps: DbSourceDeps
   private feedMark: number | null = null
   private readonly salesSeen = new Map<number, number>()
+  private readonly salesPublic = new Map<number, GameEvent>()
   private salesSkip = 0
   private salesLoaded = false
   private readonly salesClosed = new Set<number>()
@@ -318,6 +319,11 @@ export class GameDbSource {
   /** Optional additive view: failure never disables the existing relay or invokes the game API. */
   private async readSales(feed: GameEvent[]): Promise<GameEvent[]> {
     if (!this.team || this.tick === null) return []
+    for (const e of feed) {
+      const message = intOf(e.payload.message)
+      if (e.type === 'thread.message' && e.payload.sender === this.team && message !== null) this.salesPublic.set(message, e)
+    }
+    while (this.salesPublic.size > 100) this.salesPublic.delete(this.salesPublic.keys().next().value ?? -1)
     if (this.salesSkip > 0) { this.salesSkip -= 1; return [] }
     const since = Math.max(0, this.tick - (this.salesLoaded ? 8 : this.o.feedTicks))
     try {
@@ -342,11 +348,16 @@ export class GameDbSource {
         const publicEvent = feed[index]
         if (publicEvent) {
           feed[index] = { ...publicEvent, payload: { ...publicEvent.payload, text: e.payload.text } }
-        } else events.push(e)
+        } else {
+          const earlier = this.salesPublic.get(message)
+          events.push(earlier ? { ...e, type: 'thread.message.quote', payload: { ...e.payload, feed_id: earlier.id } } : e)
+        }
+        const original = this.salesPublic.get(message)
+        if (original) this.missingQuotes.delete(original.id)
         this.salesSeen.set(message, e.tick)
       }
       while (this.salesSeen.size > 100) this.salesSeen.delete(this.salesSeen.keys().next().value ?? -1)
-      return [...events.filter((e) => e.type === 'thread.message'), ...events.filter((e) => e.type === 'thread.closed')]
+      return [...events.filter((e) => e.type !== 'thread.closed'), ...events.filter((e) => e.type === 'thread.closed')]
     } catch (error: unknown) {
       this.salesSkip = isMissingViews(error) ? 100 : 3
       this.deps.log({ route: 'game', event: 'db_sales_messages_unavailable', retryPolls: this.salesSkip })

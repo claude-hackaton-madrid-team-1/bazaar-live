@@ -443,6 +443,20 @@ describe('private acknowledged Sales messages', () => {
     expect(state.teamThreads.get(3334)).toMatchObject({ venue: 'rastro', status: 'closed' })
   })
 
+  it('enriches an earlier public envelope exactly once when ACK persistence arrives late', async () => {
+    const original = { id: 30001, tick: 399, type: 'thread.message', actor: 't01', payload: { message: 16779, thread: 3334, sender: 't01', team: 't01', with: 't03', kind: 'team', text: null } }
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.meFirst, [ME]], [DB_SQL.feedWindow, [original]], [DB_SQL.sales, []]])
+    const hub = new GameHub()
+    const source = new GameDbSource({ db: fakeDb(answers), hub, log: () => {} })
+    await source.pollOnce()
+    answers.set(DB_SQL.sales, [quote])
+    answers.set(DB_SQL.quotes, [{ ...original, payload: { ...original.payload, text: quote.text } }])
+    await source.pollOnce()
+    await source.pollOnce()
+    expect(hub.replay().filter((e) => e.type === 'thread.message')).toHaveLength(1)
+    expect(hub.replay().filter((e) => e.type === 'thread.message.quote')).toEqual([expect.objectContaining({ scope: 'team', payload: expect.objectContaining({ feed_id: 30001, message: 16779, text: quote.text }) })])
+  })
+
   it('loads bounded initial history, then finds late lower message IDs in the rolling window', async () => {
     const old = { ...quote, id: 100, tick: 200 }
     const answers = new Map<string, unknown[] | Error>([[DB_SQL.meFirst, [ME]], [DB_SQL.sales, [old]]])
