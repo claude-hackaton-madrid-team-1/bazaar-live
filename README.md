@@ -100,6 +100,7 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
 | `/rivals` | Who is ahead, and who has the cards we need? | The cards our target pages lack (incomplete pages our affinity boosts), each with the teams holding it (a spare first, then the freshest sighting; how we know: bought, from a pack, a gift, crafted, listed; since when) and the teams also after it lately (board bids with their best cash, dealer asks). Then the standings by the leaderboard's last read (score, complete pages, how many of our needs each holds, the set its public moves chase, flagged when it is one we aim for), and our album beside the album of the team picked there (`?team=`): neighbourhood by neighbourhood in our Album screen's order, our twelve cells next to theirs slot by slot, their cards seen in public moves filled and every other one drawn as unknown, never missing. Read from Postgres (db/rival_albums.sql): only public game facts, never a value of ours. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams; our open offers on the boards, each posted by hand marked "a mano" (no agent manages it). Ours come from `db/game.sql`'s `show.game_our_offers`, however long ago they were listed (`server/game/dbsource.ts` sends them as the sticky `offers.ours`, replayed after the backlog). |
+| `/venue` | Is our venue open and counted, when is the next Market Test, and what did our broker do with its book? | The Market Test first, in big type: a session on now (red, pulsing, ticks left and a bar; the traders the synthetic book brought to our venue, how many pairs our broker matched of those the quotes allowed, the quoted surplus captured, what failed or a guardrail refused, with the game's error code), or the countdown to the next one in ticks, game minutes and Madrid time, with the last session's result. Then our venue (board or auto, fee, open, ✓ when /me counts it for the Market Test; a red line when none is open, it is closing, it is auto or /me counts another) and our bench points against the free stall; every session newest first (earlier days dated), each opening to its matches; and what other teams did on our venue today. Read from Postgres (db/venue.sql) and the game stream: see below. |
 | `/prices` | Is this a good price? | The live price guide, one row per card the market or we care about: the standard price (the median of the last 8 fills, dealers too, else the book price), the trend (the newest 3 fills against the 3 before, ±5 % steady), the best bid and ask over every venue (an ask with its venue's fee), the spread, what the card is worth to us, and a good deal for us by the album's rules (buy ≤ min(worth − 2, standard), sell ≥ max(worth + 5, standard): a copy that completes a page is worth that page). "Buy now" / "Sell now" when the board has one; a row that moved this tick flashes. `src/game/views/prices.ts`, over the WebSocket. |
 | `/history` | Where did our cash go? Where do the other teams beat us? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. Every team's score from the public leaderboard: where they beat us and where we beat them (vs the leader, the team just above and the mean), every team's score and our place over the day, and what moved our place (db/teams_score.sql). |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
@@ -310,14 +311,46 @@ matches never show up as venue trades, so our venue's 0 trades does not mean the
 comes from `show.team_scores`; ours from `show.game_me` (`db/game.sql`).
 
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql`. The server reads
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`. The server reads
 the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4), and as soon as our
 agents' sockets say something moved (below), and serves `GET /api/history`, behind `GAME_VIEW_TOKEN`. `?mock=1` shows a
 made-up day of money.
 
+### Our venue and the Market Test (`/venue`)
+
+Every two game hours (240 ticks so far: 201, 441, 681, …) every venue gets the same synthetic book for 16 ticks; our
+broker matches it on our board venue (v19, 0 %), and each session counts our best venue open during it. The public feed
+announces each start (`bench.started {session, start_tick, ticks, venues}`); `bench.finished`, with the session's
+efficiency, reaches only our team stream and never the feed table, so the official number per session is /me's
+`bench_efficiency` read after it. `db/venue.sql` adds six read-only views for the same role, behind `GAME_VIEW_TOKEN`
+(our broker's moves and our private score parts, never in the public show views):
+
+- `show.venue_ours`: each venue of ours (the feed's `venue.*` with us as owner, and the venues /me names): name, mechanism,
+  fee, status, opened tick, whether it is our venue now and the one the Market Test counts (`bench_venue`). Never the
+  broker key (`venue_broker_keys`).
+- `show.venue_sessions`: each `bench.started`, with whether our venue was in its list.
+- `show.venue_books`: each synthetic book our broker read (`bench_books`, one run such as `b35` per session), every trader
+  once (side, first quote, first and last tick seen), put on its session by tick and time. Never the raw offer.
+- `show.venue_matches`: the broker's `broker_match` and `bench_probe` decisions (bench and public book): status, run or
+  card, ask, bid, price, fee, quoted surplus, the guardrail's denial and the game's error code. Never `candidates`,
+  `chosen`, `reason`, `state_digest` whole or the executions' request and answer.
+- `show.venue_trades`: other teams on our venue from the public feed: offers listed, settlements, failed settlements.
+- `show.venue_score`: /me's `venue`, `bench_venue`, `bench_efficiency`, `bench_points`, `mm_points`, `market` where one changed.
+
+Apply after the other show files, each time:
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
+The server reads them every 5 s on the shared pool, and 2.5 s and 5 s after the taker's tick (the broker is on no socket
+of ours), and serves `GET /api/venue` (the same token). The page reads it again at once when the game stream brings a
+`bench.started`, every 3 s while a session runs, and says so in the tab's title. The countdown counts from today's last
+start at the cadence the starts keep (the most common gap, each day on its own); a start that never came moves it on by
+whole steps without guessing the session's number. Quotes are not limits: the quoted surplus captured (of the most the
+crossing quotes allowed after the fee) is our broker's own measure; the score is /me's efficiency. `?mock=1` plays a
+session every 40 ticks of the mock game (the first at tick 2) beside yesterday's six. Proof: `sh scripts/test-sql.sh`
+runs `db/venue.test.ts`. Screenshots: `docs/screenshots/venue/`.
+
 ### Live refresh (`/history`, `/learn` and `/strategy`)
 
-These three screens read their own API rather than the game stream, so the server keeps them close to real time itself
+These three screens (and `/venue` and `/rivals`) read their own API rather than the game stream, so the server keeps them close to real time itself
 (`server/game/pages.ts`). Our agents' `/events` sockets (`server/game/agentsws.ts`, `onEvent`) only say "read now":
 history reads 250 ms and 2.5 s after any execution and 250 ms and 5 s after the taker's tick (our orders land right
 after the execution; our cash before the tick; trades and learnings at the end of the taker's tick), learn 1.5 s and
@@ -350,7 +383,7 @@ are newer than the docs; else from the server's `GUARDRAIL_*` variables (`/api/s
 cap no fresh denial has named (the rare's, the pack's) comes from `shared/guardrails.ts`, a typed copy of bazaar's
 GUARDRAILS.md and STRATEGY.md. When those files change a value, change it there and move its `since` to the first tick
 that runs it: an older denial never overrides it. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
 The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
 
@@ -378,7 +411,7 @@ with no card known is never flagged.
 - `show.rival_head`: the newest feed tick.
 
 Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
 The server reads them every 15 s on the shared pool, and 5 s after the taker's tick, and serves `GET /api/rivals` (the
 same token). `?mock=1` shows a made-up market. Proof: `sh scripts/test-sql.sh` runs `db/rival_albums.test.ts`.
 
@@ -411,7 +444,7 @@ a url or money words only, often a venue's own format notice.
   desc, id desc)`. The shared pool runs with JIT off (`server/transcript/pg.ts`): with a production-sized `feed_events`
   the planner's estimates cross `jit_above_cost`, and JIT compiling cost about 240 ms per read. Until bazaar creates
   the table, the file creates nothing and succeeds: re-run it after. Apply it after the other show files, each time:
-  `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql`.
+  `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
 - **The server.** `server/injections/` reads both views every 10 s on the shared pool. A `proof` keeps only the
   characters of an endpoint and its ids.
   - It serves `GET /api/injections`, which is **public** like `/api/transcript` (the show has no token).
