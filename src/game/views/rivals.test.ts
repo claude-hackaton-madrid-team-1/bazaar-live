@@ -3,7 +3,7 @@ import { EMPTY_RIVALS, type RivalCard, type RivalsSnapshot, type RivalTeam } fro
 import { mockRivals, rivalsStateOf } from '../rivals.ts'
 import { GAME_STRINGS } from '../strings.ts'
 import { apply, createState, type GameEvent, type Payload } from '../state.ts'
-import { albumCounts, CHASE_TICKS, chasedSet, compareAlbums, markProbable, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows, type RivalPage } from './rivals.ts'
+import { albumCounts, CHASE_TICKS, chasedSet, compareAlbums, inviteRows, markProbable, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows, type RivalPage } from './rivals.ts'
 
 let nextId = 1
 const ev = (type: string, payload: Payload = {}, tick = 500): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor: '', payload })
@@ -244,5 +244,58 @@ describe('the source', () => {
     // never a tick ahead of the mock game's clock, even at its start
     const early = mockRivals(20)
     expect([...early.holdings.map((h) => h.seen), ...early.wants.map((w) => w.last)].every((t) => t >= 0 && t <= 20)).toBe(true)
+  })
+})
+
+
+describe('inviteRows: who to pitch our market to', () => {
+  // Real set LAV (our ×1.6 page, 9/10): we hold LAV-01..09 and list some; a rival missing them is a lead.
+  const meWithAsks = (refsPriced: [string, number][]) => {
+    const s = createState()
+    apply(s, ev('agent.hello', { team: 't01', name: 'Team 1' }))
+    apply(s, ev('agent.me', {
+      cash: 100,
+      affinity: { LAV: 1.6 },
+      album: { pages: [{ set: 'LAV', name: 'Lavapiés', have: 9, of: 10, complete: false }] },
+      assets: [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ id: n, kind: 'card', ref: ref('LAV', n), serial: 1, your_value: 20 })),
+    }, 500))
+    apply(s, ev('venue.opened', { venue: 'v19', name: 'Team 1 market', owner: 't01', bond: 250, rules: { mechanism: 'board' }, fee_bps: 0, fee_per_card: 0 }, 480))
+    let oid = 900
+    for (const [r, price] of refsPriced) {
+      const e = ev('offer.listed', {
+        venue: 'v19',
+        offer: { id: oid++, maker: 't01', to: null, venue: 'v19', thread: null, status: 'open', give: { cash: 0, assets: [{ id: oid, kind: 'card', ref: r, serial: 1 }], types: [] }, want: { cash: price, assets: [], types: [] }, expires_tick: 9999, created_tick: 490, final: false },
+      }, 490)
+      apply(s, { ...e, actor: 't01' }) // offer.listed is attributed to its maker, like the real feed
+    }
+    return s
+  }
+  const team = (t: string, rank: number, pages: number | null = 0): RivalTeam => ({ team: t, rank, score: 30 - rank, level: null, pages, deals: null, tick: 500, albumFilled: null, albumSlots: null, interest: {} })
+  const held = (holder: string, card: string): RivalCard => ({ holder, card, set: card.split('-')[0] ?? null, rarity: 'common', name: card, copies: 1, how: 'bought', since: 400, seen: 400 })
+  const snap = (teams: RivalTeam[], holdings: RivalCard[] = [], wants: RivalsSnapshot['wants'] = []): RivalsSnapshot => ({ ...EMPTY_RIVALS, at: 'x', tick: 500, teams, holdings, wants })
+
+  it('pitches a rival the cards we list that it is missing, cheapest first', () => {
+    const rows = inviteRows(snap([team('t02', 5)]), meWithAsks([['LAV-01', 12], ['LAV-02', 8]]))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.team).toBe('t02')
+    expect(rows[0]?.cards.map((c) => [c.ref, c.price])).toEqual([['LAV-02', 8], ['LAV-01', 12]])
+    expect(rows[0]?.cards[0]?.venue).toBe('v19')
+  })
+
+  it('never pitches a card the team is seen holding', () => {
+    const rows = inviteRows(snap([team('t02', 5)], [held('t02', 'LAV-01')]), meWithAsks([['LAV-01', 12]]))
+    expect(rows).toHaveLength(0)
+  })
+
+  it('skips a page the leaderboard says is probably complete', () => {
+    const nine = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => held('t02', ref('LAV', n)))
+    const rows = inviteRows(snap([team('t02', 5, 1)], nine), meWithAsks([['LAV-10', 70]]))
+    expect(rows).toHaveLength(0)
+  })
+
+  it('flags a team already chasing one of the cards, and never pitches ourselves', () => {
+    const rows = inviteRows(snap([team('t01', 1), team('t02', 5)], [], [{ team: 't02', card: 'LAV-01', via: 'bid', times: 1, last: 490, topBid: 9 }]), meWithAsks([['LAV-01', 12]]))
+    expect(rows.map((r) => r.team)).toEqual(['t02'])
+    expect(rows[0]?.chasing).toBe(true)
   })
 })

@@ -3,6 +3,7 @@ import { RARITY_COLOR, SETS, SLOT_RARITY, type Rarity } from '../game.ts'
 import type { State } from '../state.ts'
 import type { HowKnown, RivalCard, RivalsSnapshot, RivalTeam, RivalWant } from '../../../shared/rivals.ts'
 import { albumRows } from './album.ts'
+import { ourVenues } from './our-market.ts'
 
 /*
  * The Rivals screen, from what the public feed shows (db/rival_albums.sql) and our own album (the game stream):
@@ -290,4 +291,72 @@ export function pickTeam(rows: readonly TeamRow[], asked: string | null): string
   if (hit) return hit.team
   const rivals = rows.filter((r) => !r.us)
   return [...rivals].sort((a, b) => b.holdsNeeds - a.holdsNeeds || a.rank - b.rank)[0]?.team ?? null
+}
+
+// ---------------------------------------------------------------- invite rivals to our market
+
+export interface InviteCard {
+  readonly ref: string
+  readonly name: string | null
+  readonly rarity: Rarity | null
+  /** Our standing ask price on the venue; null when the board hid it. */
+  readonly price: number | null
+  readonly set: string
+  readonly venue: string
+  readonly venueName: string
+}
+
+export interface InviteRow {
+  readonly team: string
+  readonly rank: number
+  /** The cards we list that this team is missing, cheapest first. */
+  readonly cards: readonly InviteCard[]
+  readonly sets: readonly string[]
+  /** It already bids or asks a dealer for one of these: a hotter lead. */
+  readonly chasing: boolean
+}
+
+/**
+ * Who to invite to our market, from public moves only. For each rival: the cards we have LISTED for sale on a venue we
+ * run that it is missing — a card on an incomplete page we never saw it hold, never one it holds or a page it likely
+ * completed. "Missing" is a guess from the public feed ("may need"), never a claim about its private album. This writes
+ * the pitch; it never sends a trade. The agent's own offers to teams are the maker's addressed asks (buyer rank) and
+ * the card hunt, not this screen.
+ */
+export function inviteRows(snap: RivalsSnapshot, s: State): InviteRow[] {
+  const asks = new Map<string, InviteCard>() // our cheapest standing ask per card, across the venues we run
+  for (const v of ourVenues(s)) {
+    for (const a of v.asks) {
+      if (a.side !== 'ask') continue
+      const cand: InviteCard = { ref: a.ref, name: a.name, rarity: a.rarity, price: a.price, set: a.ref.split('-')[0] ?? a.ref, venue: v.id, venueName: v.name }
+      const prev = asks.get(a.ref)
+      if (!prev || (cand.price ?? Infinity) < (prev.price ?? Infinity)) asks.set(a.ref, cand)
+    }
+  }
+  if (asks.size === 0) return []
+  const needs = needsOf(s)
+  const order = [...new Set([...asks.values()].map((a) => a.set))] // build each listed card's page, even if the team holds none of it yet
+  const wants = new Map<string, Set<string>>()
+  for (const w of snap.wants) {
+    const set = wants.get(w.team) ?? new Set<string>()
+    set.add(w.card)
+    wants.set(w.team, set)
+  }
+  const rows: InviteRow[] = []
+  for (const t of snap.teams) {
+    if (t.team === s.team) continue
+    const cards: InviteCard[] = []
+    for (const p of rivalAlbum(snap, t.team, needs, order)) {
+      if (p.known >= p.of || p.probable) continue // complete or likely complete: no need
+      for (const slot of p.slots) {
+        if (slot.known != null) continue // we have seen it hold this one
+        const ask = asks.get(slot.ref)
+        if (ask) cards.push(ask)
+      }
+    }
+    if (cards.length === 0) continue
+    cards.sort((a, b) => (a.price ?? 0) - (b.price ?? 0) || a.ref.localeCompare(b.ref))
+    rows.push({ team: t.team, rank: t.rank, cards, sets: [...new Set(cards.map((c) => c.set))], chasing: cards.some((c) => wants.get(t.team)?.has(c.ref)) })
+  }
+  return rows.sort((a, b) => Number(b.chasing) - Number(a.chasing) || b.cards.length - a.cards.length || a.rank - b.rank)
 }
