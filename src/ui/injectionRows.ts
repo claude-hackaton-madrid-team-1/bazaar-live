@@ -21,7 +21,7 @@ export const POLL_MS = 10_000
 export const PREVIEW_CHARS = 280
 
 /** The text rules live in shared/injections.ts (the server's voice guard reads the same ones). */
-export { hiddenCount, revealHidden, type Segment } from '../../shared/injections.ts'
+export { hiddenCount, revealHidden } from '../../shared/injections.ts'
 
 /** The first `max` characters (by code point, never cutting a surrogate pair). */
 export function preview(text: string, max = PREVIEW_CHARS): { readonly text: string; readonly cut: boolean; readonly length: number } {

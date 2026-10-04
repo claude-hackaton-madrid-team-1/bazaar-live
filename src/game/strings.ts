@@ -246,9 +246,6 @@ export interface GameStrings {
     readonly final: string
     readonly injection: string
     readonly injectionTitle: string
-    readonly expired: string
-    readonly expiredTitle: string
-    readonly expiresTitle: string
     readonly closed: string
     readonly buy: string
     readonly sell: string
@@ -883,9 +880,6 @@ const EN: GameStrings = {
     final: 'FINAL',
     injection: 'INJECTION?',
     injectionTitle: 'The counterparty text carries instructions: only the structured offer counts',
-    expired: 'expired',
-    expiredTitle: 'The offer has expired',
-    expiresTitle: 'Ticks until the last offer expires',
     closed: 'closed',
     buy: 'BUY',
     sell: 'SELL',
@@ -1474,9 +1468,6 @@ const ES: GameStrings = {
     final: 'FINAL',
     injection: '¿INYECCIÓN?',
     injectionTitle: 'El texto de la otra parte trae instrucciones: solo cuenta la oferta estructurada',
-    expired: 'caducada',
-    expiredTitle: 'La oferta ha caducado',
-    expiresTitle: 'Turnos hasta que caduque la última oferta',
     closed: 'cerrado',
     buy: 'COMPRA',
     sell: 'VENTA',

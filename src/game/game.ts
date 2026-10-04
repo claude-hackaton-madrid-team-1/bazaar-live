@@ -19,8 +19,6 @@ export const SLOT_RARITY: Rarity[] = [
 
 export const BOOK = [10, 10, 10, 10, 10, 25, 25, 25, 70, 70, 180, 450]
 
-export const PHASES = ['observe', 'decide', 'act'] as const
-
 export const LOG_ICON: Record<string, string> = {
   thought: '·', say: '↗', accept: '✔', walk: '✖', open: '+', list: '≡', flag: '⚑',
 }
