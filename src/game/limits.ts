@@ -104,7 +104,7 @@ export interface Money {
   readonly cashRoom: number | null
   readonly spent: number | null
   readonly maxSpend: Limit
-  /** What the hour's cap still allows (never below 0). */
+  /** What the hour's cap still allows; null when disabled or unknown. */
   readonly spendRoom: number | null
   /** The smaller room: what the next buy may cost. */
   readonly available: number | null
@@ -123,7 +123,7 @@ export function moneyOf(cash: number | null, spent: number | null, rules: MoneyR
   const reserve = applies ? rules.bondReserve.value : null
   const floor = rules.cashFloor.value + (reserve ?? 0)
   const cashRoom = cash === null ? null : Math.max(0, cash - floor)
-  const spendRoom = spent === null ? null : Math.max(0, rules.maxSpend.value - spent)
+  const spendRoom = rules.maxSpend.value === 0 || spent === null ? null : Math.max(0, rules.maxSpend.value - spent)
   const binds: MoneyRule | null = cashRoom !== null && spendRoom !== null ? (cashRoom <= spendRoom ? 'cash_floor' : 'max_spend_per_game_hour') : cashRoom !== null ? 'cash_floor' : spendRoom !== null ? 'max_spend_per_game_hour' : null
   const rooms = [cashRoom, spendRoom].filter((v): v is number => v !== null)
   return { cash, floor, cashFloor: rules.cashFloor, reserve, cashRoom, spent, maxSpend: rules.maxSpend, spendRoom, available: rooms.length ? Math.min(...rooms) : null, binds }

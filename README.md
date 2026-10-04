@@ -14,6 +14,18 @@ Stack: Vite + React + TypeScript + [Motion](https://motion.dev) (`motion` packag
 the password-protected `/approvals` operator desk can propose and explicitly approve actions.
 
 
+## Trade visibility
+
+The Agent and Market screens separate the acting worker (Taker/Maker), intended buyer and seller,
+market name/id and venue owner. Planned, submitted, listed and accepted actions are distinct from
+confirmed settlements; historical missing fields say “Not recorded”. Public offers say “Any buyer”
+or “Any seller”, never the venue owner. The private decision projection adds only validated trade
+identifiers, without exposing raw requests, strategy text or duel limits.
+
+Apply the additive `db/agent_decisions.sql` view migration for complete decision routing details.
+The reader also supports the previous view until migration. The budget display follows AT1:
+zero means no hourly spend cap; cash floor and price protections still apply.
+
 ## Run
 
 Node 22.18 or newer (`.nvmrc` pins 22.23.3): the server runs TypeScript directly by stripping types.

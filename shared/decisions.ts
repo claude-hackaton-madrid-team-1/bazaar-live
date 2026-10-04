@@ -16,8 +16,18 @@ export type DecisionStatus = (typeof DECISION_STATUSES)[number]
 
 export type OutcomeLabel = 'good' | 'ok' | 'bad'
 
+/** Exact trade identifiers from the existing private projection; absent on older deployments. */
+export interface TradeContext {
+  readonly side: 'buy' | 'sell' | null
+  readonly venue: string | null
+  readonly offerId: number | null
+  readonly threadId: number | null
+  readonly recipient: string | null
+}
+
 export interface DecisionPayload {
   readonly decision: number
+  readonly trade?: TradeContext
   readonly agent: AgentName
   readonly kind: string
   /** A card ref, a pack or item name, or `duel:<id>`. */

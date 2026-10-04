@@ -93,12 +93,13 @@ describe('the plan and the levers', () => {
   it('what we can spend is the smaller of cash above the floor and the hour left', () => {
     const { levers } = all(mock)
     const floor = GUARDRAILS_DOC.cashFloor
-    const cap = GUARDRAILS_DOC.maxSpendPerHour
-    expect(levers).toMatchObject({ cash: 81, floor, reserve: null, cashRoom: 81 - floor, spent: 0, spendRoom: cap, room: 81 - floor, binds: 'cash_floor' })
+    const cap = 250
+    expect(levers).toMatchObject({ cash: 81, floor, reserve: null, cashRoom: 81 - floor, spent: 0, spendRoom: null, room: 81 - floor, binds: 'cash_floor' })
     expect(levers.caps.map((c) => c.rarity)).toEqual(['common', 'uncommon', 'rare', 'pack'])
     const spentOut = { ...mock, spend: { ledgerTick: 1, tHours: 1, spent: cap - 2, buys: 3 } }
-    expect(leversOf(spentOut, rulesOf(mock.decisions)).room).toBe(2)
-    expect(leversOf(spentOut, rulesOf(mock.decisions)).binds).toBe('max_spend_per_game_hour')
+    const capped = rulesOf(mock.decisions, null, { cashFloor: floor, spendPerHour: cap, acceptsPerTick: 1, bondReserve: GUARDRAILS_DOC.venueBondReserve })
+    expect(leversOf(spentOut, capped).room).toBe(2)
+    expect(leversOf(spentOut, capped).binds).toBe('max_spend_per_game_hour')
     // no venue of ours yet (and one planned): the floor holds the bond reserve too
     const noVenue = { ...mock, me: mock.me && { ...mock.me, cash: 500, venue: null } }
     expect(leversOf(noVenue, rulesOf(mock.decisions))).toMatchObject({ floor: floor + GUARDRAILS_DOC.venueBondReserve, reserve: GUARDRAILS_DOC.venueBondReserve })
@@ -137,7 +138,7 @@ describe('why we do not buy', () => {
     }
     const r = all(s)
     const floor = GUARDRAILS_DOC.cashFloor
-    expect(r.levers).toMatchObject({ cash: 190, floor, room: Math.min(190 - floor, GUARDRAILS_DOC.maxSpendPerHour - 80) })
+    expect(r.levers).toMatchObject({ cash: 190, floor, room: 190 - floor })
     expect(r.binding).toMatchObject({ rule: 'max_price', rarity: 'rare', limit: 95, latest: { card: 'MAL-10' } })
     expect(STRATEGY_STRINGS.es.headline(r.binding, 190, r.levers.room, 80)).toBe('Tope rara 95: lo que queremos cuesta más')
     // its row says the same: the money rules it once broke cover it now, and their old numbers are gone

@@ -10,13 +10,13 @@
  */
 import { cleanInt, cleanItem, cleanName } from '../../shared/clean.ts'
 import {
-  AGENTS, DECISION_STATUSES, type AgentName, type BrokerPayload, type DecisionPayload, type OurVenuePayload, type GuardrailLimits, type LedgerPayload, type LedgerTick, type OutcomeLabel, type OutcomePayload,
+  AGENTS, DECISION_STATUSES, type AgentName, type BrokerPayload, type DecisionPayload, type TradeContext, type OurVenuePayload, type GuardrailLimits, type LedgerPayload, type LedgerTick, type OutcomeLabel, type OutcomePayload,
 } from '../../shared/decisions.ts'
 import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import { redact, type Db } from '../transcript/poller.ts'
 import type { GameEvent } from './relay.ts'
 
-/** GUARDRAILS.md as shared/guardrails.ts copies it (bazaar#219: `cash_floor` 5; #216: `max_spend_per_game_hour` 250). Not in
+/** GUARDRAILS.md as shared/guardrails.ts copies it (cash floor 5; AT1 hourly cap 0 = disabled). Not in
  * the database: a GUARDRAIL_* variable overrides one until the docs follow an edit. */
 export const DEFAULT_LIMITS: GuardrailLimits = {
   spendPerHour: GUARDRAILS_DOC.maxSpendPerHour,
@@ -45,7 +45,7 @@ export function readLimits(env: Readonly<Record<string, string | undefined>>): G
   return fromEnv.length ? { ...out, fromEnv } : out
 }
 
-const DECISION_COLUMNS = `id, tick, agent, kind, item, counterparty, price, our_value, status, verdict, rule, rule_text, jev_verdict, jev_value, exec_method, error_code, outcome_label, realized_surplus, jev_right`
+const DECISION_COLUMNS = `id, tick, agent, kind, item, counterparty, price, our_value, status, verdict, rule, rule_text, jev_verdict, jev_value, exec_method, error_code, outcome_label, realized_surplus, jev_right, to_jsonb(agent_decisions)->'trade_context' as trade_context`
 const OUTCOME_COLUMNS = `target, subject, decision_id, agent, tick, item, counterparty, side, price, our_value, label, score, realized_surplus, jev_verdict, jev_right`
 /** The stamp as exact microsecond text, as in the transcript poller: a JS Date would round it and the keyset skip a row. */
 const STAMP = `to_char(scored_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as stamp`
@@ -105,6 +105,16 @@ export function ruleText(v: unknown): string | null {
 /** The item: a card ref or a plain name, or a duel as `duel:<id>`. */
 const itemOf = (v: unknown): string | null => (typeof v === 'string' && /^duel:\d{1,9}$/.test(v) ? v : cleanItem(v))
 
+/** Optional during rolling deployment; only exact, bounded identifiers leave this boundary. */
+function tradeContext(raw: unknown): TradeContext | undefined {
+  if (!isRow(raw)) return undefined
+  return {
+    side: raw.side === 'buy' || raw.side === 'sell' ? raw.side : null,
+    venue: typeof raw.venue === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(raw.venue) ? raw.venue : null,
+    offerId: idOf(raw.offerId), threadId: idOf(raw.threadId), recipient: cleanName(raw.recipient),
+  }
+}
+
 /** A decision row → its payload, every value re-checked (the second wall after the view), or null. */
 export function decisionOf(row: unknown): { tick: number; payload: DecisionPayload } | null {
   if (!isRow(row)) return null
@@ -118,6 +128,7 @@ export function decisionOf(row: unknown): { tick: number; payload: DecisionPaylo
     tick,
     payload: {
       decision, agent, kind, status,
+      ...(!kind.startsWith('duel') && agent !== 'duels' && tradeContext(row.trade_context) ? { trade: tradeContext(row.trade_context) } : {}),
       item: itemOf(row.item),
       counterparty: cleanName(row.counterparty),
       price: cleanInt(row.price),

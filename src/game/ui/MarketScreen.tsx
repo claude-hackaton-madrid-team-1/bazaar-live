@@ -1,3 +1,4 @@
+import { TradeFacts } from './TradeFacts.tsx'
 import { useMemo, useState } from 'react'
 import type { DecisionStatus } from '../../../shared/decisions.ts'
 import { agentName, ruleName, spanText, whoName } from '../humanize.ts'
@@ -139,6 +140,7 @@ function OurOffers({ rows, tickSeconds }: { rows: OurOffer[]; tickSeconds: numbe
               <Badge tone={o.best == null ? 'neutral' : 'good'}>{o.best == null ? t.market.alone : t.market.bestPrice}</Badge>
             )}
           </span>
+          <TradeFacts facts={o.facts} />
         </li>
       ))}
     </ul>
@@ -178,7 +180,10 @@ function OurPrices({ rows }: { rows: WatchRow[] }) {
 
 function Tape({ rows, team }: { rows: TapeRow[]; team: string }) {
   const store = useGame()
-  const venueName = (id: string) => store.state.venues.get(id)?.name ?? id
+  const venueName = (id: string) => {
+    const v = store.state.venues.get(id)
+    return v ? `${v.name} (${id}) · ${v.owner ?? '—'}` : id
+  }
   const t = useGameStrings()
   if (!rows.length) return <Empty>{t.market.noTrades}</Empty>
   const party = (p: string) => <span data-tone={p === team ? 'us' : undefined}>{whoName(t, p)}</span>

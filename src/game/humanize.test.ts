@@ -90,7 +90,7 @@ describe('the words in both languages', () => {
     expect(denialText(GAME_STRINGS.en, 'max_spend_per_game_hour', 'spend 128 + 24 > max_spend_per_game_hour 150', { floor: 20, maxSpend: 250 })).toBe('we would spend 152 P this game hour; the cap was 150 P')
   })
   it('names every agent, and says time as minutes', () => {
-    expect([es.agents.taker, es.agents.maker, es.agents.duels]).toEqual(['Comprador', 'Vendedor', 'Duelos'])
+    expect([es.agents.taker, es.agents.maker, es.agents.duels]).toEqual(['Taker', 'Maker', 'Duelos'])
     expect(es.ago(6, 180)).toBe('hace 3 min')
     expect(en.ago(1, 30)).toBe('30 s ago')
     expect(es.ago(0, 0)).toBe('ahora')
