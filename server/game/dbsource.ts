@@ -33,6 +33,7 @@ const stampOf = (column: string): string => `to_char(${column} at time zone 'utc
 
 export const DB_SQL = {
   feedFirst: `select * from (select ${FEED_COLUMNS} from show.game_feed order by id desc limit $1) t order by id`,
+  sales: 'select id, thread_id, tick, sender, text, counterpart, venue, thread_status, closed_tick from show.game_sales_messages where tick >= $1 order by id desc limit 100',
   quotes: `select ${FEED_COLUMNS} from show.game_feed where tick >= $2 and id = any($1::int[]) and type = 'thread.message' order by id`,
   /** The first read once /me told the tick: a tick predicate the view pushes down to feed_events' tick index. */
   feedWindow: `select * from (select ${FEED_COLUMNS} from show.game_feed where tick > $2 order by id desc limit $1) t order by id`,
@@ -96,6 +97,18 @@ export function feedRowEvent(row: unknown): GameEvent | null {
     id, ...(tick === null ? {} : { tick }), type: row.type, scope: 'public',
     actor: typeof row.actor === 'string' ? row.actor : '', payload: isRecord(row.payload) ? row.payload : {},
   }
+}
+
+/** Stable IDs outside public feed / duel / status ranges; never infer a quote from an order. */
+export function salesMessageEvent(raw: unknown, us: string): GameEvent | null {
+  if (!isRecord(raw) || us !== 't01' || raw.sender !== us) return null
+  const message = intOf(raw.id), thread = intOf(raw.thread_id), tick = intOf(raw.tick)
+  if (message === null || message <= 0 || message > 2 ** 40 || thread === null || thread <= 0 || tick === null || tick < 0
+    || typeof raw.counterpart !== 'string' || !/^t\d{1,3}$/.test(raw.counterpart) || raw.counterpart === us
+    || typeof raw.text !== 'string' || !raw.text.trim() || raw.text.length > 2000
+    || typeof raw.venue !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(raw.venue)) return null
+  return { id: -(2 ** 47) - message, tick, type: 'thread.message', scope: 'team', actor: us,
+    payload: { kind: 'team', team: us, with: raw.counterpart, sender: us, thread, message, text: raw.text, venue: raw.venue } }
 }
 
 /** The day's name out of a `round.started` ("Saturday · Gran Vía") or `day.opened` ("Saturday") row. */
@@ -166,6 +179,10 @@ export class GameDbSource {
   private readonly o: Required<Omit<DbSourceDeps, 'db' | 'hub' | 'log' | 'onMissing'>>
   private readonly deps: DbSourceDeps
   private feedMark: number | null = null
+  private readonly salesSeen = new Map<number, number>()
+  private salesSkip = 0
+  private salesLoaded = false
+  private readonly salesClosed = new Set<number>()
   private readonly missingQuotes = new Map<number, number>()
   private meMark: string | null = null
   private duelMark: { stamp: string; duel: number } | null = null
@@ -298,6 +315,45 @@ export class GameDbSource {
     }
   }
 
+  /** Optional additive view: failure never disables the existing relay or invokes the game API. */
+  private async readSales(feed: GameEvent[]): Promise<GameEvent[]> {
+    if (!this.team || this.tick === null) return []
+    if (this.salesSkip > 0) { this.salesSkip -= 1; return [] }
+    const since = Math.max(0, this.tick - (this.salesLoaded ? 8 : this.o.feedTicks))
+    try {
+      const { rows } = await this.deps.db.query(DB_SQL.sales, [since])
+      this.salesLoaded = true
+      const events: GameEvent[] = []
+      for (const raw of [...rows].reverse()) {
+        const e = salesMessageEvent(raw, this.team)
+        if (!e || typeof e.tick !== 'number' || e.tick < since || e.tick > this.tick) continue
+        const message = intOf(e.payload.message)
+        if (message === null) continue
+        const thread = intOf(e.payload.thread)
+        if (isRecord(raw) && thread !== null && ['closed', 'deal', 'walked', 'walk', 'refused'].includes(String(raw.thread_status)) && !this.salesClosed.has(thread)) {
+          const closedTick = intOf(raw.closed_tick)
+          events.push({ id: -(2 ** 46) - thread, ...(closedTick === null ? {} : { tick: closedTick }), type: 'thread.closed', scope: 'team', actor: this.team, payload: { ...e.payload, text: undefined } })
+          this.salesClosed.add(thread)
+          while (this.salesClosed.size > 100) this.salesClosed.delete(this.salesClosed.values().next().value ?? -1)
+        }
+        if (this.salesSeen.has(message)) continue
+        // A real public envelope, when present, carries the same acknowledged message.
+        const index = feed.findIndex((f) => f.type === 'thread.message' && f.payload.message === message && f.payload.sender === this.team)
+        const publicEvent = feed[index]
+        if (publicEvent) {
+          feed[index] = { ...publicEvent, payload: { ...publicEvent.payload, text: e.payload.text } }
+        } else events.push(e)
+        this.salesSeen.set(message, e.tick)
+      }
+      while (this.salesSeen.size > 100) this.salesSeen.delete(this.salesSeen.keys().next().value ?? -1)
+      return [...events.filter((e) => e.type === 'thread.message'), ...events.filter((e) => e.type === 'thread.closed')]
+    } catch (error: unknown) {
+      this.salesSkip = isMissingViews(error) ? 100 : 3
+      this.deps.log({ route: 'game', event: 'db_sales_messages_unavailable', retryPolls: this.salesSkip })
+      return []
+    }
+  }
+
   private async readMe(): Promise<MeRow | null> {
     const { rows } = this.meMark === null ? await this.deps.db.query(DB_SQL.meFirst) : await this.deps.db.query(DB_SQL.meAfter, [this.meMark])
     const me = meRow(rows[0])
@@ -394,13 +450,16 @@ export class GameDbSource {
         }
         out.push(this.madeUp('agent.me', me.me))
       }
-      await read('quotes', () => this.refreshQuotes(feed), undefined)
+      // Suppress a delayed public copy of an already published, identical private acknowledgement.
+      const freshFeed = feed.filter((e) => !(e.type === 'thread.message' && e.payload.sender === this.team && this.salesSeen.has(intOf(e.payload.message) ?? -1)))
+      const sales = await this.readSales(freshFeed)
+      await read('quotes', () => this.refreshQuotes(freshFeed), undefined)
       // Our duels go before the feed: a public `duel.closed` of ours then finds its duel already known.
       const duels = this.team === null ? [] : duelRowEvents(duelRows, this.team, this.o.duelLimit)
         .filter((e) => !this.duelsSeen.has(e.id))
         .map((e) => (e.tick === undefined ? { ...e, tick: this.tick ?? 0 } : e))
       for (const e of duels) this.duelsSeen.add(e.id)
-      this.deps.hub.publish([...out, ...duels, ...feed])
+      this.deps.hub.publish([...out, ...duels, ...freshFeed, ...sales])
       if (failures.length > 0) {
         this.failed(failures[0]?.error, failures.map((f) => f.part))
       } else {
