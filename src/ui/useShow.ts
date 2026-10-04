@@ -15,6 +15,8 @@ import { getLang, subscribeLang, useLang } from './lang'
 import { hasUserGesture } from './soundChoice'
 import { useTranscript } from './useTranscript'
 import { GameFeed } from '../game/feed'
+import { EMPTY_OFFERS, OffersTracker, type OffersView } from './offers'
+import type { GameEvent } from '../game/state'
 
 export interface SpeechControls {
   readonly muted: boolean
@@ -30,7 +32,7 @@ export interface SpeechControls {
   readonly noVoiceFor: Lang | null
 }
 
-export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechControls } {
+export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechControls; offers: OffersView } {
   const [lastError, setLastError] = useState<string | null>(null)
   const hasWebSpeech = useMemo(() => webSpeechAvailable(), [])
   const providerFor = useMemo(() => providerFactory(hasWebSpeech ? createWebSpeech() : null), [hasWebSpeech])
@@ -112,15 +114,19 @@ export function useShow(config: ShowConfig): { state: ShowState; speech: SpeechC
   }, [engine])
   useSources(engine, config)
   useTranscript(engine, config)
-  useBroadcast(engine, config)
+  const [offers, setOffers] = useState<OffersView>(EMPTY_OFFERS)
+  const tracker = useMemo(() => new OffersTracker(), [])
+  const receiveOffers = useCallback((events: readonly GameEvent[], replay: boolean) => setOffers(tracker.receive(events, replay)), [tracker])
+  useBroadcast(engine, config, receiveOffers)
 
-  return { state, speech: { muted, setMuted, choice, setChoice, available: available ?? [], active, lastError, noVoiceFor, elevenMissing } }
+  return { state, offers, speech: { muted, setMuted, choice, setChoice, available: available ?? [], active, lastError, noVoiceFor, elevenMissing } }
 }
 
 /** Rich live activity stays on the existing token-protected game stream. */
-function useBroadcast(engine: ShowEngine, config: ShowConfig): void {
+function useBroadcast(engine: ShowEngine, config: ShowConfig, receiveOffers: (events: readonly GameEvent[], replay: boolean) => void): void {
   useEffect(() => {
     if (config.replay) return
+    const receive = (events: readonly GameEvent[], replay: boolean) => { engine.ingestGame(events, replay); receiveOffers(events, replay) }
     if (config.mock) {
       engine.setBroadcastStatus('demo')
       let stopped = false
@@ -128,17 +134,17 @@ function useBroadcast(engine: ShowEngine, config: ShowConfig): void {
       void import('../game/mock').then(({ MockGame }) => {
         if (stopped || config.mockDoors === 'closed') return
         const game = new MockGame(7)
-        engine.ingestGame(game.step(), true)
-        timer = setInterval(() => engine.ingestGame(game.step(), false), 4000 / config.speed)
+        receive(game.step(), true)
+        timer = setInterval(() => receive(game.step(), false), 4000 / config.speed)
       })
       return () => { stopped = true; clearInterval(timer) }
     }
     const token = new URLSearchParams(window.location.search).get('token')
     if (!token) { engine.setBroadcastStatus('locked'); return }
-    const feed = new GameFeed({ url: '/api/game', token, requireToken: true, onEvents: (events, replay) => engine.ingestGame(events, replay), onStatus: (status) => engine.setBroadcastStatus(status) })
+    const feed = new GameFeed({ url: '/api/game', token, requireToken: true, onEvents: receive, onStatus: (status) => engine.setBroadcastStatus(status) })
     feed.start()
     return () => feed.stop()
-  }, [engine, config.mock, config.replay, config.speed, config.mockDoors])
+  }, [engine, config.mock, config.replay, config.speed, config.mockDoors, receiveOffers])
 }
 
 /** The language the browser has no voice for (so the show only shows its text), or null. Voices load late: it listens. */

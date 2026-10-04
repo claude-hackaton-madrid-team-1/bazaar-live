@@ -1,13 +1,15 @@
 import { TradeFacts } from './TradeFacts.tsx'
+import { TradingOrderBook } from './TradingOrderBook.tsx'
+import { useLang } from '../../ui/lang'
 import { useMemo, useState } from 'react'
 import type { DecisionStatus } from '../../../shared/decisions.ts'
-import { agentName, ruleName, spanText, whoName } from '../humanize.ts'
+import { agentName, ruleName, whoName } from '../humanize.ts'
 import { fmtP, signed } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import {
-  deltaText, deltaTone, marketTape, opportunities, orderBook, ourOffers, venueRows, watchPrices,
-  type Include, type Opportunity, type OurOffer, type Quote, type TapeRow, type VenueBook, type VenueRow, type WatchRow, type Worth,
+  deltaText, deltaTone, marketTape, opportunities, tradingBook, ourOffers, venueRows, watchPrices,
+  type Include, type Opportunity, type OurOffer, type TapeRow, type VenueRow, type WatchRow, type Worth,
 } from '../views/market.ts'
 import { Badge, CardRef, Empty, EventLink, Panel, Seg } from './bits.tsx'
 
@@ -218,61 +220,6 @@ function Tape({ rows, team }: { rows: TapeRow[]; team: string }) {
   )
 }
 
-/** The best offer on one side: price, maker and age, or a dash. */
-function QuoteCell({ q, team }: { q: Quote | null; team: string }) {
-  const t = useGameStrings()
-  const { state } = useGame()
-  if (!q) return <td className="gm-r gm-muted">—</td>
-  return (
-    <td className="gm-r gm-quote">
-      <b>{fmtP(q.price)}</b> <span data-tone={q.maker === team ? 'us' : undefined}>{whoName(t, q.maker)}</span>{' '}
-      <span className="gm-muted" title={q.age == null ? undefined : t.market.age(q.age)}>
-        {q.age == null ? '' : spanText(t, state, q.age)}
-      </span>
-    </td>
-  )
-}
-
-function OrderBook({ books, team }: { books: VenueBook[]; team: string }) {
-  const t = useGameStrings()
-  if (!books.length) return <Empty>{t.market.noOffers}</Empty>
-  return (
-    <div className="gm-scroll">
-      <table className="gm-table gm-book">
-        <Head cells={t.market.bookHead} right={[1, 2, 3, 4]} />
-        {books.map((v) => (
-          <tbody key={v.venue}>
-            <tr className="gm-group">
-              <td colSpan={5}>
-                <b>{v.name}</b>
-                {v.owner && <span data-tone={v.owner === team ? 'us' : undefined}> · {whoName(t, v.owner)}</span>}
-                <span className="gm-muted">
-                  {' '}
-                  · {t.market.offers(v.offers)}
-                  {v.ours > 0 && ` · ${t.market.oursCount(v.ours)}`}
-                </span>
-              </td>
-            </tr>
-            {v.rows.map((r) => (
-              <tr key={r.ref} data-ours={r.bid?.ours || r.ask?.ours || undefined}>
-                <td>
-                  <CardRef code={r.ref} />
-                </td>
-                <QuoteCell q={r.bid} team={team} />
-                <QuoteCell q={r.ask} team={team} />
-                <td className="gm-r">
-                  {r.bids} / {r.asks}
-                </td>
-                <td className="gm-r gm-muted">{fmtP(r.book)}</td>
-              </tr>
-            ))}
-          </tbody>
-        ))}
-      </table>
-    </div>
-  )
-}
-
 /** One line per venue: name, owner, open offers, fee; the status only when it is not open. */
 function Venues({ venues, team }: { venues: VenueRow[]; team: string }) {
   const t = useGameStrings()
@@ -303,17 +250,11 @@ function AllActivity() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rows = useMemo(() => marketTape(state, { include, query }), [state, version, include, query])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const books = useMemo(() => orderBook(state), [state, version])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const venues = useMemo(() => venueRows(state), [state, version])
-  const offers = books.reduce((n, b) => n + b.offers, 0)
   const volume = rows.reduce((a, r) => a + r.price, 0)
   return (
     <>
-      <div className="gm-book-layout">
-        <Panel title={t.market.book} sub={t.market.bookSub(offers, books.length)}>
-          <OrderBook books={books} team={state.team} />
-        </Panel>
+      <div>
         <Panel title={t.market.venues} sub={t.market.venuesSub(venues.filter((v) => v.status === 'open').length)}>
           <Venues venues={venues} team={state.team} />
         </Panel>
@@ -343,11 +284,13 @@ function AllActivity() {
 }
 
 export function MarketScreen() {
-  const { state, version } = useGame()
+  const store = useGame()
+  const { state, version } = store
+  const lang = useLang()
   const t = useGameStrings()
   const [all, setAll] = useState(false)
   const view = useMemo(
-    () => ({ opps: opportunities(state), mine: ourOffers(state), prices: watchPrices(state) }),
+    () => ({ opps: opportunities(state), mine: ourOffers(state), prices: watchPrices(state), depth: tradingBook(state) }),
     // the state is mutated in place: the version is what changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state, version],
@@ -357,6 +300,7 @@ export function MarketScreen() {
   const boardSize = [...state.book.values()].reduce((n, o) => n + o.size, 0)
   return (
     <>
+      <TradingOrderBook book={view.depth} lang={lang} tick={state.tick} stale={store.paused || (store.status !== 'live' && store.status !== 'mock')} mock={store.status === 'mock'} onInspect={(id) => store.select(id)} />
       <Panel
         className="mkt-now"
         title={t.market.now}

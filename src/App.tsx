@@ -13,6 +13,7 @@ import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
 import { useShow } from './ui/useShow'
 import { ActivityPanel } from './ui/ActivityPanel'
+import { OffersPanel } from './ui/OffersPanel'
 
 /** The show keeps the newest few injection attempts under the stage; every row is on /injections. */
 const SHOW_ROWS = 5
@@ -43,7 +44,7 @@ export default function App() {
 function ShowApp() {
   const config = useMemo(() => readConfig(window.location.search), [])
   const t = useStrings()
-  const { state, speech } = useShow(config)
+  const { state, speech, offers } = useShow(config)
   // answered already in this tab (back from another screen, or a reload): no gate, the same sound
   const [saved] = useState(() => soundMemory().recall())
   const [started, setStarted] = useState(saved !== null)
@@ -87,6 +88,7 @@ function ShowApp() {
           </ErrorBoundary>
           <Transcript entries={state.transcript} />
         </main>
+        <OffersPanel view={offers} status={state.broadcastStatus} replay={config.replay === true} />
         {/* their words as plain text only; this panel never reaches the director or a voice */}
         <InjectionsPanel mock={config.mock} className="inj-show" max={SHOW_ROWS} />
       </div>
