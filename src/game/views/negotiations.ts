@@ -108,7 +108,8 @@ export type Ended = {
 }
 
 export type Verdict =
-  | { readonly kind: 'capBelow'; readonly cap: number; readonly ask: number; readonly own: boolean; readonly roundsToCap: number | null }
+  /** `cap` and `roundsToCap` are null when the page may not show our cap (no GAME_VIEW_TOKEN). */
+  | { readonly kind: 'capBelow'; readonly cap: number | null; readonly ask: number; readonly own: boolean; readonly roundsToCap: number | null }
   | { readonly kind: 'overValue'; readonly value: number; readonly ask: number }
   | { readonly kind: 'closing'; readonly gap: number }
   | { readonly kind: 'pace'; readonly step: number; readonly gap: number; readonly rounds: number | null }
@@ -340,14 +341,17 @@ export function negRow(s: State, th: Thread, { caps = true }: { caps?: boolean }
   const value = valueOf(s, th, own, th.closedTick ?? scoredAt ?? Infinity)
   const ended = endedOf(s, th, value, own)
   const base = row(s, th, ended != null)
-  const cap = caps && th.side === 'buy' ? capOf(s, th, own) : null
+  // the status and the verdict read the real cap; without GAME_VIEW_TOKEN the row only carries no number of it
+  const cap = th.side === 'buy' ? capOf(s, th, own) : null
   const trend = trendOf(th)
   const quiet = base.lastTick == null ? null : s.tick - base.lastTick
   const state = statusOf({ ...base, cap, ended, trend, ticksLeft: base.expiresIn, quiet, value })
   const next = ended ? null : nextOf(own)
   // a denial's text prints the cap it broke ("price 70 > max_price_rare 67"): left out with the caps
   const partial = { ...base, state, value, cap, ticksLeft: base.expiresIn, trend, next: next && !caps ? { ...next, text: null } : next, ended }
-  return { ...partial, verdict: verdictOf(partial) }
+  const verdict = verdictOf(partial)
+  if (caps) return { ...partial, verdict }
+  return { ...partial, cap: null, verdict: verdict.kind === 'capBelow' ? { ...verdict, cap: null, roundsToCap: null } : verdict }
 }
 
 /**

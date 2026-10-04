@@ -124,6 +124,8 @@ export type BookOffer = {
   ref: string
   kind: string
   assetIds: number[]
+  /** The copies (asset ids) a bid or a swap wants, when it names them: a bid for another team's copy asks nobody else. */
+  wantAssetIds: number[]
   serial: number | null
   price: number | null
   createdTick: number | undefined
@@ -141,6 +143,19 @@ export type Venue = {
   seenTick: number
   announcement: { eventId: number; tick: number | undefined; text: string } | null
   announcements: number
+}
+
+/**
+ * A Market Test session as the public feed announces it (`bench.started`: every venue gets the same synthetic book for
+ * `ticks` ticks from `start_tick`), closed by `bench.finished` when the feed carries one.
+ */
+export type BenchRun = {
+  eventId: number
+  session: number | null
+  startTick: number
+  ticks: number
+  venues: string[]
+  finishedTick: number | null
 }
 
 export type PackOpened = { eventId: number; tick: number | undefined; team: string; name: string; pack: string; best: string | null }
@@ -191,6 +206,8 @@ export type State = {
   /** Our offers posted by hand (`bazaar sell ... --live`), which no agent manages: from our database's `offers.ours`. */
   byHand: Set<number>
   venues: Map<string, Venue>
+  /** The Market Test sessions the feed announced, oldest first (bench.started / bench.finished). */
+  bench: BenchRun[]
   packsOpened: PackOpened[]
   gifts: Gift[]
   failed: FailedSettlement[]
@@ -208,6 +225,8 @@ export type State = {
    * ISO (pages.changed); null until the server says it sends these, and then the screens refetch on each.
    */
   changes: Readonly<Record<string, string>> | null
+  /** A `venues.ours` that came before `agent.hello`: applied once we know our team. */
+  pendingVenues: Payload | null
 }
 
 export const KNOWN_TYPES = new Set([
@@ -215,12 +234,13 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
-  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'offers.ours',
+  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'offers.ours', 'venues.ours',
+  'bench.started', 'bench.finished',
 ])
 
 export const LIMITS = {
   log: 300, tape: 200, prices: 24, events: 500, mine: 1500, history: 400,
-  book: 400, venues: 40, packsOpened: 100, gifts: 100, failed: 100, opened: 200, duelOffers: 60,
+  book: 400, venues: 40, bench: 24, packsOpened: 100, gifts: 100, failed: 100, opened: 200, duelOffers: 60,
 }
 
 export function createState(): State {
@@ -228,8 +248,8 @@ export function createState(): State {
     team: '', name: '', tick: 0, day: '', tickSeconds: 60, phase: 'observe', goal: '',
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
     log: [], threads: {}, teamThreads: new Map(), duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
-    book: new Map(), byHand: new Set(), venues: new Map(), packsOpened: [], gifts: [], failed: [], opened: [],
-    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null,
+    book: new Map(), byHand: new Set(), venues: new Map(), bench: [], packsOpened: [], gifts: [], failed: [], opened: [],
+    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null, pendingVenues: null,
   }
 }
 
@@ -428,6 +448,7 @@ function offerListed(s: State, e: GameEvent) {
     ref: side === 'bid' ? topicOf({ want: offer.want }) : topicOf({ give: offer.give }),
     kind: first?.kind ?? goods?.types?.[0]?.split(':')[0] ?? 'card',
     assetIds: assets.map((a) => a.id).filter((id) => typeof id === 'number'),
+    wantAssetIds: ((offer.want?.assets ?? []) as Payload[]).map((a) => a?.id).filter((id): id is number => typeof id === 'number'),
     serial: first?.serial ?? null, price: priceOf(offer), createdTick: offer.created_tick ?? e.tick, expiresTick,
   })
   if (venue !== 'direct') touchVenue(s, venue, e.tick)
@@ -509,6 +530,25 @@ function venueEvent(s: State, e: GameEvent) {
       s.book.delete(p.venue)
       break
   }
+}
+
+const count = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) ? v : null)
+
+/** A session starts once (a replay of the same start is the same session) and ends at bench.finished or its last tick. */
+function benchEvent(s: State, e: GameEvent) {
+  const p = e.payload
+  const session = count(p.session)
+  if (e.type === 'bench.started') {
+    const startTick = count(p.start_tick) ?? e.tick ?? s.tick
+    const ticks = count(p.ticks) ?? 16
+    const known = s.bench.find((b) => (session !== null && b.session === session && b.startTick === startTick) || b.eventId === e.id)
+    if (known) return
+    const venues = Array.isArray(p.venues) ? p.venues.filter((v: unknown): v is string => typeof v === 'string').slice(0, 60) : []
+    push(s.bench, { eventId: e.id, session, startTick, ticks, venues, finishedTick: null }, LIMITS.bench)
+    return
+  }
+  const run = [...s.bench].reverse().find((b) => session === null || b.session === session)
+  if (run && run.finishedTick === null) run.finishedTick = e.tick ?? s.tick
 }
 
 function settlementFailed(s: State, e: GameEvent, ours: boolean) {
@@ -612,6 +652,33 @@ function health(s: State, p: Payload): void {
   })
 }
 
+const VENUE_STATUS: Readonly<Record<string, Venue['status']>> = { open: 'open', closing: 'closing', closed: 'closed', suspended: 'closed' }
+
+/**
+ * Our venues as our database knows them (`venues.ours`, sent after the backlog): each one marked ours, with its name,
+ * fees and status, however long before the feed window it opened. Before `agent.hello` there is no team to mark them
+ * with; the server resends the list only when it changes, so it is kept until the hello comes.
+ */
+function ourVenuesSnapshot(s: State, p: Payload) {
+  if (!s.team) {
+    s.pendingVenues = p
+    return
+  }
+  s.pendingVenues = null
+  const list: Payload[] = Array.isArray(p.venues) ? p.venues : []
+  for (const x of list) {
+    const status = typeof x?.status === 'string' ? VENUE_STATUS[x.status] : undefined
+    if (typeof x?.venue !== 'string' || !status) continue
+    const v = touchVenue(s, x.venue, s.tick)
+    v.owner = s.team
+    v.status = status
+    if (typeof x.name === 'string' && x.name) v.name = x.name
+    if (typeof x.feeBps === 'number') v.feeBps = x.feeBps
+    if (typeof x.feePerCard === 'number') v.feePerCard = x.feePerCard
+    if (typeof x.openedTick === 'number') v.openedTick = x.openedTick
+  }
+}
+
 export function apply(s: State, e: GameEvent): State {
   const p = (e.payload ??= {})
   // A status every 10 s: only the latest counts, so it never fills the event lists (nor the Debug screen's).
@@ -622,6 +689,11 @@ export function apply(s: State, e: GameEvent): State {
   // A status too: the latest list of our open offers is the whole truth about them.
   if (e.type === 'offers.ours') {
     ourOffersSnapshot(s, p)
+    return s
+  }
+  // A status too: which venues are ours, from our database (the feed window starts long after we opened ours).
+  if (e.type === 'venues.ours') {
+    ourVenuesSnapshot(s, p)
     return s
   }
   // The same kind of status: only the latest says when each screen's rows last changed.
@@ -648,6 +720,7 @@ export function apply(s: State, e: GameEvent): State {
     case 'agent.hello':
       s.team = p.team ?? s.team
       s.name = p.name ?? s.name
+      if (s.team && s.pendingVenues) ourVenuesSnapshot(s, s.pendingVenues)
       break
     case 'clock':
       s.tick = tick
@@ -686,6 +759,10 @@ export function apply(s: State, e: GameEvent): State {
     case 'venue.closing':
     case 'venue.closed':
       venueEvent(s, e)
+      break
+    case 'bench.started':
+    case 'bench.finished':
+      benchEvent(s, e)
       break
     case 'pack.opened':
       push(s.packsOpened, { eventId: e.id, tick: e.tick, team: p.team ?? '?', name: p.name ?? p.team ?? '?', pack: p.pack ?? '?', best: p.best ?? null }, LIMITS.packsOpened)

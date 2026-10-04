@@ -1,6 +1,6 @@
 /**
  * The page's screens, by path: the show at `/`, and the game screens (our agent, our strategy, negotiations, duels, album,
- * the rivals' albums, market, the live price guide, our cash's movements, what our agents learned, the injection attempts (the judges' view), the raw stream, and
+ * the rivals' albums, market, our venue and the Market Test, the live price guide, our cash's movements, what our agents learned, the injection attempts (the judges' view), the raw stream, and
  * the approvals of big trades, shown only when the server runs them) beside it. The server answers every path with the
  * same page (SPA fallback), so this only reads and writes `location`. Moving between screens keeps the
  * query (`?mock=1`, `?lang=`, `?theme=`, `?token=`) and drops what belongs to one screen (`?id=`, the
@@ -9,9 +9,9 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export type Route = 'show' | 'agent' | 'strategy' | 'negotiations' | 'duels' | 'album' | 'rivals' | 'market' | 'prices' | 'history' | 'learn' | 'injections' | 'debug' | 'approvals'
+export type Route = 'show' | 'agent' | 'strategy' | 'negotiations' | 'duels' | 'album' | 'rivals' | 'market' | 'venue' | 'prices' | 'history' | 'learn' | 'injections' | 'debug' | 'approvals'
 
-export const ROUTES: readonly Route[] = ['show', 'agent', 'strategy', 'negotiations', 'duels', 'album', 'rivals', 'market', 'prices', 'history', 'learn', 'injections', 'debug', 'approvals']
+export const ROUTES: readonly Route[] = ['show', 'agent', 'strategy', 'negotiations', 'duels', 'album', 'rivals', 'market', 'venue', 'prices', 'history', 'learn', 'injections', 'debug', 'approvals']
 
 export const PATHS: Readonly<Record<Route, string>> = {
   show: '/',
@@ -22,6 +22,7 @@ export const PATHS: Readonly<Record<Route, string>> = {
   album: '/album',
   rivals: '/rivals',
   market: '/market',
+  venue: '/venue',
   prices: '/prices',
   history: '/history',
   learn: '/learn',

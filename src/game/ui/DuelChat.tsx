@@ -12,7 +12,7 @@ import type { Duel } from '../state.ts'
 import { useGame } from '../store.ts'
 import { chatDuels, duelChat, type ChatLine } from '../views/duelChat.ts'
 import { Badge, Empty, Panel } from './bits.tsx'
-import { useLimitsVisible } from './NegotiationsLive.tsx'
+import { useLimitsVisible } from './limits.ts'
 import './duel-chat.css'
 
 const pct = (share: number | null) => (share == null ? null : `${Math.round(share * 100)} %`)

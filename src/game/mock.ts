@@ -7,8 +7,7 @@ import type { AgentName, DecisionPayload, LedgerTick, OutcomePayload } from '../
 import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import type { HealthReport } from '../../shared/health.ts'
 import { rng } from '../stage/rng.ts'
-
-const TEAM_ID = /^t\d{1,3}$/
+import { TEAM_ID } from './teamThreads.ts'
 import type { GameEvent, Payload } from './state.ts'
 
 const SETS: Readonly<Record<string, readonly [string, readonly string[]]>> = {
@@ -1126,6 +1125,14 @@ export class MockGame {
     ]
   }
 
+  /** The Market Test's start, as the public feed announces it (every venue, ours v19 among them). */
+  private bench(): GameEvent[] {
+    const { first, cadence, ticks } = MOCK_BENCH
+    if (this.tick < first || (this.tick - first) % cadence !== 0) return []
+    const venues = ['v01', 'v05', 'v08', 'v12', 'v19']
+    return [this.ev('bench.started', { name: 'The Market Test: every venue gets the same synthetic book', ticks, venues, session: (this.tick - first) / cadence + 1, start_tick: this.tick })]
+  }
+
   /** One step of the game: a tick is STEPS_PER_TICK steps (observe, decide, act, a duel move, their answers). */
   step(): GameEvent[] {
     const out: GameEvent[] = []
@@ -1137,6 +1144,7 @@ export class MockGame {
     if (at === 0) {
       this.tick += 1
       out.push(this.ev('clock', { day: 'fri', tick_seconds: (STEPS_PER_TICK * MOCK_STEP_MS) / 1000 }), this.health(), ...this.expire(), ...this.settle(), ...this.observe(), this.oursNow())
+      out.push(...this.bench())
     } else if (at === 2) {
       out.push(this.ev('agent.phase', { phase: 'decide' }))
       if (this.negs.size < 3) out.push(...this.open())
@@ -1157,6 +1165,12 @@ export class MockGame {
     return out
   }
 }
+
+/**
+ * The mock game's Market Test: a session every `cadence` ticks from tick `first`, its book on for `ticks` ticks (the real
+ * game: every 240 ticks from 201). The Venue screen's mock (../venue.ts) plays the same sessions.
+ */
+export const MOCK_BENCH = { first: 2, cadence: 40, ticks: 16 } as const
 
 /** Milliseconds between mock steps at speed 1 (a mock tick is 8 steps). */
 export const MOCK_STEP_MS = 600

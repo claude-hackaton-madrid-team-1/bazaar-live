@@ -11,6 +11,7 @@
  *   GET  /api/learn            what our agents learned, JSON (db/learn.sql; GAME_VIEW_TOKEN as ?token= when set)
  *   GET  /api/history          our cash over the day and what moved it, JSON (db/history.sql; the same token)
  *   GET  /api/strategy         what we aim for, why we hold and why we do not buy, JSON (db/strategy.sql; the same token)
+ *   GET  /api/venue            our venue, the Market Test sessions and what our broker did with them, JSON (db/venue.sql; the same token)
  *   GET  /api/rivals           what each rival holds by the public feed, its rank and what it chases, JSON (db/rival_albums.sql; the same token)
  *   GET  /api/injections       the prompt-injection attempts our agents recorded, JSON (db/injections.sql; public, never voiced)
  *   /api/approver/*            the Approvals screen (server/approvals): a password login, then bazaar-mcp's human tools,
@@ -32,6 +33,7 @@ import { EMPTY_INJECTIONS, looksLikeInjection } from '../shared/injections.ts'
 import { EMPTY_LEARN } from '../shared/learn.ts'
 import { EMPTY_RIVALS } from '../shared/rivals.ts'
 import { EMPTY_STRATEGY } from '../shared/strategy.ts'
+import { EMPTY_VENUE } from '../shared/venue.ts'
 import { isShowLine } from '../shared/lines.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { isRealLine } from '../shared/real-lines.ts'
@@ -47,6 +49,7 @@ import { createLearnRoutes, type LearnRouteDeps } from './learn/routes.ts'
 import { createRivalsRoutes, type RivalsRouteDeps } from './rivals/routes.ts'
 import { createStatic } from './static.ts'
 import { createStrategyRoutes, type StrategyRouteDeps } from './strategy/routes.ts'
+import { createVenueRoutes, type VenueRouteDeps } from './venue/routes.ts'
 import { createTranscriptRoutes, type TranscriptRouteDeps } from './transcript/routes.ts'
 import { TranscriptStore } from './transcript/store.ts'
 
@@ -76,6 +79,8 @@ export interface AppDeps {
   readonly history?: Pick<HistoryRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<HistoryRouteDeps, 'limiter'>>
   /** What we aim for and why we hold or do not buy (server/strategy); absent → /api/strategy answers `enabled: false`. */
   readonly strategy?: Pick<StrategyRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<StrategyRouteDeps, 'limiter'>>
+  /** Our venue and the Market Test (server/venue); absent → /api/venue answers `enabled: false`. */
+  readonly venue?: Pick<VenueRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<VenueRouteDeps, 'limiter'>>
   /** The rivals' albums by the public feed (server/rivals); absent → /api/rivals answers `enabled: false`. */
   readonly rivals?: Pick<RivalsRouteDeps, 'enabled' | 'snapshot' | 'token'> & Partial<Pick<RivalsRouteDeps, 'limiter'>>
   /** The injection attempts our agents recorded (server/injections); absent → /api/injections answers `enabled: false`. */
@@ -302,6 +307,13 @@ export function createApp(deps: AppDeps): AppHandler {
     address: (req) => clientAddress(req, limits.clientIpHeader),
   })
 
+  const venue = createVenueRoutes({
+    enabled: () => false, snapshot: () => EMPTY_VENUE, token: null,
+    ...deps.venue,
+    headers: SECURITY_HEADERS,
+    address: (req) => clientAddress(req, limits.clientIpHeader),
+  })
+
   const rivals = createRivalsRoutes({
     enabled: () => false, snapshot: () => EMPTY_RIVALS, token: null,
     ...deps.rivals,
@@ -425,6 +437,7 @@ export function createApp(deps: AppDeps): AppHandler {
       if (learn(req, res, path)) return
       if (history(req, res, path)) return
       if (strategy(req, res, path)) return
+      if (venue(req, res, path)) return
       if (rivals(req, res, path)) return
       if (injections(req, res, path)) return
       if (approvals && (await approvals(req, res, path))) return

@@ -177,7 +177,8 @@ test('review: without GAME_VIEW_TOKEN the rows carry no cap, so no card, verdict
     }, 20),
   ])
   const hidden = negRows(s, { caps: false })[0]!
-  assert.deepEqual([hidden.cap, hidden.verdict.kind === 'capBelow', JSON.stringify(hidden).includes('67')], [null, false, false])
+  // still stuck above our cap (the status reads the real cap), only the number is gone
+  assert.deepEqual([hidden.cap, hidden.state, hidden.verdict.kind, JSON.stringify(hidden).includes('67')], [null, 'stuck', 'capBelow', false])
   assert.equal(negRows(s)[0]?.cap?.cap, 67)
   assert.isNull((ourNegotiations(s, negRows(s, { caps: false }))[0] as DealerSentence).cap)
 })
@@ -197,5 +198,6 @@ test('review: in the mock a sale to another team is a team thread only, never a 
     for (let i = 0; i < 40; i++) game.step().forEach((e) => apply(s, e))
     const both = [...s.teamThreads.keys()].filter((id) => id in s.threads)
     assert.deepEqual(both, [], `seed ${seed}`)
+    assert.isAbove(s.teamThreads.size, 0, `seed ${seed}: the mock opens team sales`)
   }
 })
