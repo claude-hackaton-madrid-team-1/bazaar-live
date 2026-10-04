@@ -134,3 +134,14 @@ it('never voices a replayed pending Sales message when its live acknowledgement 
   feed.receive(event(1, 'thread.message', { thread: 44, sender: 't01', text: 'I can offer fifteen primas for your card.' }), true, 'en')
   expect(feed.receive(event(2, 'agent.decision', { decision: 1, agent: 'sales', kind: 'team_offer', status: 'done', trade: { threadId: 44 } }), false, 'en')?.speak).toBe(false)
 })
+
+
+it('displays the private ACK bridge history without speaking it, even when ownership arrives later', () => {
+  const feed = source()
+  feed.receive(event(100, 'clock', { day: 'Round 3', tick_seconds: 15 }, 401), false, 'en')
+  const quote = event(-(2 ** 47) - 16779, 'thread.message', { message: 16779, thread: 3334, kind: 'team', sender: 't01', team: 't01', with: 't03', venue: 'rastro', text: 'Oferta pública real en v19.' }, 200)
+  feed.receive(quote, false, 'en')
+  const item = feed.receive(event(101, 'agent.decision', { decision: 9, agent: 'sales', status: 'done', kind: 'sales_promotion', counterparty: 't03', trade: { threadId: 3334 } }, 200), false, 'en')
+  expect(item?.beat.lines[0]?.text).toBe('Oferta pública real en v19.')
+  expect(item?.speak).toBe(false)
+})
