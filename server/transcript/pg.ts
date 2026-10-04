@@ -40,7 +40,10 @@ export function readShowDatabase(env: Readonly<Record<string, string | undefined
  * A tiny pool: two connections (the role may hold eight in all), and no statement may run longer than 2 s. JIT is off for
  * the session: every query here is a small read, and with a production-sized feed_events the planner's estimates cross
  * jit_above_cost, so JIT compiling cost ~240 ms per read of show.injection_attempts (5 ms without it; measured on
- * postgres:17 with 300,000 feed events).
+ * postgres:17 with 300,000 feed events). work_mem is raised for the session: the role's temp_file_limit is 16 MB, and
+ * show.game_feed's join with show.game_messages sorts feed_events (payloads included) before it can apply an ORDER BY id
+ * LIMIT; at 35,600 rows that sort needed 16.5 MB on disk and every first poll of the game screens failed with 53400
+ * (2026-10-04). In memory it takes 18 MB, once per poll, on two connections at most.
  */
 export function poolOptions(url: string, max = 2): pg.PoolConfig {
   return {
@@ -51,7 +54,7 @@ export function poolOptions(url: string, max = 2): pg.PoolConfig {
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30_000,
     application_name: 'bazaar-live',
-    options: '-c jit=off',
+    options: '-c jit=off -c work_mem=64MB',
   }
 }
 

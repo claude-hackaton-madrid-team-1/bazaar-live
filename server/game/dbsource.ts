@@ -7,8 +7,13 @@
  * by (updated_at, duel). Each poll publishes into the SAME hub, in the SAME shapes as `./relay.ts`: `clock`
  * (when the tick moved), `agent.hello` (when the team is new), `agent.me` (allow-listed again, `./me.ts`),
  * the duel events not sent before (`./duels.ts`), then the feed rows unchanged, oldest first. The first poll
- * replays a bounded window (the newest feed rows and duels). No exception ever leaves `pollOnce()`; the
- * views missing (db/game.sql not applied) is reported once, through `onMissing`, and the source stops.
+ * replays a bounded window (the newest feed rows and duels): the feed rows of the last `feedTicks` ticks before our
+ * latest /me, through feed_events' tick index, so it never sorts the whole feed (show.game_feed's id is a cast, so an
+ * ORDER BY id LIMIT alone reads, joins and sorts every row; at 35,600 rows that overflowed the role's 16 MB
+ * temp_file_limit and the screens stayed blank, 2026-10-04). /me, the duels and the feed are read each on its own: one
+ * failing never holds back the others, and what the hub last got (/me, the clock) stays on the page. No exception ever
+ * leaves `pollOnce()`; the views missing (db/game.sql not applied) is reported once, through `onMissing`, and the
+ * source stops.
  *
  * Our open board offers are not left to that window (an offer listed before it, still open, would vanish after a
  * restart, and a page opened later only gets the hub's backlog): each poll also reads them all from
@@ -28,6 +33,8 @@ const stampOf = (column: string): string => `to_char(${column} at time zone 'utc
 
 export const DB_SQL = {
   feedFirst: `select * from (select ${FEED_COLUMNS} from show.game_feed order by id desc limit $1) t order by id`,
+  /** The first read once /me told the tick: a tick predicate the view pushes down to feed_events' tick index. */
+  feedWindow: `select * from (select ${FEED_COLUMNS} from show.game_feed where tick > $2 order by id desc limit $1) t order by id`,
   feedAfter: `select ${FEED_COLUMNS} from show.game_feed where id > $1 order by id limit $2`,
   /** The day's name is in the round's opening event, usually far behind the replay window. */
   day: `select ${FEED_COLUMNS} from show.game_feed where type in ('round.started', 'day.opened') order by id desc limit 1`,
@@ -137,6 +144,8 @@ export interface DbSourceDeps {
   readonly intervalMs?: number
   /** Feed rows replayed on the first poll. */
   readonly feedBackfill?: number
+  /** Ticks behind our latest /me the first poll's feed rows come from. */
+  readonly feedTicks?: number
   /** Feed rows per later poll. */
   readonly cap?: number
   /** Duels replayed on the first poll, and read per later poll. */
@@ -181,7 +190,7 @@ export class GameDbSource {
   constructor(deps: DbSourceDeps) {
     this.deps = deps
     this.o = {
-      intervalMs: 3000, feedBackfill: 2000, cap: 500, duelLimit: 50, oursLimit: 200, oursRetryPolls: 100, maxDelayMs: 60_000, secrets: [],
+      intervalMs: 3000, feedBackfill: 2000, feedTicks: 300, cap: 500, duelLimit: 50, oursLimit: 200, oursRetryPolls: 100, maxDelayMs: 15_000, secrets: [],
       random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
@@ -248,9 +257,13 @@ export class GameDbSource {
 
   private async readFeed(): Promise<GameEvent[]> {
     const first = this.feedMark === null
-    const { rows } = first
-      ? await this.deps.db.query(DB_SQL.feedFirst, [this.o.feedBackfill])
-      : await this.deps.db.query(DB_SQL.feedAfter, [this.feedMark, this.o.cap])
+    // Bounded by tick once a /me told it; without one (no snapshot yet), the newest rows by id, as before.
+    const windowed = first && this.tick !== null
+    const { rows } = !first
+      ? await this.deps.db.query(DB_SQL.feedAfter, [this.feedMark, this.o.cap])
+      : windowed
+        ? await this.deps.db.query(DB_SQL.feedWindow, [this.o.feedBackfill, Math.max(0, (this.tick ?? 0) - this.o.feedTicks)])
+        : await this.deps.db.query(DB_SQL.feedFirst, [this.o.feedBackfill])
     if (first) {
       const { rows: day } = await this.deps.db.query(DB_SQL.day)
       this.day = dayOf(day[0]) ?? this.day
@@ -260,7 +273,8 @@ export class GameDbSource {
       this.feedMark = Math.max(this.feedMark ?? 0, e.id)
       this.day = dayOf(e) ?? this.day
     }
-    if (first && this.feedMark === null) this.feedMark = 0
+    // An empty window reads its window again next time (never `id > 0`: that is the whole feed, sorted); an empty feed is done.
+    if (first && this.feedMark === null && !windowed) this.feedMark = 0
     return events
   }
 
@@ -321,13 +335,28 @@ export class GameDbSource {
     }
   }
 
-  /** One poll. Never throws. */
+  /** One poll. Never throws. /me first (its tick bounds the first feed read), then the duels and the feed, each on its own. */
   async pollOnce(): Promise<void> {
     if (this.missing) return
+    const failures: { part: string; error: unknown }[] = []
+    const read = async <T>(part: string, fn: () => Promise<T>, none: T): Promise<{ ok: boolean; value: T }> => {
+      try {
+        return { ok: true, value: await fn() }
+      } catch (error: unknown) {
+        failures.push({ part, error })
+        return { ok: false, value: none }
+      }
+    }
     try {
-      const feed = await this.readFeed()
-      const me = await this.readMe()
-      const duelRows = await this.readDuels()
+      const { value: me } = await read('me', () => this.readMe(), null)
+      if (me?.tick != null && this.tick === null) this.tick = me.tick
+      const { value: duelRows } = await read('duels', () => this.readDuels(), [] as unknown[])
+      const { ok: feedOk, value: feed } = await read('feed', () => this.readFeed(), [] as GameEvent[])
+      const lost = failures.find((f) => isMissingViews(f.error))
+      if (lost) {
+        this.failed(lost.error)
+        return
+      }
       const out: GameEvent[] = []
       const feedTick = feed.reduce<number | null>((m, e) => (typeof e.tick === 'number' ? Math.max(m ?? e.tick, e.tick) : m), null)
       const tick = [this.tick, feedTick, me?.tick ?? null].reduce<number | null>((m, t) => (t === null ? m : Math.max(m ?? t, t)), null)
@@ -351,17 +380,20 @@ export class GameDbSource {
         .map((e) => (e.tick === undefined ? { ...e, tick: this.tick ?? 0 } : e))
       for (const e of duels) this.duelsSeen.add(e.id)
       this.deps.hub.publish([...out, ...duels, ...feed])
-      if (this.fails > 0) this.deps.log({ route: 'game', event: 'db_poll_recovered', after: this.fails })
-      this.fails = 0
+      if (failures.length > 0) {
+        this.failed(failures[0]?.error, failures.map((f) => f.part))
+      } else {
+        if (this.fails > 0) this.deps.log({ route: 'game', event: 'db_poll_recovered', after: this.fails })
+        this.fails = 0
+      }
+      // After the feed: the view reads the same table, so it knows every listing the batch above carried.
+      if (feedOk) await this.publishOurs()
     } catch (error: unknown) {
       this.failed(error)
-      return
     }
-    // After the feed: the view reads the same table, so it knows every listing the batch above carried.
-    await this.publishOurs()
   }
 
-  private failed(error: unknown): void {
+  private failed(error: unknown, parts: readonly string[] = []): void {
     const code = (error as { code?: unknown } | null)?.code
     if (isMissingViews(error)) {
       this.missing = true
@@ -373,7 +405,7 @@ export class GameDbSource {
     this.fails += 1
     if (this.fails === 1 || this.fails % 10 === 0) {
       const text = error instanceof Error ? error.message : String(error)
-      this.deps.log({ route: 'game', event: 'db_poll_failed', fails: this.fails, code: typeof code === 'string' ? code : 'ERR', message: redact(text, this.o.secrets).slice(0, 160) })
+      this.deps.log({ route: 'game', event: 'db_poll_failed', fails: this.fails, parts, code: typeof code === 'string' ? code : 'ERR', message: redact(text, this.o.secrets).slice(0, 160) })
     }
   }
 }
