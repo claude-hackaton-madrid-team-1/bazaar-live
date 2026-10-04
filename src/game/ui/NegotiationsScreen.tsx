@@ -15,7 +15,8 @@ import { dealerGroups, dealerOf, selectedIn, type DealerGroup } from '../views/n
 import { nowTick } from '../views/decisions.ts'
 import { liveDuelCount } from '../views/duels.ts'
 import { Badge, Empty, EventLink, Injection, Panel, RefChip } from './bits.tsx'
-import { Markets, OurNegotiations, TeamsWithUs, useLimitsVisible } from './NegotiationsLive.tsx'
+import { useLimitsVisible } from './limits.ts'
+import { Markets, OurNegotiations, TeamsWithUs } from './NegotiationsLive.tsx'
 
 function Pill({ state }: { state: NegStatus }) {
   const t = useGameStrings()

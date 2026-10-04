@@ -83,6 +83,19 @@ const DECISIONS: Row[] = [
   { tick: 113, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 501, floor: 9, dealer: 'chato', your_value: 6 } },
   { tick: 114, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 502, floor: 9, dealer: 'pilar', your_value: 60 } },
   { tick: 125, agent: 'dealer-sell', kind: 'dealer_ask', status: 'done', guardrail: 'allowed', candidates: { ref: 'SAL-05', asset: 501, floor: 9, dealer: 'pilar', your_value: 70 } },
+  // 19-21: our venue's broker: a bench match, a live match, and a dry run (never shown). Its bid and ask stay private.
+  { tick: 130, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed',
+    candidates: { ask: 3636, bid: 5151, buy: 'b69-3', sell: 'b69-19', item: 'bench:b69', bench: true, price: 43, surplus: 15, makers: ['b69-19', 'b69-3'] },
+    chosen: { buy: 'b69-3', sell: 'b69-19', price: 43 } },
+  // a live match as broker.py writes it: the card as `card:LAV-08`, the two offer ids, the makers sorted
+  { tick: 131, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed',
+    candidates: { ask: 2020, bid: 3030, item: 'card:LAV-08', bench: false, makers: ['m9f8e7d6c', 'm1a2b3c4d'], fee: 0, price: 25, surplus: 10.25, sell: 13276, buy: 13280, reason_text: SECRET_REASON },
+    chosen: { sell: 13276, buy: 13280, price: 25 } },
+  { tick: 132, agent: 'broker', kind: 'broker_match', status: 'done', guardrail: 'allowed', dry_run: true, candidates: { item: 'DRY-02' }, chosen: { buy: 'x', sell: 'y', price: 1 } },
+  // 22-24: matches the game never took: refused by a guardrail, past the tick window, refused by the game
+  { tick: 133, agent: 'broker', kind: 'broker_match', status: 'rejected', guardrail: 'denied: pause file .local/PAUSE exists', candidates: { item: 'bench:b69', bench: true, surplus: 26 }, chosen: null },
+  { tick: 133, agent: 'broker', kind: 'broker_match', status: 'expired', guardrail: 'allowed', candidates: { item: 'bench:b69', bench: true, surplus: 26 }, chosen: null },
+  { tick: 133, agent: 'broker', kind: 'broker_match', status: 'failed', guardrail: 'allowed', candidates: { item: 'bench:b69', bench: true, surplus: 26 }, chosen: { buy: 'b69-1', sell: 'b69-2', price: 40 } },
 ]
 
 const dbName = `decisions_test_${randomBytes(4).toString('hex')}`
@@ -115,6 +128,13 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
         [d.tick, d.agent, d.kind, d.status, { guardrail: d.guardrail, allowed: d.guardrail === 'allowed' }, d.candidates ?? {}, d.chosen ?? null, d.jev ?? null, d.dry_run ?? false, SECRET_REASON, { key: SECRET_KEY }],
       )
     }
+    // our venues: the starter stall (closed at 260), v19; another team's venue, and a stale close before v19 opened
+    const feed = 'insert into feed_events (id, tick, type, actor, payload) values ($1, $2, $3, $4, $5)'
+    await adminDb.query(feed, [9001, 201, 'venue.opened', '', { venue: 'v08', name: 'Puesto de Team 1', owner: 't01', bond: 0, rules: { mechanism: 'auto' }, fee_bps: 300, fee_per_card: 0, starter: true }])
+    await adminDb.query(feed, [9002, 260, 'venue.closed', '', { venue: 'v08' }])
+    await adminDb.query(feed, [9003, 262, 'venue.opened', '', { venue: 'v19', name: 'Team 1 market', owner: 't01', bond: 250, rules: { mechanism: 'board' }, fee_bps: 0, fee_per_card: 0 }])
+    await adminDb.query(feed, [9004, 263, 'venue.opened', '', { venue: 'v02', name: 'Puesto 2', owner: 't02', bond: 250, rules: { mechanism: 'board' }, fee_bps: 200 }])
+    await adminDb.query(feed, [9005, 100, 'venue.closed', '', { venue: 'v19' }])
     const exec = 'insert into executions (decision_id, tick, sdk_method, request, response, error_code) values ($1, $2, $3, $4, $5, $6)'
     await adminDb.query(exec, [1, 100, 'accept_offer', { key: SECRET_KEY }, { ok: true, token: SECRET_KEY }, null])
     await adminDb.query(exec, [7, 103, 'duel_accept', { duel: 85 }, { price: 52 }, null])
@@ -234,27 +254,48 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
     ])
   })
 
+  it("shows our broker's matches: the pair, the price, the surplus and whether it was a bench; never its bid or ask", async () => {
+    const { rows } = await reader.query('select * from show.agent_broker order by id')
+    // only what the game took: not the rejected, expired or failed ones (22-24), nor the dry run
+    expect(rows).toEqual([
+      { id: '19', tick: 130, bench: true, item: 'bench:b69', buyer: 'b69-3', seller: 'b69-19', price: 43, surplus: '15.0', makers: 'b69-19 b69-3' },
+      { id: '20', tick: 131, bench: false, item: 'LAV-08', buyer: '13280', seller: '13276', price: 25, surplus: '10.3', makers: 'm1a2b3c4d m9f8e7d6c' },
+    ])
+    const dump = JSON.stringify(rows)
+    for (const secret of ['3636', '5151', '2020', '3030', SECRET_REASON, 'DRY-02']) expect(dump).not.toContain(secret)
+  })
+
+  it('lists the venues we opened, with bond, mechanism, fees and when each closed; never another team\'s', async () => {
+    const { rows } = await reader.query('select * from show.our_venues order by id')
+    expect(rows).toEqual([
+      { id: '9001', tick: 201, venue: 'v08', name: 'Puesto de Team 1', bond: 0, mechanism: 'auto', fee_bps: 300, fee_per_card: 0, closed_tick: 260 },
+      { id: '9003', tick: 262, venue: 'v19', name: 'Team 1 market', bond: 250, mechanism: 'board', fee_bps: 0, fee_per_card: 0, closed_tick: null },
+    ])
+  })
+
   it.each(['public.decisions', 'public.executions', 'public.outcomes', 'public.ledger'])('cannot read %s directly', async (table) => {
     await expect(reader.query(`select 1 from ${table} limit 1`)).rejects.toMatchObject({ code: '42501' })
   })
 
-  it('holds SELECT on exactly show.sql\'s two views and these three', async () => {
+  it('holds SELECT on exactly show.sql\'s two views and these five', async () => {
     const grants = await adminDb.query(
       `select table_schema, table_name, privilege_type from information_schema.role_table_grants where grantee = 'bazaar_live_reader' order by 1, 2, 3`,
     )
     expect(grants.rows.map((r) => `${r.table_schema}.${r.table_name}:${r.privilege_type}`)).toEqual([
-      'show.agent_decisions:SELECT', 'show.agent_ledger:SELECT', 'show.agent_outcomes:SELECT', 'show.duel_lines:SELECT', 'show.thread_lines:SELECT',
+      'show.agent_broker:SELECT', 'show.agent_decisions:SELECT', 'show.agent_ledger:SELECT', 'show.agent_outcomes:SELECT', 'show.duel_lines:SELECT', 'show.our_venues:SELECT', 'show.thread_lines:SELECT',
     ])
     const fns = await adminDb.query(`select routine_name from information_schema.role_routine_grants where grantee = 'bazaar_live_reader' order by 1`)
     expect(fns.rows.map((r) => r.routine_name)).toEqual(['as_int', 'as_text', 'card_in'])
   })
 
   it('answers through security_barrier views', async () => {
-    const { rows } = await adminDb.query("select relname, reloptions from pg_class where relname like 'agent\\_%' and relkind = 'v' order by 1")
+    const { rows } = await adminDb.query("select relname, reloptions from pg_class where (relname like 'agent\\_%' or relname = 'our_venues') and relkind = 'v' order by 1")
     expect(rows).toEqual([
+      { relname: 'agent_broker', reloptions: ['security_barrier=true'] },
       { relname: 'agent_decisions', reloptions: ['security_barrier=true'] },
       { relname: 'agent_ledger', reloptions: ['security_barrier=true'] },
       { relname: 'agent_outcomes', reloptions: ['security_barrier=true'] },
+      { relname: 'our_venues', reloptions: ['security_barrier=true'] },
     ])
   })
 
@@ -262,7 +303,8 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
     const d = await reader.query('select * from show.agent_decisions')
     const o = await reader.query('select * from show.agent_outcomes')
     const l = await reader.query('select * from show.agent_ledger')
-    const all = [d, o, l]
+    const b = await reader.query('select * from show.agent_broker')
+    const all = [d, o, l, b]
     const dump = JSON.stringify([all.map((r) => r.rows), all.map((r) => r.fields.map((f) => f.name))])
     for (const secret of [String(SECRET_LIMIT), String(SECRET_LIMIT - 52), SECRET_REASON, SECRET_JEV, SECRET_KEY, SECRET_SOURCE, SECRET_EXPLANATION, SECRET_RIVAL, 'w1234567890', 'DRY-01', 'BRK-01', 'NEG-01']) {
       expect(dump).not.toContain(secret)

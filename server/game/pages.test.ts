@@ -71,6 +71,9 @@ describe('WAKES', () => {
     expect(WAKES.rivals(tick('taker'))).toEqual([5_000])
     expect(WAKES.rivals(tick('maker'))).toEqual([])
     expect(WAKES.rivals(exec('accept'))).toEqual([])
+    // the venue: the broker's rows and the archive's Market Test start, both caught up after the taker's tick
+    expect(WAKES.venue(tick('taker'))).toEqual([2_500, 5_000])
+    expect(WAKES.venue(exec('accept'))).toEqual([])
   })
 })
 

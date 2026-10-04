@@ -1,0 +1,93 @@
+/* Our market (om-): our venue, its board, our broker's matches, the bench sessions, what people ask of us */
+
+.om-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr));
+  gap: var(--s-2) var(--s-3);
+  margin: 0;
+}
+
+.om-facts dd {
+  margin: 2px 0 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.om-note {
+  margin: var(--s-2) 0 0;
+  font-size: 0.75rem;
+}
+
+.om-board {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.om-side h3 {
+  margin: 0 0 4px;
+}
+
+.om-offers,
+.om-asks,
+.om-matches,
+.om-benches,
+.om-announcements {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.om-offer,
+.om-ask-head,
+.om-match,
+.om-bench {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-2);
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.om-offer[data-ours] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: var(--r-md);
+}
+
+.om-rarity,
+.om-lapse {
+  font-size: 0.6875rem;
+  color: var(--text-2);
+}
+
+.om-price {
+  margin-left: auto;
+}
+
+.om-ask {
+  display: grid;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+}
+
+.om-ask[data-kind='forUs'] {
+  background: var(--gm-well);
+}
+
+.om-ask-line {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.om-bench[data-live] b {
+  color: var(--accent);
+}
+
+.om-announcements li {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}

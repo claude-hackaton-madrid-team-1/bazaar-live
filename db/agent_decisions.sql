@@ -7,13 +7,21 @@
 -- re-running show.sql drops these grants: run this file again after it. Until then the server logs
 -- `agent_decisions off` once and the game screens run as before.
 --
--- Idempotent. Three views, granted to bazaar_live_reader (the role show.sql creates), no table grant:
+-- Idempotent. Five views, granted to bazaar_live_reader (the role show.sql creates), no table grant:
 --   * show.agent_decisions  one row per live decision of taker / maker / duels, with its last execution's
 --                           method and error code and its trade outcome (bazaar sql/schema.sql: decisions,
 --                           executions, outcomes, written by decisions.DecisionLog and evals.store)
 --   * show.agent_outcomes   the scored outcomes (trade, dealer, duel), keyed by scored_at for polling; a dealer
 --                           sale's value is the one dealer-sell (bazaar's dealer seller) logged for the copy it sold
 --   * show.agent_ledger     the guardrail ledger per tick: spend, accepts, listings (ledger_pg.PgLedger)
+--   * show.agent_broker     the matches our venue's broker made and the game took (bazaar agents/broker.py, kind
+--                           broker_match, status done; a rejected, expired or failed match is not one): the card, the
+--                           pair (a bench's trader pseudonyms, or the two offer ids), the two makers, the price, the
+--                           surplus, and whether it was a bench book. Its bid and ask are public quotes (price ± half
+--                           the surplus) and are not selected; nothing else of `candidates` is
+--   * show.our_venues       the venues we opened (the feed's venue.opened with owner t01, as show.game_me reads
+--                           t01): id, name, bond, mechanism, fees, opening tick and closing tick. The page's feed
+--                           window starts long after we opened ours, so this is how it knows which one is ours
 -- Never selected: decisions.candidates / reason / rag_context / state_digest / chosen whole, jev reason and
 -- digest, executions.request / response, outcomes.explanation / details whole, ledger.item / source, and no
 -- dry-run row. Duel rows keep only their id, kind, status, rule id, Jev verdict and error code: their prices,
@@ -134,8 +142,41 @@ select l.tick,
  where l.tick >= 0
  group by l.tick;
 
-revoke all on show.agent_decisions, show.agent_outcomes, show.agent_ledger from public;
-revoke all on show.agent_decisions, show.agent_outcomes, show.agent_ledger from bazaar_live_reader;
-grant select on show.agent_decisions, show.agent_outcomes, show.agent_ledger to bazaar_live_reader;
+-- Our broker's matches: who met whom on our venue, at what price, with what surplus. A bench match pairs the bench's
+-- synthetic traders (`b69-3`); a live one, the traders as our venue's board names them.
+create or replace view show.agent_broker with (security_barrier = true) as
+select d.id,
+       d.tick,
+       coalesce(d.candidates -> 'bench' = 'true'::jsonb or show.as_text(d.candidates -> 'item', 32) like 'bench:%', false) as bench,
+       -- a live match moves a card (`card:LAV-08`); a bench names its book (`bench:b69`)
+       coalesce(substring(show.as_text(d.candidates -> 'item', 40) from '^card:([A-Z]{3}-[0-9]{1,3})$'), left(show.as_text(d.candidates -> 'item', 32), 32)) as item,
+       -- a bench trader's pseudonym (`b69-3`), or a live offer's id
+       coalesce(left(show.as_text(d.chosen -> 'buy', 32), 32), show.as_int(d.chosen -> 'buy')::text) as buyer,
+       coalesce(left(show.as_text(d.chosen -> 'sell', 32), 32), show.as_int(d.chosen -> 'sell')::text) as seller,
+       show.as_int(d.chosen -> 'price') as price,
+       case when jsonb_typeof(d.candidates -> 'surplus') = 'number' then round((d.candidates ->> 'surplus')::numeric, 1) end as surplus,
+       (select string_agg(left(m, 24), ' ' order by m)
+          from jsonb_array_elements_text(case when jsonb_typeof(d.candidates -> 'makers') = 'array' then d.candidates -> 'makers' else '[]'::jsonb end) m
+         where m ~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,23}$') as makers
+  from public.decisions d
+ where d.agent = 'broker' and d.kind = 'broker_match' and d.status = 'done' and d.dry_run is not true and d.tick >= 0;
+
+-- The venues we opened, and when each closed (public facts of the feed, kept here because the page's window is short).
+create or replace view show.our_venues with (security_barrier = true) as
+select o.id::bigint as id,
+       o.tick,
+       left(show.as_text(o.payload -> 'venue', 16), 16) as venue,
+       left(show.as_text(o.payload -> 'name', 64), 64) as name,
+       show.as_int(o.payload -> 'bond') as bond,
+       left(show.as_text(o.payload -> 'rules' -> 'mechanism', 16), 16) as mechanism,
+       show.as_int(o.payload -> 'fee_bps') as fee_bps,
+       show.as_int(o.payload -> 'fee_per_card') as fee_per_card,
+       (select max(c.tick) from public.feed_events c where c.type = 'venue.closed' and c.payload ->> 'venue' = o.payload ->> 'venue' and c.tick >= o.tick) as closed_tick
+  from public.feed_events o
+ where o.type = 'venue.opened' and o.payload ->> 'owner' = 't01';
+
+revoke all on show.agent_decisions, show.agent_outcomes, show.agent_ledger, show.agent_broker, show.our_venues from public;
+revoke all on show.agent_decisions, show.agent_outcomes, show.agent_ledger, show.agent_broker, show.our_venues from bazaar_live_reader;
+grant select on show.agent_decisions, show.agent_outcomes, show.agent_ledger, show.agent_broker, show.our_venues to bazaar_live_reader;
 
 commit;

@@ -2,7 +2,6 @@
  * The live half of the Negotiations screen: our open negotiations in plain words, the teams negotiating with us,
  * and what is on each market's board. Another team's words are printed as React text (escaped), never spoken.
  */
-import { useParam } from '../../ui/route'
 import { nameOfRef } from '../cards.ts'
 import { fmtP, isSuspicious } from '../game.ts'
 import { ruleName, whoName } from '../humanize.ts'
@@ -12,6 +11,7 @@ import { useGame } from '../store.ts'
 import { marketBoards, ourNegotiations, teamTalks, type BoardOffer, type MarketBoard, type Mark, type Sentence, type TeamTalk } from '../views/negotiations-live.ts'
 import type { NegRow } from '../views/negotiations.ts'
 import { Badge, EventLink, Injection, Panel, RefChip, type Tone } from './bits.tsx'
+import { useLimitsVisible } from './limits.ts'
 
 /** A card as a sentence says it: its code, and its name when the catalogue has one. */
 const cardText = (ref: string): string => {
@@ -28,16 +28,6 @@ function sentenceText(x: Sentence, t: GameStrings, l: NegLiveStrings, limits: bo
     case 'duel':
       return l.duel(x, { who: x.rival ?? '?', card: '' }, limits ? x.limit : null)
   }
-}
-
-/**
- * The page may show our private limits (caps, duel limits) only with GAME_VIEW_TOKEN, or in the made-up mock game.
- * The server already sends them only behind the token; this keeps them out of view when the page has none.
- */
-export function useLimitsVisible(): boolean {
-  const token = useParam('token')
-  const { status } = useGame()
-  return Boolean(token) || status === 'mock'
 }
 
 /** One sentence per open negotiation of ours, for one dealer when the screen is filtered to it. */
@@ -200,6 +190,7 @@ export function TeamsWithUs() {
       ) : (
         <p className="gm-empty">{l.noTeams}</p>
       )}
+      {state.teamThreads.size === 0 && <p className="nl-note gm-muted">{l.swapsNotWired}</p>}
     </Panel>
   )
 }

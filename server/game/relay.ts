@@ -32,13 +32,14 @@ export interface GameEvent {
 }
 
 /** Types a late client always gets first, the latest of each, so its first screen already knows who we are. */
-export const STICKY = ['agent.hello', 'agent.me', 'clock', 'agent.phase', 'agent.ledger', 'agent.health', 'pages.changed'] as const
+export const STICKY = ['agent.hello', 'agent.me', 'clock', 'agent.phase', 'agent.ledger', 'agent.health', 'pages.changed', 'agent.venues'] as const
 
 /**
  * Statuses a late client gets after the backlog, the latest of each: a snapshot rebuilt from the whole database (our
- * open board offers, `offers.ours`) must come after the older events the backlog replays, or they would undo it.
+ * open board offers, `offers.ours`; our venues, `venues.ours`) must come after the older events the backlog replays, or
+ * they would undo it.
  */
-export const STICKY_LAST = ['offers.ours'] as const
+export const STICKY_LAST = ['offers.ours', 'venues.ours'] as const
 
 /** What every viewer shares: the latest sticky events, a bounded backlog, and the batches as they come. */
 export class GameHub {

@@ -38,7 +38,8 @@ export type TeamThread = {
 
 export const TEAM_THREAD_LIMITS = { threads: 60, offers: 40, text: 280 }
 
-const TEAM_ID = /^t\d{1,3}$/
+/** A team's id (`t07`), as opposed to a dealer's (`abuela`). */
+export const TEAM_ID = /^t\d{1,3}$/
 
 /** A team thread: the game says `kind: team`; with no kind, both sides are team ids. */
 export function isTeamThread(p: Payload): boolean {
@@ -49,7 +50,8 @@ export function isTeamThread(p: Payload): boolean {
 /** Ours when we opened it or it was opened with us. */
 export const isOurTeamThread = (team: string, p: Payload): boolean => Boolean(team) && isTeamThread(p) && (p.team === team || p.with === team)
 
-const sideOf = (v: Payload | undefined): TeamSide => {
+/** One side of an offer (`give` or `want`): its cards (asset refs and wanted types) and its cash. */
+export const sideOf = (v: Payload | undefined): TeamSide => {
   const cards: string[] = []
   for (const a of Array.isArray(v?.assets) ? v.assets : []) if (typeof a?.ref === 'string') cards.push(a.ref)
   for (const ty of Array.isArray(v?.types) ? v.types : []) if (typeof ty === 'string') cards.push(ty.split(':').at(-1) ?? ty)

@@ -10,7 +10,7 @@
  */
 import { cleanInt, cleanItem, cleanName } from '../../shared/clean.ts'
 import {
-  AGENTS, DECISION_STATUSES, type AgentName, type DecisionPayload, type GuardrailLimits, type LedgerPayload, type LedgerTick, type OutcomeLabel, type OutcomePayload,
+  AGENTS, DECISION_STATUSES, type AgentName, type BrokerPayload, type DecisionPayload, type OurVenuePayload, type GuardrailLimits, type LedgerPayload, type LedgerTick, type OutcomeLabel, type OutcomePayload,
 } from '../../shared/decisions.ts'
 import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
 import { redact, type Db } from '../transcript/poller.ts'
@@ -59,6 +59,9 @@ export const SQL = {
   // Keyset on (scored_at, target, subject): one evals run upserts many outcomes with one now().
   outcomesAfter: `select ${OUTCOME_COLUMNS}, ${STAMP} from show.agent_outcomes where (scored_at, target, subject) > ($1::timestamptz, $2::text, $3::text) order by scored_at, target, subject limit $4`,
   ledger: `select tick, t_hours, spent, accepts, listings from show.agent_ledger where t_hours > (select max(t_hours) from show.agent_ledger) - 2 order by tick limit $1`,
+  brokerBackfill: `select * from (select id, tick, bench, item, buyer, seller, price, surplus, makers from show.agent_broker order by id desc limit $1) t order by id`,
+  brokerAfter: `select id, tick, bench, item, buyer, seller, price, surplus, makers from show.agent_broker where id > $1 order by id limit $2`,
+  ourVenues: `select venue, tick, name, bond, mechanism, fee_bps, fee_per_card, closed_tick from show.our_venues order by tick limit 20`,
 } as const
 
 /** Postgres codes for a view that is not there (yet) or not ours to read: undefined table / schema, no privilege. */
@@ -158,6 +161,38 @@ export function outcomeOf(row: unknown): { tick: number | null; payload: Outcome
   }
 }
 
+/** A pseudonym or a team id as our venue names a trader (`b69-3`, `t05`, `m00fc33ec`), or null. */
+const traderOf = (v: unknown): string | null => (typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,31}$/.test(v) ? v : null)
+
+/** A broker match row → its payload, every value re-checked (the second wall after the view), or null. */
+export function brokerOf(row: unknown): { tick: number; payload: BrokerPayload } | null {
+  if (!isRow(row)) return null
+  const decision = idOf(row.id)
+  const tick = cleanInt(row.tick)
+  if (decision === null || tick === null) return null
+  const item = typeof row.item === 'string' && /^bench:[a-z0-9_-]{1,24}$/i.test(row.item) ? row.item : cleanItem(row.item)
+  return {
+    tick,
+    payload: {
+      decision, bench: row.bench === true, item, buyer: traderOf(row.buyer), seller: traderOf(row.seller),
+      makers: typeof row.makers === 'string' ? row.makers.split(' ').map(traderOf).filter((m): m is string => m !== null).slice(0, 4) : [],
+      price: cleanInt(row.price), surplus: numOf(row.surplus),
+    },
+  }
+}
+
+/** A row of show.our_venues → its payload, re-checked, or null. */
+export function ourVenueOf(row: unknown): OurVenuePayload | null {
+  if (!isRow(row)) return null
+  const venue = typeof row.venue === 'string' && /^v\d{1,4}$/.test(row.venue) ? row.venue : null
+  const tick = cleanInt(row.tick)
+  if (venue === null || tick === null) return null
+  return {
+    venue, tick, name: cleanName(row.name), bond: cleanInt(row.bond), mechanism: word(row.mechanism, 16),
+    feeBps: cleanInt(row.fee_bps), feePerCard: cleanInt(row.fee_per_card), closedTick: cleanInt(row.closed_tick),
+  }
+}
+
 export function ledgerOf(rows: readonly unknown[], limits: GuardrailLimits, venue: boolean | null = null): LedgerPayload {
   const ticks: LedgerTick[] = []
   for (const r of rows) {
@@ -205,6 +240,8 @@ export interface DecisionsPollerDeps {
   /** Decisions re-read under the newest id each poll, for their late status. */
   readonly idWindow?: number
   readonly outcomeBackfill?: number
+  /** Read our venues every this many polls (they change once a day at most), and on the first. */
+  readonly venuesEvery?: number
   /** The wait between looks while the views are missing. */
   readonly recheckMs?: number
   readonly maxDelayMs?: number
@@ -230,6 +267,21 @@ export class DecisionsPoller {
   private outcomeMark: OutcomeMark | null = null
   private readonly outcomesSent = new Map<string, string>()
   private ledgerSent = ''
+  private brokerMark: number | null = null
+  /** The broker view is newer than the other three: until an admin applies it, it is off on its own. */
+  private brokerOff = false
+  /** Whether `broker_off` was logged (only when the other three answered: else their `off` says it all). */
+  private brokerSaid = false
+  private venuesSent = ''
+  private venuesPolls = 0
+  /** After any failure of the broker views (missing, slow, refused) they are tried only every `venuesEvery` rounds. */
+  private brokerBackoff = false
+  private brokerRounds = 0
+  /** Set by a failed broker read this round. */
+  private brokerFailedNow = false
+  private brokerFails = 0
+  /** The broker views' last error this round: logged only when the other three answered (else their own log says it). */
+  private brokerError: { code: string; message: string } | null = null
   private fails = 0
   private missing = false
   private timer: unknown = null
@@ -240,7 +292,7 @@ export class DecisionsPoller {
   constructor(deps: DecisionsPollerDeps) {
     this.deps = deps
     this.o = {
-      limits: DEFAULT_LIMITS, venue: () => null, intervalMs: 3000, cap: 200, backfill: 300, idWindow: 300, outcomeBackfill: 100, recheckMs: 60_000, maxDelayMs: 60_000,
+      limits: DEFAULT_LIMITS, venue: () => null, intervalMs: 3000, cap: 200, backfill: 300, idWindow: 300, outcomeBackfill: 100, venuesEvery: 10, recheckMs: 60_000, maxDelayMs: 60_000,
       secrets: [], random: Math.random, setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
       ...deps,
     }
@@ -308,17 +360,39 @@ export class DecisionsPoller {
 
   /** One round over the three views, published as one batch. Never throws. */
   async pollOnce(): Promise<void> {
-    const results = await Promise.allSettled([this.readDecisions(), this.readOutcomes(), this.readLedger()])
+    // the broker views never slow the round down for long: after a failure they wait `venuesEvery` rounds
+    const broker = !this.brokerBackoff || this.brokerRounds++ % this.o.venuesEvery === 0
+    this.brokerFailedNow = false
+    const results = await Promise.allSettled([
+      this.readDecisions(), this.readOutcomes(), this.readLedger(), ...(broker ? [this.readBroker(), this.readVenues()] : []),
+    ])
+    if (broker) {
+      this.brokerBackoff = this.brokerFailedNow
+      // a failure waits a full `venuesEvery` rounds before the next try; a success reads every round again
+      this.brokerRounds = this.brokerFailedNow ? 1 : 0
+      if (!this.brokerFailedNow) this.brokerFails = 0
+    }
     const batch = results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
     if (batch.length > 0) this.deps.hub.publish(batch)
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (!failed) {
+      const err = this.brokerError
+      this.brokerError = null
+      // one count per round, however many of the two broker reads failed in it
+      if (err) this.brokerFails += 1
+      if (err && (this.brokerFails === 1 || this.brokerFails % 10 === 0)) this.deps.log({ route: 'agent_decisions', event: 'broker_poll_failed', fails: this.brokerFails, ...err })
+      if (this.brokerOff && !this.brokerSaid) {
+        this.deps.log({ route: 'agent_decisions', event: 'broker_off', reason: 'view_missing', note: 're-apply db/agent_decisions.sql: it adds show.agent_broker and show.our_venues' })
+        this.brokerSaid = true
+      }
       if (this.missing) this.deps.log({ route: 'agent_decisions', event: 'on' })
       else if (this.fails > 0) this.deps.log({ route: 'agent_decisions', event: 'poll_recovered', after: this.fails })
       this.missing = false
       this.fails = 0
       return
     }
+    // the round failed: its own log says it, a broker error of the same round is not said again
+    this.brokerError = null
     const { code, message } = this.describe(failed.reason)
     if (MISSING.has(code)) {
       // Said once: the views are applied by an admin, maybe later; until then this is a slow re-check.
@@ -384,6 +458,67 @@ export class DecisionsPoller {
     if (sig === this.ledgerSent) return []
     this.ledgerSent = sig
     return [this.event('agent.ledger', ledger.ticks.at(-1)?.tick ?? null, '', ledger)]
+  }
+
+  /**
+   * Our broker's matches after the last id. Never fails the round: a missing view (db/agent_decisions.sql not
+   * re-applied yet) is said once and the other three views go on.
+   */
+  private async readBroker(): Promise<GameEvent[]> {
+    let rows: unknown[]
+    try {
+      rows = this.brokerMark === null
+        ? (await this.deps.db.query(SQL.brokerBackfill, [this.o.backfill])).rows
+        : (await this.deps.db.query(SQL.brokerAfter, [this.brokerMark, this.o.cap])).rows
+    } catch (err) {
+      this.brokerFailed(err)
+      return []
+    }
+    if (this.brokerOff && this.brokerSaid) this.deps.log({ route: 'agent_decisions', event: 'broker_on' })
+    this.brokerOff = false
+    this.brokerSaid = false
+    const out: GameEvent[] = []
+    for (const raw of rows) {
+      const b = brokerOf(raw)
+      if (!b) continue
+      this.brokerMark = Math.max(this.brokerMark ?? 0, b.payload.decision)
+      out.push(this.event('agent.broker', b.tick, 'broker', b.payload))
+    }
+    if (this.brokerMark === null) this.brokerMark = 0
+    return out
+  }
+
+  /** The venues we opened, every `venuesEvery` polls; sent again only when they changed. Off with the broker view. */
+  private async readVenues(): Promise<GameEvent[]> {
+    this.venuesPolls += 1
+    // in a backoff the round already waited: read them whenever the round tries the broker views
+    if (this.venuesSent && !this.brokerBackoff && (this.venuesPolls - 1) % this.o.venuesEvery !== 0) return []
+    let rows: unknown[]
+    try {
+      rows = (await this.deps.db.query(SQL.ourVenues)).rows
+    } catch (err) {
+      this.brokerFailed(err)
+      return []
+    }
+    const venues = rows.map(ourVenueOf).filter((v): v is OurVenuePayload => v !== null)
+    const sig = JSON.stringify(venues)
+    const first = this.venuesSent === ''
+    if (sig === this.venuesSent) return []
+    this.venuesSent = sig
+    // no venue of ours yet: nothing to say
+    if (first && !venues.length) return []
+    return [this.event('agent.venues', null, 'broker', { venues })]
+  }
+
+  /** A failed read of the broker views never fails the round: a missing view turns them off, anything else is logged. */
+  private brokerFailed(err: unknown): void {
+    this.brokerFailedNow = true
+    const { code, message } = this.describe(err)
+    if (MISSING.has(code)) {
+      this.brokerOff = true
+      return
+    }
+    this.brokerError = { code, message }
   }
 
   private describe(reason: unknown): { code: string; message: string } {
