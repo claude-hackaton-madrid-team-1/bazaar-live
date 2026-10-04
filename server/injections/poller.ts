@@ -12,6 +12,7 @@
  */
 import { EMPTY_INJECTIONS, INJECTION_SOURCES, RAW_MAX, responseOf, type InjectionAttempt, type InjectionSource, type InjectionsSnapshot } from '../../shared/injections.ts'
 import type { Db } from '../transcript/poller.ts'
+import { codeOf, redactError } from '../view-poller.ts'
 
 const COLUMNS = 'id, tick, source, from_team, to_us, tags, severity, raw, our_response, proof, seen_at'
 
@@ -91,11 +92,6 @@ export interface InjectionsPollerDeps {
   readonly clearTimer?: (handle: unknown) => void
 }
 
-const codeOf = (error: unknown): string => {
-  const code = (error as { code?: unknown } | null)?.code
-  return typeof code === 'string' ? code : 'ERR'
-}
-
 export class InjectionsPoller {
   private snapshot: InjectionsSnapshot = EMPTY_INJECTIONS
   private missingLogged = false
@@ -167,7 +163,7 @@ export class InjectionsPoller {
         return
       }
       this.failures += 1
-      this.deps.log({ route: 'injections', event: 'poll_error', code, message: this.redact(error) })
+      this.deps.log({ route: 'injections', event: 'poll_error', code, message: redactError(error, this.deps.secrets ?? []) })
     }
   }
 
@@ -177,11 +173,5 @@ export class InjectionsPoller {
     if (signature === this.signature) return
     this.signature = signature
     this.snapshot = next
-  }
-
-  private redact(error: unknown): string {
-    let msg = error instanceof Error ? error.message : String(error)
-    for (const s of this.deps.secrets ?? []) if (s) msg = msg.split(s).join('***')
-    return msg.slice(0, 200)
   }
 }
