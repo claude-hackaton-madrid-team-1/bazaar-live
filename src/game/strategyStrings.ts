@@ -101,6 +101,7 @@ const EN: StrategyStrings = {
   aim: 'What we aim for',
   aimSub: 'value created in negotiations and markets',
   scoring: [
+    'Sales analyses market and rival intelligence to propose targeted offers coordinated with Maker.',
     'Team trades: buy below our private marginal value; sell inventory allowed by current guardrails above our your_value, preserving sole copies on protected complete pages. Account for the accepting side’s venue fees.',
     'Dealer ladder: negotiate toward the dealer’s final price. The best three deals per level count each round.',
     'Duels: capture our share of the pie before round decay. No cards or cash move; album rules do not apply.',
@@ -111,7 +112,7 @@ const EN: StrategyStrings = {
   target: (name, a, have, of) => `${name}${aff(a)} · ${have}/${of}`,
   lacks: (n) => `lacks ${n}:`,
   complete: (names) => `${names} complete`,
-  sell: (surplus, sets, prot, all) => (all ? `Sell only duplicates, at our value + ${surplus}: no page card's only copy is ever sold` : `Sell spares at our value + ${surplus}: duplicates${sets ? ` and ${sets}` : ''}${prot ? `; ${prot} keep their only copy` : ''}`),
+  sell: (surplus) => `Sell inventory allowed by current guardrails, above our value + ${surplus} and the sell floor; keep protected copies`,
   venue: (v) => `Our own market: ${v}`,
   caps: 'Price caps',
   docValue: (source) => `not hit by any buy yet: from ${source}`,
@@ -212,6 +213,7 @@ const ES: StrategyStrings = {
   aim: 'Qué buscamos',
   aimSub: 'valor creado al negociar y hacer mercado',
   scoring: [
+    'Ventas analiza el mercado y el conocimiento de los rivales para proponer ofertas dirigidas, coordinadas con Maker.',
     'Tratos con equipos: comprar por debajo de nuestro valor marginal privado; vender inventario permitido por las reglas vigentes por encima de nuestro your_value, conservando las únicas copias de páginas completas protegidas. Contar las comisiones de quien acepta.',
     'Escalera de tratantes: negociar hacia su precio final. Cuentan los tres mejores tratos por nivel en cada ronda.',
     'Duelos: capturar nuestra parte del beneficio antes de que decaiga por ronda. No mueven cartas ni dinero; las reglas del álbum no se aplican.',
@@ -222,7 +224,7 @@ const ES: StrategyStrings = {
   target: (name, a, have, of) => `${name}${aff(a)} · ${have}/${of}`,
   lacks: (n) => `faltan ${n}:`,
   complete: (names) => `${names} completa`,
-  sell: (surplus, sets, prot, all) => (all ? `Vender solo repetidas, a nuestro valor + ${surplus}: la única copia de una carta de página nunca se vende` : `Vender sobrantes a nuestro valor + ${surplus}: repetidas${sets ? ` y ${sets}` : ''}${prot ? `; de ${prot} no se vende la única copia` : ''}`),
+  sell: (surplus) => `Vender inventario permitido por las reglas vigentes, por encima de nuestro valor + ${surplus} y del suelo de venta; conservar las copias protegidas`,
   venue: (v) => `Mercado propio: ${v}`,
   caps: 'Topes de precio',
   docValue: (source) => `ninguna compra lo ha tocado aún: de ${source}`,

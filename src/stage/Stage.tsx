@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useRef } from 'react'
 import type { Line } from '../show/beat'
 import type { ShowState } from '../show/engine'
-import { useStrings } from '../ui/lang'
+import { useLang, useStrings } from '../ui/lang'
 import { Board, PriceTag } from './Board'
 import { JevOrb, SpeechBubble } from './Bubbles'
 import { appear } from './calm'
@@ -51,22 +51,23 @@ function ReachCard({ reach }: { readonly reach: ShowState['reach'] }) {
   )
 }
 
-function Nameplate({ role, talking }: { readonly role: 'seller' | 'buyer'; readonly talking: boolean }) {
+function Nameplate({ role, talking, status }: { readonly role: 'seller' | 'buyer' | 'sales'; readonly talking: boolean; readonly status?: string }) {
   const t = useStrings()
+  const es = useLang() === 'es'
   return (
-    <div className={`nameplate ${role}`}>
+    <div className={`nameplate ${role}`} title={role === 'sales' ? (es ? 'Analiza el mercado y los rivales para proponer ofertas dirigidas, coordinadas con Maker.' : 'Analyses market and rival intelligence to propose targeted offers coordinated with Maker.') : undefined}>
       <Bars talking={talking} />
-      {role === 'buyer' ? t.buyer : t.seller}{' '}
+      {role === 'sales' ? 'Sales' : role === 'buyer' ? t.buyer : t.seller}{' '}
       <small>
         <span aria-hidden="true">· </span>
-        {role === 'buyer' ? t.taker : t.maker}
+        {role === 'sales' ? status : role === 'buyer' ? t.taker : t.maker}
       </small>
     </div>
   )
 }
 
 /** Which side the caption sits on: under whoever speaks. */
-function sideOf(speaker: Line['speaker'] | undefined): 'start' | 'end' | 'center' {
+function sideOf(speaker: Line['speaker'] | 'sales' | undefined): 'start' | 'end' | 'center' {
   return speaker === 'seller' ? 'start' : speaker === 'buyer' ? 'end' : 'center'
 }
 
@@ -76,7 +77,10 @@ export function Stage({ state }: { readonly state: ShowState }) {
   const ref = useRef<HTMLElement>(null)
   useParallax(ref)
   const pose = poses(state)
-  const speaker = state.line?.speaker
+  const es = useLang() === 'es'
+  const salesTalking = state.line?.speaker === 'seller' && state.line.dealer === 'sales'
+  const speaker = salesTalking ? 'sales' : state.line?.speaker
+  const salesStatus = state.broadcastStatus === 'live' ? (es ? 'en directo' : 'live') : state.broadcastStatus === 'demo' ? 'demo' : state.broadcastStatus === 'locked' ? (es ? 'protegido' : 'locked') : (es ? 'esperando' : 'waiting')
   const lineId = state.line && state.beat ? `${state.beat.id}:${state.beat.lines.indexOf(state.line)}` : 'none'
   return (
     <section className="stage" ref={ref} aria-label={t.stageLabel} data-mood={state.beat?.mood} data-speaker={speaker}>
@@ -85,13 +89,16 @@ export function Stage({ state }: { readonly state: ShowState }) {
         <div className="sign">{t.sign}</div>
         <Board cards={state.board} />
         <DealLight deal={state.deal} />
-        <Voice role="seller" className="lead" pose={pose.seller} talking={speaker === 'seller'} label={t.seller}>
+        <Voice role="seller" className="lead" pose={salesTalking ? 'idle' : pose.seller} talking={speaker === 'seller'} label={t.seller}>
           <Nameplate role="seller" talking={speaker === 'seller'} />
         </Voice>
         <Voice role="buyer" className="lead" pose={pose.buyer} talking={speaker === 'buyer'} label={t.buyer}>
           <Nameplate role="buyer" talking={speaker === 'buyer'} />
         </Voice>
-        <Dealer dealer={state.dealer} speaking={speaker !== undefined && speaker !== 'buyer' && speaker !== 'seller' && speaker !== 'narrator'} />
+        <Voice role="sales" className="lead" pose={salesTalking ? (state.denied || state.fail ? 'grumble' : state.deal ? 'triumph' : 'haggle') : 'idle'} talking={salesTalking} label={es ? 'Agente de ventas' : 'Sales agent'}>
+          <Nameplate role="sales" talking={salesTalking} status={salesStatus} />
+        </Voice>
+        <Dealer dealer={state.dealer} speaking={speaker !== undefined && speaker !== 'buyer' && speaker !== 'seller' && speaker !== 'sales' && speaker !== 'narrator'} />
         <ReachCard reach={state.reach} />
         <div className="toasts">
           <DealToast deal={state.deal} />

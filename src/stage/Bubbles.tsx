@@ -65,7 +65,7 @@ export function SpeechBubble({ line, id }: { readonly line: Line | null; readonl
         <motion.div
           key={id}
           className="caption glass"
-          data-voice={line.speaker}
+          data-voice={line.speaker === 'seller' && line.dealer === 'sales' ? 'sales' : line.speaker}
           {...appear(reduce, {
             initial: { opacity: 0, y: 10, scale: 0.985 },
             animate: { opacity: 1, y: 0, scale: 1 },

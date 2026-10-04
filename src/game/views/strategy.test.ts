@@ -87,7 +87,7 @@ describe('the plan and the levers', () => {
     expect(plan.spareSets.map((s) => [s.set, s.protected])).toEqual([['LAT', true], ['RET', true], ['CHA', true]]) // every set since d3a59037
     expect(plan.spareSets.find((s) => s.set === 'CHA')?.name).toBe('Chamberí')
     expect(plan.allProtected).toBe(true)
-    expect(STRATEGY_STRINGS.es.sell(5, '', 'La Latina', plan.allProtected)).toBe('Vender solo repetidas, a nuestro valor + 5: la única copia de una carta de página nunca se vende')
+    expect(STRATEGY_STRINGS.es.sell(5, '', 'La Latina', plan.allProtected)).toBe('Vender inventario permitido por las reglas vigentes, por encima de nuestro valor + 5 y del suelo de venta; conservar las copias protegidas')
   })
 
   it('what we can spend is the smaller of cash above the floor and the hour left', () => {
