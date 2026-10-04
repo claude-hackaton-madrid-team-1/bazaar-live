@@ -82,6 +82,22 @@ const PERSONA: Readonly<Record<Speaker, string>> = {
   jev: 'a calm coordinator reporting a recorded verdict, clear and measured',
 }
 
+/** Curated performance only: added server-side after quote authorization, never supplied by a rival.
+ * ponytail: two fixed voice-quality tags per role; no LLM rewrite or punctuation changes.
+ */
+export const ELEVEN_DELIVERY: Readonly<Record<Speaker, string>> = {
+  buyer: '[curious] [quick playful delivery]',
+  seller: '[confident] [animated delivery]',
+  abuela: '[warm gentle voice] [unhurried]',
+  chato: '[low gravelly voice] [dry delivery]',
+  pilar: '[refined voice] [measured delivery]',
+  guest1: '[low resonant voice] [deliberate delivery]',
+  guest2: '[bright voice] [energetic delivery]',
+  guest3: '[raspy voice] [theatrical delivery]',
+  narrator: '[clear voice] [upbeat delivery]',
+  jev: '[calm voice] [measured delivery]',
+}
+
 /** The accent of the whole line: castellano from Madrid, or English with a light Madrid accent. */
 const ACCENT: Readonly<Record<Lang, string>> = {
   es: 'speaking natural peninsular Spanish (castellano) from Madrid, not Latin American',
@@ -179,12 +195,12 @@ async function failure(provider: ProviderId, res: Response): Promise<never> {
 }
 
 /** The request ElevenLabs gets for a line (pure: building it costs nothing and sends nothing). */
-export function elevenRequest(config: Pick<NonNullable<ProviderConfig['elevenlabs']>, 'model' | 'voices'>, speaker: Speaker, lang: Lang, text: string): { url: string; body: unknown } {
+export function elevenRequest(config: Pick<NonNullable<ProviderConfig['elevenlabs']>, 'model' | 'voices'>, speaker: Speaker, lang: Lang, text: string) {
   const voice = encodeURIComponent(config.voices[speaker])
   return {
     url: `https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`,
     body: {
-      text: forElevenLabs(text),
+      text: `${ELEVEN_DELIVERY[speaker]} ${forElevenLabs(text)}`,
       model_id: config.model,
       // ISO 639-1: enforces the language and its text normalisation ("30 primas" is read in that language).
       language_code: lang,
