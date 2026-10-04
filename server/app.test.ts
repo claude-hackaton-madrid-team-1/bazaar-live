@@ -10,7 +10,7 @@ import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, readLim
 import { cleanQuote } from '../shared/clean.ts'
 import { threadItem } from './transcript/rows.ts'
 import { TranscriptStore } from './transcript/store.ts'
-import { ELEVEN_SETTINGS, elevenRequest, geminiAudioData, geminiRequest, readProviderConfig, wavFromPcm } from './providers.ts'
+import { ELEVEN_DELIVERY, ELEVEN_SETTINGS, elevenRequest, geminiAudioData, geminiRequest, readProviderConfig, wavFromPcm } from './providers.ts'
 
 const servers: Server[] = []
 afterEach(() => servers.splice(0).forEach((s) => s.close()))
@@ -34,6 +34,8 @@ const tts = (base: string, body: unknown, headers: Record<string, string> = {}) 
 
 /** A different show line per n (a seller hold), so each one misses the cache. */
 const holdLine = (n: number) => ({ provider: 'elevenlabs', speaker: 'seller', lang: 'es', text: `La Latina número ${n} se queda como está.` })
+
+const renderedChars = `${ELEVEN_DELIVERY.seller} ${holdLine(1).text}`.length
 
 describe('the TTS proxy', () => {
   it('reports no providers and still serves the show when no key is set', async () => {
@@ -64,7 +66,7 @@ describe('the TTS proxy', () => {
     expect(calls[0]?.url).toContain('/v1/text-to-speech/voice123')
     expect(calls[0]?.headers['xi-api-key']).toBe('test-key')
     expect(calls[0]?.body).toEqual({
-      text: '[excited] ¿Salamanca número 5 a 18 primas? ¡Me la llevo!',
+      text: `${ELEVEN_DELIVERY.buyer} [excited] ¿Salamanca número 5 a 18 primas? ¡Me la llevo!`,
       model_id: 'eleven_v4',
       language_code: 'es',
       voice_settings: { stability: 0.35, similarity_boost: 0.75 },
@@ -119,7 +121,7 @@ describe('the TTS proxy', () => {
       calls += 1
       return new Response(Buffer.from('mp3'), { status: 200 })
     }) as unknown as typeof fetch
-    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget: new DailyBudget(80, 80) })
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget: new DailyBudget(2 * renderedChars, 2 * renderedChars) })
     expect((await tts(base, holdLine(1))).status).toBe(200)
     expect((await tts(base, holdLine(2))).status).toBe(200)
     const over = await tts(base, holdLine(3))
@@ -329,7 +331,7 @@ describe('budget shares and the edge host (review P2 #3, P3 #5, P3 #6)', () => {
   it('caps each address at its share of the day, and refunds a failed call', async () => {
     let fail = true
     const fake = (async () => (fail ? new Response('{}', { status: 500 }) : new Response(Buffer.from('mp3')))) as unknown as typeof fetch
-    const budget = new DailyBudget(1000, 80)
+    const budget = new DailyBudget(1000, 2 * renderedChars)
     const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { budget })
     expect((await tts(base, holdLine(1), { 'X-Real-IP': '6.6.6.6' })).status).toBe(502)
     expect(budget.remaining).toBe(1000) // the failed call was refunded
@@ -353,7 +355,7 @@ describe('budget shares and the edge host (review P2 #3, P3 #5, P3 #6)', () => {
 describe('second review of the follow-ups', () => {
   it('lets one address (the pitch screen) use the whole day unless a share is set', async () => {
     const fake = (async () => new Response(Buffer.from('mp3'))) as unknown as typeof fetch
-    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { limits: readLimits({ TTS_DAILY_CHARS: '80', TTS_PER_ADDRESS_BURST: '100', TTS_GLOBAL_BURST: '100' }) })
+    const base = await start({ ELEVENLABS_API_KEY: 'k' }, fake, { limits: readLimits({ TTS_DAILY_CHARS: String(2 * renderedChars), TTS_PER_ADDRESS_BURST: '100', TTS_GLOBAL_BURST: '100' }) })
     expect((await tts(base, holdLine(1))).status).toBe(200)
     expect((await tts(base, holdLine(2))).status).toBe(200)
     expect((await tts(base, holdLine(3))).status).toBe(429)
@@ -364,7 +366,7 @@ describe('second review of the follow-ups', () => {
     const cutOff = (async () => ({ ok: true, status: 200, arrayBuffer: () => Promise.reject(new Error('connection reset')) })) as unknown as typeof fetch
     const base = await start({ ELEVENLABS_API_KEY: 'k' }, cutOff, { budget })
     expect((await tts(base, holdLine(1))).status).toBe(502)
-    expect(budget.remaining).toBe(1000 - holdLine(1).text.length)
+    expect(budget.remaining).toBe(1000 - renderedChars)
   })
 
   it('keys an IPv6 caller by its /64 and an IPv4-mapped one by its IPv4', () => {
@@ -422,7 +424,7 @@ describe('one language per line (the proxy contract, both languages)', () => {
     const config = readProviderConfig({ ELEVENLABS_API_KEY: 'e' }).elevenlabs!
     const req = elevenRequest(config, 'abuela', 'es', '[sighs] Ay, qué calor.')
     expect(req.url).toBe(`https://api.elevenlabs.io/v1/text-to-speech/${config.voices.abuela}?output_format=mp3_44100_128`)
-    expect(req.body).toEqual({ text: '[sighs] Ay, qué calor.', model_id: 'eleven_v4', language_code: 'es', voice_settings: { stability: 0.55, similarity_boost: 0.8 } })
+    expect(req.body).toEqual({ text: `${ELEVEN_DELIVERY.abuela} [sighs] Ay, qué calor.`, model_id: 'eleven_v4', language_code: 'es', voice_settings: { stability: 0.55, similarity_boost: 0.8 } })
     expect(Object.keys(ELEVEN_SETTINGS).sort()).toEqual(['abuela', 'buyer', 'chato', 'guest1', 'guest2', 'guest3', 'jev', 'narrator', 'pilar', 'seller'])
     for (const s of Object.values(ELEVEN_SETTINGS)) {
       expect(s.stability).toBeGreaterThanOrEqual(0)
@@ -596,4 +598,23 @@ describe('authenticated Sales quotes', () => {
     expect((await tts(base, { ...body, text: 'Quiero vender esta carta por mil primas, es mi mejor oferta.' }, { 'X-Game-View-Token': 'view-test' })).status).toBe(400)
     expect(calls).toBe(1)
   })
+})
+
+
+it('invalidates pre-personality audio and separates changed voice configurations', async () => {
+  const cache = new LruCache<{ body: Buffer; contentType: string }>(10_000)
+  const line = holdLine(1)
+  cache.set(`elevenlabs|es|seller|${line.text}`, { body: Buffer.from('old neutral'), contentType: 'audio/mpeg' })
+  let calls = 0
+  const fake: typeof fetch = async () => {
+    calls += 1
+    return new Response(Buffer.from('new performance'))
+  }
+  const first = await start({ ELEVENLABS_API_KEY: 'k', ELEVENLABS_VOICE_SELLER: 'first' }, fake, { cache })
+  const second = await start({ ELEVENLABS_API_KEY: 'k', ELEVENLABS_VOICE_SELLER: 'second' }, fake, { cache })
+  expect(await (await tts(first, line)).text()).toBe('new performance')
+  expect((await tts(first, line)).status).toBe(200)
+  expect(calls).toBe(1)
+  expect((await tts(second, line)).status).toBe(200)
+  expect(calls).toBe(2)
 })

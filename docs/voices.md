@@ -12,7 +12,7 @@ by `elevenRequest()` in `server/providers.ts` and pinned by a test that sends no
 
 ```json
 {
-  "text": "[sighs] Ay, qué calor.",
+  "text": "[warm gentle voice] [unhurried] [sighs] Ay, qué calor.",
   "model_id": "eleven_v4",
   "language_code": "es",
   "voice_settings": { "stability": 0.55, "similarity_boost": 0.8 }
@@ -29,13 +29,46 @@ by `elevenRequest()` in `server/providers.ts` and pinned by a test that sends no
 | `apply_text_normalization` | not sent (default `auto`) | Numbers and "primas" are normalised by default. |
 | `output_format` | `mp3_44100_128` | The default; no paid-tier format needed. |
 
+## Character delivery (2026-10-04)
+
+Each authorized ElevenLabs line now receives two fixed, server-owned performance tags. The quote's words,
+price, punctuation and caption stay unchanged. No LLM rewrites dialogue, and the browser cannot choose tags
+outside the existing authorized text/template path. Existing approved expressive tags remain after the prefix.
+
+| Speaker | Injected performance prefix |
+|---|---|
+| buyer / Taker | `[curious] [quick playful delivery]` |
+| seller / Maker and Sales | `[confident] [animated delivery]` |
+| Abuela | `[warm gentle voice] [unhurried]` |
+| Chato | `[low gravelly voice] [dry delivery]` |
+| Pilar | `[refined voice] [measured delivery]` |
+| guest1 | `[low resonant voice] [deliberate delivery]` |
+| guest2 | `[bright voice] [energetic delivery]` |
+| guest3 | `[raspy voice] [theatrical delivery]` |
+| narrator | `[clear voice] [upbeat delivery]` |
+| Jev | `[calm voice] [measured delivery]` |
+
+The guest assignment remains a stable hash of the dealer or rival identity. This covers currently authorized
+spoken opponent/duel summaries. Raw rival quotes remain captions under the existing trust policy; a delivery
+profile does not authorize arbitrary text. Maker and Sales share the existing seller voice; this change does
+not pretend they have separate voice IDs.
+
+The audio cache key now includes the complete rendered ElevenLabs request: voice ID, model, language,
+settings and prefix. Old neutral audio cannot mask the new performance. Daily character charging and refunds
+include the added tags. Authentication still runs before cache access, including private Sales quotes.
+
+The official [best-practices guide](https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices#prompting-eleven-v4)
+recommends explicit voice-quality instructions and testing them with the chosen voice. These custom tags are
+curated directions, not guaranteed effects; v4 does not support SSML break tags. Unit tests verify payloads,
+unchanged quote words, cache invalidation and budgets. Audible character quality remains to be auditioned.
+
 ## Per role
 
 The ids are the server's defaults (`ELEVEN_VOICES`); every one can be replaced without a deploy of code by
 the env var named in the last column. They are ElevenLabs "default" voices, which the docs say "will expire on
 December 31, 2026", so they work for the pitch.
 
-| Role | Character | Voice id (default) | Stability | Similarity | Delivery tags it uses most | Env override |
+| Role | Character | Voice id (default) | Stability | Similarity | Optional existing script cues | Env override |
 |---|---|---|---|---|---|---|
 | `seller` | the maker: a theatrical broker, loud and charming | `s3TPKV1kjDlVtZbl4Ksh` | 0.40 | 0.75 | `[excited]`, `[mischievously]`, `[whispers]`, `[laughs]` | `ELEVENLABS_VOICE_SELLER` |
 | `buyer` | the taker: a cheeky, quick bargain hunter | `IKne3meq5aSn9XLyUdCD` | 0.35 | 0.75 | `[sarcastic]`, `[excited]`, `[sighs]`, `[curious]` | `ELEVENLABS_VOICE_BUYER` |
@@ -130,7 +163,7 @@ The account has 10,000 credits and a character costs about one (check the first 
 not in the pages read). So the proxy's daily budget now defaults to 9,000 characters (`TTS_DAILY_CHARS`), about 90
 lines of dialogue. Repeated lines are cached and shared by every viewer; the idle talk (one beat every 22 to 35 s)
 is what spends most, so for a long day raise the quiet interval (`?idle=`), keep the page muted until needed, or
-lower the budget further. Nothing here has been run against the API yet.
+lower the budget further. The new performance prefixes have not been auditioned by this implementation task.
 
 ## Switching it on (Omar's step, at the pitch)
 
@@ -148,3 +181,14 @@ lower the budget further. Nothing here has been run against the API yet.
 - Prompting Eleven v4 (audio tags): https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices#prompting-eleven-v4
 - Voices (default voices expire 2026-12-31): https://elevenlabs.io/docs/overview/capabilities/voices
 - Voices search (filters): https://elevenlabs.io/docs/api-reference/voices/search
+
+### Verification for the delivery-prefix change
+
+- `npm run test:unit`: **1284 tests passed across127 files** (6.70s); includes private quote authorization,
+  unchanged quote words, legacy-cache invalidation and exact tag-inclusive budget/refund checks.
+- `npx tsc -b`, changed-file ESLint and format checks: exit0. `npm run build`: completed524ms;
+  existing large-chunk warning remains.
+- Initial tests exposed budget refunds still counting only the original text after adding prefixes;
+  refunds now use the same rendered character count as charges. The new checkout initially lacked
+  installed dependencies; `npm ci --ignore-scripts` used the existing lockfile, adding no dependencies.
+- Unverified: audible interpretation and production deployment. No paid provider request was made by this slice.

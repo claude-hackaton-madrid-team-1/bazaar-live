@@ -42,7 +42,7 @@ import { isRealLine } from '../shared/real-lines.ts'
 import { isSpeaker, type Speaker } from '../shared/tags.ts'
 import type { DealerNames } from './dealers.ts'
 import { addressKey, DailyBudget, DEFAULT_LIMITS, LruCache, RateLimiter, type TtsLimits } from './limits.ts'
-import { availableProviders, elevenLabs, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
+import { availableProviders, elevenLabs, elevenRequest, gemini, UpstreamError, type Audio, type ProviderConfig, type ProviderId } from './providers.ts'
 import { createApprovalsRoutes, type ApprovalsRouteDeps } from './approvals/routes.ts'
 import { createGameRoutes, type GameRouteDeps } from './game/routes.ts'
 import { createHistoryRoutes, type HistoryRouteDeps } from './history/routes.ts'
@@ -370,7 +370,12 @@ export function createApp(deps: AppDeps): AppHandler {
       (text) => isRecordedInjection(deps.injections?.snapshot().rows ?? [], text),
     )
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
-    const key = `${parsed.provider}|${parsed.lang}|${parsed.speaker}|${parsed.text}`
+    // Authorization above always precedes lookup, including a cached private quote.
+    const rendering = parsed.provider === 'elevenlabs' && deps.config.elevenlabs
+      ? elevenRequest(deps.config.elevenlabs, parsed.speaker, parsed.lang, parsed.text)
+      : null
+    const key = JSON.stringify([parsed.provider, parsed.lang, parsed.speaker, rendering ?? parsed.text])
+    const billedChars = rendering?.body.text.length ?? parsed.text.length
     const started = Date.now()
     let audio = cache.get(key)
     const shared = inFlight.get(key)
@@ -385,14 +390,14 @@ export function createApp(deps: AppDeps): AppHandler {
           log({ route: 'tts', status: 429, provider: parsed.provider })
           return json(res, 429, { error: 'rate_limited' }, { 'Retry-After': String(limited.retryAfterSeconds) })
         }
-        const allowed = budget.allows(address, parsed.text.length)
+        const allowed = budget.allows(address, billedChars)
         if (allowed !== 'ok') {
           log({ route: 'tts', status: 429, provider: parsed.provider, budget: allowed })
           return json(res, 429, { error: 'daily_budget' }, { 'Retry-After': '3600' })
         }
         perClient.take(address)
         global.take('*')
-        budget.spend(address, parsed.text.length)
+        budget.spend(address, billedChars)
       }
       try {
         const pending = shared ?? synthesize(parsed).finally(() => inFlight.delete(key))
@@ -402,7 +407,7 @@ export function createApp(deps: AppDeps): AppHandler {
       } catch (error: unknown) {
         // The provider refused (an HTTP error answer): nothing was billed, so the characters go back, to
         // the caller that spent them. A timeout or a cut-off body may have been billed: no refund.
-        if (!shared && error instanceof UpstreamError) budget.refund(address, parsed.text.length)
+        if (!shared && error instanceof UpstreamError) budget.refund(address, billedChars)
         const status = error instanceof UpstreamError ? error.status : 0
         log({ route: 'tts', status: 502, provider: parsed.provider, upstream: status, error: error instanceof Error ? error.message : String(error) })
         return json(res, 502, { error: 'tts_failed', provider: parsed.provider })
