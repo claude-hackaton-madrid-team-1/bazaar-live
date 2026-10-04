@@ -8,6 +8,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { TranscriptBatch, TranscriptItem } from '../../shared/transcript.ts'
+import { json } from '../json.ts'
 import { RateLimiter } from '../limits.ts'
 import type { TranscriptStore } from './store.ts'
 
@@ -31,11 +32,6 @@ export interface TranscriptRouteDeps {
 }
 
 const BATCH_LIMIT = 100
-
-function json(res: ServerResponse, headers: Readonly<Record<string, string>>, status: number, body: unknown, extra: Record<string, string> = {}): void {
-  res.writeHead(status, { ...headers, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra })
-  res.end(JSON.stringify(body))
-}
 
 /** A cursor from the query or Last-Event-ID: a non-negative safe integer, else null. */
 function parseCursor(raw: string | null | undefined): number | null {
