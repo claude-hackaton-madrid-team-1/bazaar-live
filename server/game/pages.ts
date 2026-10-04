@@ -1,8 +1,8 @@
 /**
- * The screens that read their own API (/history, /learn, /strategy, /rivals) kept close to real time: our agents' sockets ring the
+ * The screens that read their own API (/history, /learn, /strategy, /venue, /rivals) kept close to real time: our agents' sockets ring the
  * doorbell (server/game/agentsws.ts, `onEvent`), the server reads those screens' views right away, and when a
  * read finds new rows it tells every open game stream with one small sticky status, `pages.changed`
- * ({history, learn, strategy, rivals}: when each last changed, ISO). The page then refetches its API. Postgres stays the only source
+ * ({history, learn, strategy, venue, rivals}: when each last changed, ISO). The page then refetches its API. Postgres stays the only source
  * of what is shown: an event never carries a row, it only says "read now"; and the notice carries times only.
  *
  * When each screen's rows land, read in bazaar (agents/runtime.py, taker.py, holdings.py, ledger_pg.py):
@@ -13,6 +13,9 @@
  *   thread's execution catches them;
  * - the strategy reads all of these plus the taker's refusals (`decisions` rows never sent, so never on a socket),
  *   decided early in its tick: reads after the taker's tick and after any decision or execution;
+ * - the venue's rows come from our broker (its matches and the bench books it reads, every tick, never on a socket of
+ *   ours) and the feed archive (a Market Test's start, other teams on our venue): reads after the taker's tick, when
+ *   the archive has caught up with it;
  * - the rivals' holdings, ranks and wants come from the feed archive and the leaderboard reads, never from a socket of
  *   ours: one read a few seconds after the taker's tick, when the archive has caught up with the tick.
  * Each screen's own poller timer (5 s, 10 s) stays as the fallback for everything else.
@@ -20,7 +23,7 @@
 import type { AgentId, ShowEvent } from '../../src/model/events.ts'
 import type { GameEvent } from './relay.ts'
 
-export type ApiPage = 'history' | 'learn' | 'strategy' | 'rivals'
+export type ApiPage = 'history' | 'learn' | 'strategy' | 'venue' | 'rivals'
 
 /** One live event of an agent's socket, as server/game/agentsws.ts hands it over (only the fields read here). */
 export interface LiveEvent {
@@ -57,6 +60,7 @@ export const WAKES: Readonly<Record<ApiPage, (e: LiveEvent) => readonly number[]
   history: (e) => (e.kind === 'execution' ? [250, 2_500] : e.kind === 'tick' && e.agent === 'taker' ? [250, 5_000] : []),
   learn: (e) => (e.kind === 'execution' && THREAD_METHODS.has(methodOf(e)) ? [1_500, 5_000] : e.kind === 'tick' && e.agent === 'taker' ? [5_000] : []),
   strategy: (e) => (e.kind === 'tick' ? (e.agent === 'taker' ? [250, 2_500, 5_000] : []) : [250, 2_500]),
+  venue: (e) => (e.kind === 'tick' && e.agent === 'taker' ? [2_500, 5_000] : []),
   rivals: (e) => (e.kind === 'tick' && e.agent === 'taker' ? [5_000] : []),
 }
 

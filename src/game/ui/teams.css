@@ -1,0 +1,354 @@
+/* ── Every team's score (/history, ./TeamsScorePanel.tsx): where they beat us, every team's line, our place ── */
+
+/*
+ * The followed teams' colours: five categorical slots in a fixed order, checked for colour-blind separation and
+ * contrast on each surface (light and dark are their own steps, not a flip). Ours stays --gm-us, as on every screen.
+ */
+.ts-panel {
+  --ts-1: #eb6834;
+  --ts-2: #2a78d6;
+  --ts-3: #e87ba4;
+  --ts-4: #eda100;
+  --ts-5: #4a3aa7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .ts-panel {
+    --ts-1: #d95926;
+    --ts-2: #3987e5;
+    --ts-3: #d55181;
+    --ts-4: #c98500;
+    --ts-5: #9085e9;
+  }
+}
+
+:root[data-theme='dark'] .ts-panel {
+  --ts-1: #d95926;
+  --ts-2: #3987e5;
+  --ts-3: #d55181;
+  --ts-4: #c98500;
+  --ts-5: #9085e9;
+}
+
+.ts-headline {
+  margin: 0 0 var(--s-3);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* the gap table: part · us · place · vs leader · vs just above · vs average */
+.ts-table {
+  display: grid;
+  gap: 1px;
+  font-size: 0.8125rem;
+}
+
+.ts-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1.4fr) 4.5rem 4.5rem minmax(0, 1fr) minmax(0, 1fr) 5.5rem;
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.ts-row > :not(:first-child) {
+  text-align: right;
+}
+
+.ts-row-head {
+  color: var(--text-2);
+  font-size: 0.6875rem;
+}
+
+.ts-row-head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-row[data-total] {
+  background: var(--gm-well);
+  font-weight: 600;
+}
+
+/* the first part that scores nothing starts its own block */
+.ts-row[data-scored] + .ts-row:not([data-scored]) {
+  margin-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+  border-radius: 0;
+}
+
+.ts-row:not([data-scored]) {
+  color: var(--text-2);
+}
+
+.ts-part {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+}
+
+.ts-unscored {
+  color: var(--text-3);
+  font-size: 0.6875rem;
+}
+
+.ts-place {
+  white-space: nowrap;
+}
+
+.ts-place[data-tone='in'] {
+  color: var(--gm-good);
+}
+
+.ts-place[data-tone='out'] {
+  color: var(--gm-bad);
+}
+
+.ts-note {
+  margin: var(--s-2) 0 var(--s-3);
+  font-size: 0.75rem;
+}
+
+.ts-sub-title {
+  margin: var(--s-3) 0 var(--s-1);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ts-chart {
+  display: block;
+  outline: none;
+}
+
+.ts-chart:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--gm-us);
+  border-radius: 6px;
+}
+
+.ts-line {
+  fill: none;
+  stroke: var(--c, var(--text-3));
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.ts-line[data-muted] {
+  stroke: var(--text-3);
+  stroke-width: 1;
+  opacity: 0.35;
+}
+
+.ts-line[data-us] {
+  stroke-width: 3;
+}
+
+.ts-end {
+  fill: var(--text-2);
+  font-size: 11px;
+}
+
+.ts-end[data-us] {
+  fill: var(--text);
+  font-weight: 600;
+}
+
+.ts-swatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--c, transparent);
+  vertical-align: middle;
+}
+
+/* the tooltip: every team at that moment, highest first */
+.ts-tip {
+  max-width: min(280px, 100%);
+}
+
+.ts-tip-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 0 8px;
+}
+
+.ts-tip-row {
+  display: contents;
+}
+
+.ts-tip-row > :nth-child(n + 3) {
+  text-align: right;
+}
+
+.ts-tip-row[data-us] > *,
+.ts-tip-row[data-on] .ts-name {
+  font-weight: 600;
+}
+
+.ts-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* the teams to follow: every team by rank, the followed ones with their colour */
+.ts-follow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--s-2);
+}
+
+.ts-follow-head {
+  font-size: 0.75rem;
+}
+
+.ts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.ts-chip[aria-pressed='true'] {
+  background: var(--gm-well);
+  color: var(--text);
+}
+
+.ts-chip[data-us] {
+  font-weight: 600;
+  cursor: default;
+}
+
+.ts-chip:disabled:not([data-us]) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ts-chip:hover:not(:disabled) {
+  background: var(--gm-well-hover);
+}
+
+.ts-chip:focus-visible {
+  outline: 2px solid var(--gm-us);
+  outline-offset: 1px;
+}
+
+/* what moved our place, the latest first */
+.ts-changes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.ts-change {
+  display: grid;
+  grid-template-columns: 1rem 9rem minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: baseline;
+}
+
+@media (max-width: 680px) {
+  /* a phone keeps us, our place and the average; the leader and the team above are on a wider screen */
+  .ts-row {
+    grid-template-columns: minmax(0, 1fr) 3.5rem 4.75rem 4.25rem;
+  }
+
+  .ts-col-leader,
+  .ts-col-above {
+    display: none;
+  }
+
+  .ts-change {
+    grid-template-columns: 1rem minmax(0, 1fr);
+  }
+
+  .ts-change > :last-child {
+    grid-column: 2;
+  }
+}
+
+@media (forced-colors: active) {
+  .ts-line,
+  .ts-swatch {
+    forced-color-adjust: none;
+  }
+}
+
+/* ── The Market Test (/history, ./MarketTestPanel.tsx): every team's market, a level per row, ours highlighted ── */
+
+.mt-levels {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  list-style: none;
+}
+
+.mt-level {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(4rem, 1fr) minmax(0, 1.4fr);
+  gap: var(--s-2);
+  align-items: center;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.mt-value {
+  text-align: right;
+}
+
+.mt-bar {
+  height: 8px;
+  width: var(--w);
+  border-radius: 2px;
+  background: var(--text-3);
+  opacity: 0.55;
+}
+
+.mt-level[data-us] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mt-level[data-us] .mt-bar {
+  background: var(--gm-us);
+  opacity: 1;
+}
+
+.mt-teams {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mt-bench {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.mt-bench b {
+  color: var(--text);
+}

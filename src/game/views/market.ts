@@ -321,10 +321,13 @@ function agentNote(s: State, ref: string, since: number | undefined): AgentNote 
 /** Offers we could take: live, priced, a card, not ours, open to anyone or addressed to us. */
 function takeable(s: State): BookOffer[] {
   const out: BookOffer[] = []
+  const ownIds = new Set(Object.values(s.owned).flatMap((copies) => copies.map((c) => c.id)))
   for (const offers of s.book.values()) {
     for (const o of offers.values()) {
       if (!live(s, o) || o.side === 'swap' || o.kind !== 'card' || o.price == null || o.maker === s.team) continue
       if (o.to != null && o.to !== s.team) continue
+      // a bid for named copies none of which is ours asks another team, not us
+      if (o.wantAssetIds.length && !o.wantAssetIds.some((id) => ownIds.has(id))) continue
       if (bookOf(o.ref) == null) continue
       out.push(o)
     }

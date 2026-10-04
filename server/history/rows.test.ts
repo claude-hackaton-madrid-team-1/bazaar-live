@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayOf, isoOf, orderOf, pointOf, scoreMarkOf, scorePointOf, teamEventOf, tradeOf } from './rows.ts'
+import { dayOf, isoOf, orderOf, pointOf, scoreMarkOf, scorePointOf, teamEventOf, teamScoreOf, tradeOf } from './rows.ts'
 
 describe('history rows', () => {
   it('reads a cash point, numbers sent as text included, and needs a day, a tick and the cash', () => {
@@ -38,5 +38,18 @@ describe('history rows', () => {
     expect(scoreMarkOf({ kind: 'game', id: 22260, day: '2026-10-03', tick: 441, action: 'bench', note: 'The Market Test', at: new Date('2026-10-03T09:51:00Z') })).toMatchObject({ action: 'bench', at: '2026-10-03T09:51:00.000Z' })
     expect(scoreMarkOf({ kind: 'start', id: 1, day: '2026-10-03', tick: 1 })).toBeNull()
     expect(scoreMarkOf({ kind: 'deploy', id: 1, day: '2026-10-03', tick: 1, agent: 'taker' })).toBeNull()
+  })
+
+  it("reads a team's board read, numbers sent as text included; needs a team id, a rank and a score", () => {
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: '23.980', negotiating: '16.480', market: '7.500', level: 4, pages: 1, deals: 27, read_at: new Date('2026-10-03T16:40:00Z'), venue: 'v19' })).toEqual({
+      day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: 23.98, negotiating: 16.48, market: 7.5, level: 4, pages: 1, deals: 27, at: '2026-10-03T16:40:00.000Z', venue: 'v19',
+    })
+    // a view not re-applied yet has no venue; an odd one is dropped
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: 1 })?.venue).toBeNull()
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't01', rank: 12, score: 1, venue: '<b>v1</b>' })?.venue).toBeNull()
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 'abuela', rank: 1, score: 1 })).toBeNull()
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't02', rank: 0, score: 1 })).toBeNull()
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't02', rank: 3 })).toBeNull()
+    expect(teamScoreOf({ day: '2026-10-03', tick: 950, team: 't02', rank: 3, score: 9 })).toMatchObject({ negotiating: null, market: null, pages: null, at: null })
   })
 })

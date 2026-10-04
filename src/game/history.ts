@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { pollEvery, type PagePush } from './fresh.ts'
-import { EMPTY_HISTORY, type CashPoint, type HistorySnapshot, type Order, type ScoreMark, type ScorePoint, type TeamEvent, type Trade } from '../../shared/history.ts'
+import { EMPTY_HISTORY, type CashPoint, type HistorySnapshot, type Order, type ScoreMark, type ScorePoint, type TeamEvent, type TeamScore, type Trade } from '../../shared/history.ts'
 
 export type HistoryStatus = 'loading' | 'live' | 'off' | 'locked' | 'error' | 'mock'
 
@@ -34,6 +34,7 @@ export function historyStateOf(httpStatus: number, body: unknown, prev: HistoryS
         events: parts.events === true,
         scores: parts.scores === true,
         marks: parts.marks === true,
+        board: parts.board === true,
       },
       points: list(body.points),
       trades: list(body.trades),
@@ -41,6 +42,7 @@ export function historyStateOf(httpStatus: number, body: unknown, prev: HistoryS
       events: list(body.events),
       scores: list(body.scores),
       marks: list(body.marks),
+      board: list(body.board),
     },
   }
 }
@@ -135,13 +137,14 @@ export function mockHistory(tick: number): HistorySnapshot {
   const { scores, marks } = mockScores(t, points)
   return {
     at: new Date(0).toISOString(),
-    parts: { points: true, trades: true, orders: true, events: true, scores: true, marks: true },
+    parts: { points: true, trades: true, orders: true, events: true, scores: true, marks: true, board: true },
     points,
     trades: trades.filter((x) => x.tick <= t),
     orders: orders.filter((o) => o.tick <= t),
     events: events.filter((e) => e.tick <= t),
     scores,
     marks,
+    board: mockBoard(t, scores),
   }
 }
 
@@ -178,4 +181,47 @@ function mockScores(t: number, cash: readonly CashPoint[]): { scores: ScorePoint
     mark(1104, 28, 'start', { agent: 'maker' }),
   ].filter((m) => m.tick <= t)
   return { scores, marks }
+}
+
+/**
+ * The made-up day's board, every ten ticks: seventeen rivals, each at its own share of our made-up score (a few
+ * ahead, most behind, some strong in market-making, some with none), and us split as the board splits it
+ * (negotiating + market).
+ */
+function mockBoard(t: number, ours: readonly ScorePoint[]): TeamScore[] {
+  const time = (tick: number) => new Date(Date.UTC(2026, 9, 3, 7, 0, 0) + tick * 30_000).toISOString()
+  const teams = Array.from({ length: 18 }, (_, i) => `t${String(i + 1).padStart(2, '0')}`)
+  const wobble = (team: string, k: number) => ((Number(team.slice(1)) * 37 + k * 11) % 17) / 17
+  const out: TeamScore[] = []
+  for (let tick = 0; tick <= t; tick += 10) {
+    const n = (tick * 40) / Math.max(1, t)
+    const reads = teams.map((team) => {
+      if (team === 't01') {
+        const p = ours.filter((s) => s.tick <= tick).at(-1)
+        const score = p?.score ?? 0
+        const market = r2(Math.min(score, (p?.mm ?? 0) * 1.5 + (p?.bench ?? 0) * 6))
+        return { team, score, negotiating: r2(score - market), market }
+      }
+      // a rival runs at its own share of our made-up score (some ahead, most behind), with a jump on a good deal
+      const k = Number(team.slice(1))
+      const base = ours.filter((s) => s.tick <= tick).at(-1)?.score ?? 0
+      const jump = n > 10 + (k % 7) * 4 ? 1.5 + wobble(team, 1) * 3 : 0
+      const total = base * (0.55 + wobble(team, 0) * 0.6) + jump
+      const market = r2(k % 3 === 0 ? total * 0.45 : k % 3 === 1 ? Math.min(7.5, total * 0.3) : 0)
+      const negotiating = r2(total - market)
+      return { team, score: r2(negotiating + market), negotiating, market }
+    })
+    const ranked = [...reads].sort((a, b) => b.score - a.score || a.team.localeCompare(b.team))
+    ranked.forEach((r, i) => {
+      const k = Number(r.team.slice(1))
+      out.push({
+        day: DAY, tick, team: r.team, rank: i + 1, score: r.score, negotiating: r.negotiating, market: r.market,
+        level: 2 + Math.min(3, Math.floor(n / 12 + wobble(r.team, 3))), pages: Math.floor((n / 20) * wobble(r.team, 4) * 3),
+        deals: Math.round(n * (0.4 + wobble(r.team, 5)) + (k % 4)), at: time(tick),
+        // the teams with a market part above the stall's run their own venue
+        venue: k % 3 === 0 ? `v${String(k).padStart(2, '0')}` : null,
+      })
+    })
+  }
+  return out.sort((a, b) => a.tick - b.tick || a.team.localeCompare(b.team))
 }

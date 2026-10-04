@@ -1,5 +1,5 @@
 /**
- * The screens that read their own API (/history, /learn, /strategy, /rivals) and how fresh what they show is.
+ * The screens that read their own API (/history, /learn, /strategy, /venue, /rivals) and how fresh what they show is.
  *
  * The server reads their views on a timer and as soon as one of our agents' sockets says something moved; when a
  * read finds new rows it says so on the game stream (`pages.changed`, `State.changes`), and the screen refetches.
@@ -8,13 +8,14 @@
 import type { GameStatus } from './store.ts'
 import type { State } from './state.ts'
 
-export type ApiPage = 'history' | 'learn' | 'strategy' | 'rivals'
+export type ApiPage = 'history' | 'learn' | 'strategy' | 'venue' | 'rivals'
 
 /** Each screen's read interval with only the timer, and with the stream's notices. */
 export const POLL_MS: Readonly<Record<ApiPage, { readonly timer: number; readonly pushed: number }>> = {
   history: { timer: 5_000, pushed: 30_000 },
   learn: { timer: 10_000, pushed: 60_000 },
   strategy: { timer: 5_000, pushed: 30_000 },
+  venue: { timer: 5_000, pushed: 30_000 },
   rivals: { timer: 15_000, pushed: 60_000 },
 }
 

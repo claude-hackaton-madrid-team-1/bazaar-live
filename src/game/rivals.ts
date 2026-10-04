@@ -106,7 +106,7 @@ export function mockRivals(tick: number): RivalsSnapshot {
   const ranked = [...teams, 't01'].sort((a, b) => roll(b, 'score') - roll(a, 'score'))
   const rows: RivalTeam[] = ranked.map((team, i) => ({
     team, rank: i + 1, score: Math.round((31 - i * 0.9 - roll(team, 'gap')) * 100) / 100, level: 3 + Math.round(roll(team, 'lvl')),
-    pages: Math.floor(roll(team, 'pages') * 3), deals: 20 + Math.floor(roll(team, 'deals') * 40), tick,
+    pages: Math.floor(roll(team, 'pages') * 3), deals: 20 + Math.floor(roll(team, 'deals') * 40), tick, albumFilled: null, albumSlots: null,
     interest: Object.fromEntries(sets.map((set) => [set, Math.round((roll(team, set, 'int') - 0.6) * 100)])),
   }))
   const wants: RivalWant[] = []

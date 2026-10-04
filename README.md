@@ -14,7 +14,7 @@ generated once by hand, so it is added here when it exists; add `?mock=1` to pre
 
 ## Run
 
-Node 22.18 or newer (`.nvmrc` pins 22.22.0): the server runs TypeScript directly by stripping types.
+Node 22.18 or newer (`.nvmrc` pins 22.23.3): the server runs TypeScript directly by stripping types.
 
 ```sh
 npm ci
@@ -46,7 +46,8 @@ npm run test:coverage  # with v8 coverage
 | `?doors=closed` | With `?mock=1`: the mock's `/health` says the doors are closed (no events, a countdown to the opening), to hear the idle talk. |
 | `?idle=8` | Seconds of quiet before the characters talk about the situation (default 22 s with closed doors or a pause, 35 s otherwise; 2 to 600). |
 | `?mode=dry` | The mock's agents report DRY RUN, so every move is acted out as practice. |
-| `?token=…` | The game screens only: the server's `GAME_VIEW_TOKEN`, when it sets one. Without it a locked server keeps those screens empty. |
+| `?token=…` | The game screens only: the server's `GAME_VIEW_TOKEN`, when it sets one. Without it a locked server keeps those screens empty. A token ending in `.` is safer written `%2E`: a pasted link often drops a trailing dot. |
+| `?transport=sse` | The game screens read the stream over SSE instead of the WebSocket (the default). |
 | `?theme=light\|dark` | Forces the light or dark appearance. Without it the page follows the system's setting. |
 | `?tts=auto\|webspeech\|elevenlabs\|gemini\|off` | Voice provider. `auto` (default) is ElevenLabs v4 when the server has its key, else captions only: no browser-voice or Gemini stand-in. `webspeech` and `gemini` are for development, by name. The header's picker offers ElevenLabs v4 or no voice. |
 
@@ -95,15 +96,18 @@ question (the query, `?mock=1`, `?lang=`, `?token=`, is kept from one screen to 
 | `/agent` | What is our agent doing, and why? | The current phase and goal, then a timeline of our events by tick, each tick read as Observe → Decide → Act → Result (thoughts, actions, our offers, their replies, our settlements with their gain). Nothing from other teams. |
 | `/strategy` | What are we aiming for, why do we hold these cards, why do we not buy what is on sale? | The plan: the incomplete album pages our affinity boosts with the cards they lack, the complete ones, how spares are sold, our venue; what we spent this game hour and the price cap per rarity. Then the ONE rule that stops buys now in big type (`Caja 81, suelo 50: solo 31 para comprar`), the refused card it hit last (price, our value, the surplus, how often, and the cash that would fit it), what is on sale now against what we lack, Jev's refusals in one line, and every refused buy by the surplus given up behind a toggle. Last, every card we hold: kept for a page (and why), spares on sale (our ask vs our value vs the cheapest elsewhere and the last fill), spares not on sale grouped by reason, duels on hold. Read from Postgres: see below. |
 | `/negotiations` | How is each deal going? | Our threads, open first; the selected one (`?id=`) as a conversation: our messages and theirs, each offer with its ids, ask vs bid on a price rail, `final`, expiry, an injection flag on suspicious counterparty text. A link to Duels while any is live. Above, one plain sentence per open dealer thread, team swap and duel ("We're buying LAV-10 from Los Pícaros: we offered 56 P, they ask 63 P"), our caps and duel limits only with `?token=`; below, the teams negotiating with us (team swaps: what each side gives, their words as escaped plain text, never spoken; duels) and the Markets: each board's live offers (name, set, rarity, price), the ones that concern us first and marked, and its latest trades. Team threads reach the page only once the server reads our team-scoped events (today it reads the public feed). |
-| `/duels` | Is their price inside our limit? | One card per live duel: rival, buying or selling, the card at stake, their price → ours, the gap, our limit and how far inside or outside it their price is, the rounds and what their decay costs, the ticks left, the duels agent's last call (offer, blocked by a rule, accept planned by the deadline − 2) and a pill (inside limit / haggling / outside limit / expiring). Then the record per rival and per session with `score.duel_points`, every finished duel in one line (deal at X vs our limit Y, what it kept, rounds), and whether the duels agent is silent or blocked. |
+| `/duels` | Is their price inside our limit? | One card per live duel: rival, buying or selling, the card at stake, their price → ours, the gap, our limit and how far inside or outside it their price is, the rounds and what their decay costs, the ticks left, the duels agent's last call (offer, blocked by a rule, accept planned by the deadline − 2) and a pill (inside limit / haggling / outside limit / expiring). Then the record per rival and per session with `score.duel_points`, every finished duel in one line (deal at X vs our limit Y, what it kept, rounds), and whether the duels agent is silent or blocked. The live chat below the cards (`src/game/ui/DuelChat.tsx`, `views/duelChat.ts`) reads one duel as a conversation, the way the show's transcript reads: each side's price and delivery day tick by tick, the rival's offer inside or outside our limit (with the view token), each round and the share of the value its decay has taken, our agent's accept, refused move or wait (when the decision names the duel) with Jev's verdict, and the end. `?duel=` picks one; without it the chat follows the duel that moved last. The stream carries the offers, not the words. |
 | `/album` | How close are we to completing pages? | One row per barrio page by rarity slot, owned and missing, completion; the score breakdown; score and cash over ticks. |
 | `/rivals` | Who is ahead, and who has the cards we need? | The cards our target pages lack (incomplete pages our affinity boosts), each with the teams holding it (a spare first, then the freshest sighting; how we know: bought, from a pack, a gift, crafted, listed; since when) and the teams also after it lately (board bids with their best cash, dealer asks). Then the standings by the leaderboard's last read (score, complete pages, how many of our needs each holds, the set its public moves chase, flagged when it is one we aim for), and our album beside the album of the team picked there (`?team=`): neighbourhood by neighbourhood in our Album screen's order, our twelve cells next to theirs slot by slot, their cards seen in public moves filled and every other one drawn as unknown, never missing. Read from Postgres (db/rival_albums.sql): only public game facts, never a value of ours. |
 | `/market` | What is everyone else trading? | Every settlement not ours (ours on demand), prices per card, the most active teams; our open offers on the boards, each posted by hand marked "a mano" (no agent manages it). Ours come from `db/game.sql`'s `show.game_our_offers`, however long ago they were listed (`server/game/dbsource.ts` sends them as the sticky `offers.ours`, replayed after the backlog). |
+| `/venue` | Is our venue open and counted, when is the next Market Test, and what did our broker do with its book? | The Market Test first, in big type: a session on now (red, pulsing, ticks left and a bar; the traders the synthetic book brought to our venue, how many pairs our broker matched of those the quotes allowed, the quoted surplus captured, what failed or a guardrail refused, with the game's error code), or the countdown to the next one in ticks, game minutes and Madrid time, with the last session's result. Then our venue (board or auto, fee, open, ✓ when /me counts it for the Market Test; a red line when none is open, it is closing, it is auto or /me counts another) and our bench points against the free stall; every session newest first (earlier days dated), each opening to its matches; and what other teams did on our venue today. Read from Postgres (db/venue.sql) and the game stream: see below. |
 | `/our-market` | How is the venue we run doing, and what are people asking of us? | Our venue (status, fee, bond, trades, volume and traders on the tape seen, its board now with rival teams marked), the matches our broker made (`show.agent_broker` in db/agent_decisions.sql), the bench sessions with our part in each, our announcements, and every live offer that asks something of us (addressed to us, a bid for a card we hold, an ask for a card we miss), each in one plain line; our values and the verdicts read off them only with `?token=`. |
-| `/history` | Where did our cash go? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. |
+| `/prices` | Is this a good price? | The live price guide, one row per card the market or we care about: the standard price (the median of the last 8 fills, dealers too, else the book price), the trend (the newest 3 fills against the 3 before, ±5 % steady), the best bid and ask over every venue (an ask with its venue's fee), the spread, what the card is worth to us, and a good deal for us by the album's rules (buy ≤ min(worth − 2, standard), sell ≥ max(worth + 5, standard): a copy that completes a page is worth that page). "Buy now" / "Sell now" when the board has one; a row that moved this tick flashes. `src/game/views/prices.ts`, over the WebSocket. |
+| `/history` | Where did our cash go? Where do the other teams beat us? | Our cash now, first, lowest and highest today, money in and out, fees; cash over the day tick by tick, each change marked; every movement explained by the trades and events between two readings (bought X from Y + fee, sold, a market's bond, a pack, a gift), the rest shown as "not from a trade we saw"; and what our agents committed in the ledger. Read from Postgres: see below. Every team's score from the public leaderboard: where they beat us and where we beat them (vs the leader, the team just above and the mean), every team's score and our place over the day, and what moved our place (db/teams_score.sql). |
 | `/learn` | What have our agents learned? | What blocks a deal right now (cooloffs, quotas, sold-outs, level blocks, with the ticks until each lifts), the lessons and learned ladders our scored outcomes wrote, the facts read from the feed (price floors, behaviour, fees, notices), how each dealer behaves (threads, deals, opening ask vs fill, ours vs everyone, firmness, concession size), her latest moves, and the rivals' profiles. Read from Postgres: see below. |
 | `/injections` | Who tried to prompt-inject our agents, and what did they do? | The judges' view: every recorded injection attempt, its exact text (plain text, hidden characters shown as markers), the proof to verify it and what our agent did. See [Injection attempts](#injection-attempts-the-show-debug-and-injections). |
 | `/debug` | What exactly arrived? | The raw event stream, filtered by type family and ours / market, with an inspector showing the full JSON of the clicked row. |
+| `/approvals` | Do we let our agents make this big trade? | Only when the server runs approvals (see [Approvals](#approvals-approvals)); otherwise there is no tab and the path is the show. Behind a password: every buy or sell our agents refused because its price is at or above `human_approval_above` (bazaar's GUARDRAILS.md), with why it asked, our value and the official value, the album impact (a red LAST COPY badge on a page's last copy), who asked and the ticks until it goes stale; Approve (with a confirm click) or Deny. Below, the live approvals with Revoke. |
 
 `?mock=1` plays a TypeScript port of bazaar's mock game (`src/game/mock.ts`, seeded): our agent
 haggling with Abuela and other teams, duels, and the rest of the market around it. No key needed.
@@ -123,7 +127,8 @@ Every poll reads `/api/clock` and `/api/feed`; `/api/me` is read on a new tick a
 of ours (a 429 there waits for the next tick, the loop does not slow down). It never opens the game's SSE
 stream: its cap of 6 streams per key is shared with the agents. Events reach the page in the web view's
 envelope (made-up `clock`, `agent.hello`, `agent.me` with negative ids, then the feed unchanged). `agent.me`
-carries only what the screens read (`server/game/me.ts`: id, name, cash, the score and its parts, the album
+carries only what the screens read (`server/game/me.ts`: id, name, cash, the score and its parts (with `market`,
+`bench_efficiency` and `bench_venue` for the Market Test panel), the album
 pages, each asset's id, kind, ref, serial and our value); never the affinity, a key or the rest. Duel
 messages and results are team-only, so the feed never has them: on each new tick (after `/me`, inside the same
 budget, a 429 waiting for the next tick and its Retry-After) the relay reads `/api/duels?done=true` and turns
@@ -140,6 +145,11 @@ so the feed's public `duel.closed` of other teams stays in the market:
   with a guest voice (docs/voices.md).
 - `GET /api/game/stream` → server-sent events: one `events` message with the replay (the latest hello,
   /me, clock first, then the last 5000 events), then one `events` message per poll, and `hb`.
+- `GET /api/game/ws` (WebSocket upgrade) → the same stream, one text frame per message: `events\n<json array>`,
+  `hb\n1`. The game screens use it by default (`src/game/wsSource.ts`); `?transport=sse` forces the SSE stream,
+  and two sockets in a row that never open (a proxy that cannot upgrade) fall back to it for the visit. Same
+  token, same per-address and total caps (SSE and WebSocket counted together), a page of another origin is
+  refused (403), and a frame from the page closes the socket (1003): it is server to page only.
 
 ### What our agents learned (`/learn`)
 
@@ -281,15 +291,73 @@ ticks before it (▲ moving faster, ▼ slower), which is the answer to "did the
 on the big chart. Changes to the agents' GUARDRAILS.md, STRATEGY.md or flags are not marked: that repository is
 private, and the server holds no GitHub token. Until `show.score_points` is applied the panel is the cash chart.
 
+Under it, **every team's score** (`db/teams_score.sql`, `show.team_scores`: the public leaderboard as our agents stored
+it, one read per team about every 10 ticks, kept when something moved for that team). It answers "where do they beat
+us, and where do we beat them?" first: one sentence ("Nos ganan sobre todo en creación de mercado (−0.97 vs la media)
+… El líder, Equipo 10, nos saca 5.07 en negociación"), then per part our value, our place, and the gap against the
+leader, the team just above us and the mean of the others (green where we lead, red where we trail). Then every team's
+score over the day as steps (ours highlighted, up to five followed teams in colour, the rest muted; hover, drag or the
+arrow keys list every team at that moment, highest first, with its gap to us), our place and the followed teams' over
+the day, and what moved our place (who passed us and with which part, or our own move, and our agents' restarts and
+the game's turns between the two reads). Only the board's numbers are compared, ours included: the board's `score` is
+`negotiating + market`, in points, normalised the same way for every team, and for us it equals `/me`'s `score`,
+`negotiating` and `market` at every tick. `/me`'s `neg_points`, `mm_points`, `duel_points`, `ladder_points` and
+`bench_points` (the strips above) are our private raw parts in their own units, which the board hides for every team,
+so they are never set beside a rival's number. Pages, deals and level score nothing by themselves: shown as context.
+
+Under it, the **Market Test** panel: every team's `market` part at the board's latest read, teams level on one row
+(ours highlighted), our place and the leader's lead; then our own bench run from `/me` (`bench_points`,
+`bench_efficiency`, `bench_venue`, `mm_points`: private, in their own units, never ranked) and a note that bench
+matches never show up as venue trades, so our venue's 0 trades does not mean the test did not run. The board's half
+comes from `show.team_scores`; ours from `show.game_me` (`db/game.sql`).
+
 Days are the Madrid date: a moment is (day, tick). Apply after `show.sql` and the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`. The server reads
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`. The server reads
 the views every 5 s on the server's one shared pool (no connection of its own: the role is limited to 4), and as soon as our
 agents' sockets say something moved (below), and serves `GET /api/history`, behind `GAME_VIEW_TOKEN`. `?mock=1` shows a
 made-up day of money.
 
+### Our venue and the Market Test (`/venue`)
+
+Every two game hours (240 ticks so far: 201, 441, 681, …) every venue gets the same synthetic book for 16 ticks; our
+broker matches it on our board venue (v19, 0 %), and each session counts our best venue open during it. The public feed
+announces each start (`bench.started {session, start_tick, ticks, venues}`); `bench.finished`, with the session's
+efficiency, reaches only our team stream and never the feed table, so the official number per session is /me's
+`bench_efficiency` read after it. `db/venue.sql` adds six read-only views for the same role, behind `GAME_VIEW_TOKEN`
+(our broker's moves and our private score parts, never in the public show views):
+
+- `show.venue_ours`: each venue of ours (the feed's `venue.*` with us as owner, and the venues /me names): name, mechanism,
+  fee, status, opened tick, whether it is our venue now and the one the Market Test counts (`bench_venue`). Never the
+  broker key (`venue_broker_keys`).
+- `show.venue_sessions`: each `bench.started`, with whether our venue was in its list.
+- `show.venue_books`: each synthetic book our broker read (`bench_books`, one run such as `b35` per session), every trader
+  once (side, first quote, first and last tick seen), put on its session by tick and time. Never the raw offer.
+- `show.venue_matches`: the broker's `broker_match` and `bench_probe` decisions (bench and public book): status, run or
+  card, ask, bid, price, fee, quoted surplus, the guardrail's denial and the game's error code. Never `candidates`,
+  `chosen`, `reason`, `state_digest` whole or the executions' request and answer.
+- `show.venue_trades`: other teams on our venue from the public feed: offers listed, settlements, failed settlements.
+- `show.venue_score`: /me's `venue`, `bench_venue`, `bench_efficiency`, `bench_points`, `mm_points`, `market` where one changed.
+
+Apply after the other show files, each time:
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
+The server reads them every 5 s on the shared pool, and 2.5 s and 5 s after the taker's tick (the broker is on no socket
+of ours), and serves `GET /api/venue` (the same token). The page reads it again at once when the game stream brings a
+`bench.started`, every 3 s while a session runs, and says so in the tab's title. The countdown counts from today's last
+start at the cadence the starts keep (the most common gap, each day on its own); a start that never came moves it on by
+whole steps without guessing the session's number. Quotes are not limits: the quoted surplus captured (of the most the
+crossing quotes allowed after the fee) is our broker's own measure; the score is /me's efficiency. `?mock=1` plays a
+session every 40 ticks of the mock game (the first at tick 2) beside yesterday's six. Proof: `sh scripts/test-sql.sh`
+runs `db/venue.test.ts`. Screenshots: `docs/screenshots/venue/`.
+
+The stream's screens learn which venue is ours from its `venue.opened`, but the feed replay starts long after we opened
+v19. So whenever `show.venue_ours` changes, the server also sends the list on the game stream as the sticky `venues.ours`
+(`server/venue/stream.ts`, replayed after the backlog like `offers.ours`): each venue's id, name, mechanism, fees, status
+and opening tick, nothing of the Market Test or the broker. `/negotiations` then lists our venue first even while its
+board is empty, and `/market` marks it ours.
+
 ### Live refresh (`/history`, `/learn` and `/strategy`)
 
-These three screens read their own API rather than the game stream, so the server keeps them close to real time itself
+These three screens (and `/venue` and `/rivals`) read their own API rather than the game stream, so the server keeps them close to real time itself
 (`server/game/pages.ts`). Our agents' `/events` sockets (`server/game/agentsws.ts`, `onEvent`) only say "read now":
 history reads 250 ms and 2.5 s after any execution and 250 ms and 5 s after the taker's tick (our orders land right
 after the execution; our cash before the tick; trades and learnings at the end of the taker's tick), learn 1.5 s and
@@ -322,7 +390,7 @@ are newer than the docs; else from the server's `GUARDRAIL_*` variables (`/api/s
 cap no fresh denial has named (the rare's, the pack's) comes from `shared/guardrails.ts`, a typed copy of bazaar's
 GUARDRAILS.md and STRATEGY.md. When those files change a value, change it there and move its `since` to the first tick
 that runs it: an older denial never overrides it. The window is the last 300 ticks of the current run. Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
 The server reads them every 5 s on the shared pool, and as soon as our agents' sockets ring ([Live refresh](#live-refresh-history-learn-and-strategy)), and serves `GET /api/strategy`; a view not applied yet blanks its part
 and the page says which. `?mock=1` shows a made-up afternoon. Privacy proof: `sh scripts/test-sql.sh` runs `db/strategy.test.ts`.
 
@@ -338,12 +406,19 @@ can reach them; the page works out what we lack from its own game stream. The ga
   with its maker. A gift or a craft names a card without a copy and counts until that team lists or sells the card.
   `how` (bought, pack, gift, crafted, listed) and `since_tick` belong to the copy held longest; `seen_tick` is the last sighting.
 - `show.rival_teams`: each team's latest real leaderboard read (rank, score, level, complete pages, deals) and its set
-  interest (numbers only).
+  interest (numbers only); `album_filled` / `album_slots` (the board's filled album slots) stay null until the agents'
+  writer stores them in `leaderboard_snapshots`. The view reads them off the whole row, so they fill in from then on
+  with no change or re-apply here.
+
+The album of the picked team says `36 held · 27 known` (filled slots by the leaderboard, page cards public moves show;
+only `27 known` until `album_filled` is stored). When the leaderboard counts more complete pages than we see complete,
+the likeliest of the others are flagged *probably complete*: the most cards known first, as many as we miss; a page
+with no card known is never flagged.
 - `show.rival_wants`: per team and card, its board bids (with the best cash) and its dealer asks.
 - `show.rival_head`: the newest feed tick.
 
 Apply after the other show files, each time:
-`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
+`psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
 The server reads them every 15 s on the shared pool, and 5 s after the taker's tick, and serves `GET /api/rivals` (the
 same token). `?mock=1` shows a made-up market. Proof: `sh scripts/test-sql.sh` runs `db/rival_albums.test.ts`.
 
@@ -376,7 +451,7 @@ a url or money words only, often a venue's own format notice.
   desc, id desc)`. The shared pool runs with JIT off (`server/transcript/pg.ts`): with a production-sized `feed_events`
   the planner's estimates cross `jit_above_cost`, and JIT compiling cost about 240 ms per read. Until bazaar creates
   the table, the file creates nothing and succeeds: re-run it after. Apply it after the other show files, each time:
-  `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql`.
+  `psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql -f db/venue.sql`.
 - **The server.** `server/injections/` reads both views every 10 s on the shared pool. A `proof` keeps only the
   characters of an endpoint and its ids.
   - It serves `GET /api/injections`, which is **public** like `/api/transcript` (the show has no token).
@@ -394,12 +469,15 @@ a url or money words only, often a venue's own format notice.
   - `shared/injections.ts` ports the recorder's own `injection_flags`, checked against its Python output. Python and
     Node ship different Unicode versions, so the port reads a text both ways: with every mark dropped (words joined)
     and with every other non-ASCII character as a break (words split). It also refuses a text that reads differently
-    than it looks: a mark other than a plain accent, or a compatibility character beyond `… º ª µ ½ ¼ ¾` and the
-    no-break space.
+    than it looks: a mark other than a plain accent (U+0300–036F, or an emoji's variation selector), a compatibility
+    character beyond `… º ª µ ½ ¼ ¾` and the no-break space, or a character that decomposes into several letters.
   - It flags whatever the recorder flags, on every code point: `server/injections/unicode-parity.test.ts` checks it
     against `server/injections/recorder-unicode.json`, which `scripts/recorder-unicode.py` writes from bazaar's Python.
     That covers what the recorder drops, what it calls odd, its look-alike letters, its case folds, and any character
-    between two words of a keyword phrase. Re-run the script after a change to `chooser.py` or a Python upgrade.
+    between two words of a keyword phrase; and no character the port lets through may read longer (a stretched gap) or
+    as nothing (two words joined) than it does to the recorder. The test's title names the runtime's Unicode version:
+    the pinned Node (`.nvmrc`, 22.23.3) ships Unicode 17, the recorder's Python 3.12 Unicode 15. Re-run the script after
+    a change to `chooser.py` or a Python upgrade.
   - The transcript mutes a dealer's quote when its RAW words have any of those shapes, or reach the view's
     1,000-character cap (`server/transcript/rows.ts`, `muted`). The server then never vouches it to the TTS proxy, and
     the page keeps it a caption, even with `?quotes=speak`. An item without the flag counts as muted.
@@ -408,6 +486,51 @@ a url or money words only, often a venue's own format notice.
   - The panel and the voice pipeline never import each other (`server/injections/isolation.test.ts`).
 - `?mock=1` shows made-up attempts, hostile on purpose. Proof on a throwaway local Postgres: `sh scripts/test-sql.sh`
   runs `db/injections.test.ts`.
+
+### Approvals (`/approvals`)
+
+HA2: our agents refuse any card buy or sell priced at or above `human_approval_above` (bazaar's GUARDRAILS.md) unless
+a human approved that card, side and price first. This screen is that human's veto. It calls bazaar-mcp's three
+human-only tools (`approvals`, `approve`, `revoke`) **from the server** (`server/approvals/`); the browser never sees a
+token. It never touches Postgres: this repo's database role stays read-only.
+
+| Env | Effect |
+|---|---|
+| `APPROVER_PASSWORD` | The screen's own login, at least 20 characters with at least 12 different ones (a shorter or low-variety one counts as unset, logged as `password_too_short` / `password_too_weak`). Not `GAME_VIEW_TOKEN`. Use a generated value, not a phrase (e.g. `openssl rand -base64 24`, piped straight into `railway variable set ... --stdin`): the lockout bounds guessing, it does not make a weak password safe. |
+| `BAZAAR_MCP_URL` | bazaar-mcp's base URL, without `/mcp` (e.g. `https://bazaar-mcp-production.up.railway.app`). https, or http only to localhost or `*.railway.internal`. |
+| `BAZAAR_MCP_TOKEN` | The bearer bazaar-mcp asks for. |
+| `BAZAAR_APPROVER_TOKEN` | The human tools' own token (`x-approver-token`). |
+
+All four, or the feature is off: every `/api/approver/*` path then answers exactly like an unknown `/api` path
+(`404 {"error":"not_found"}`), and the nav shows no tab. The server logs once at start whether it is on, and which
+names are missing, never a value.
+
+- `GET /api/approver/session` → `{authenticated, csrf?}`.
+- `POST /api/approver/login` `{password}` → `{csrf}` and the cookie `bz_approver` (`HttpOnly; Secure; SameSite=Strict;
+  Path=/api/approver; Max-Age=7200`), plus a device cookie `bz_device` (same flags, 30 days; an HMAC keyed from
+  `APPROVER_PASSWORD` and the server-only `BAZAAR_APPROVER_TOKEN`, so a new password voids every device and a stolen
+  cookie is no offline password test). Wrong: `401 {"error":"unauthorized"}`. A login without a
+  valid device cookie is charged to a per-address request bucket, then 5 failures from one address in 15 minutes lock
+  it for 15 minutes, and 20 from all addresses together lock every such login. A login that carries a valid device
+  cookie (OWASP "device cookies") is counted only against that device's own 5 failures: strangers behind the venue's
+  shared NAT cannot lock the approver's browser out of the veto. The lock is checked again once the body has arrived,
+  so parallel logins cannot race past it, and a locked caller is logged at most once a minute.
+- `POST /api/approver/logout`.
+- `GET /api/approver/approvals` → the `approvals` tool's answer, checked field by field (`shared/approvals.ts`).
+- `POST /api/approver/approve` `{card, side, price, ttl_ticks, reason?}` and `POST /api/approver/revoke` `{card, side,
+  reason?}` → the tool's answer (`approved` / `refused` with its reasons, `revoked` / `denied`). Deny is a `revoke` with
+  the reason "denied from Bazaar Live".
+
+Security: writes need the cookie, the `x-csrf-token` header (the token from the login, kept in the page's memory only)
+and a same-origin request (`/session` is limited per address unless it carries a live session, the page's `/approvals`
+polls per session; a known device's `/session` reads go to its own bucket, never its address; one `approvals` answer serves every session for 10 s, one call in flight at a time, and any write
+drops it, so the page stays inside bazaar-mcp's 30 calls a minute per bearer); every field is checked against the contract's ranges before bazaar-mcp is called (card
+`^[A-Z]{3}-\d{2}$`, side buy/sell, integer price 1-1000, integer `ttl_ticks` 1-480, reason up to 300 characters with
+control characters stripped), and writes are limited to 10 a minute per session and 10 a minute for the whole server.
+Passwords and CSRF tokens are compared in constant time (both sides hashed, then `timingSafeEqual`). bazaar-mcp is
+called with an 8 s timeout and never retried; any failure answers `502 {"error":"approvals unavailable"}` and its own
+words never reach the page. Logs carry only `{event, ok, status, tool}`. Sessions live in memory (at most 50, 2 hours):
+a redeploy logs the approver out.
 
 ## Real conversations (LIVE-T1)
 
@@ -544,6 +667,11 @@ once, by hand, through stdin so they never appear on a command line:
 ```sh
 railway variable set ELEVENLABS_API_KEY --stdin --service bazaar-live
 railway variable set GEMINI_API_KEY --stdin --service bazaar-live
+# the Approvals screen (all four, or it stays off); the password: generated, e.g. openssl rand -base64 24 piped in
+railway variable set APPROVER_PASSWORD --stdin --service bazaar-live
+railway variable set BAZAAR_MCP_URL --stdin --service bazaar-live
+railway variable set BAZAAR_MCP_TOKEN --stdin --service bazaar-live
+railway variable set BAZAAR_APPROVER_TOKEN --stdin --service bazaar-live
 ```
 
 The show's voice is **ElevenLabs v4 only**: with no ElevenLabs key on the server the show plays with captions only (the header says so); the browser's own voice is no stand-in (`?tts=webspeech` still reaches it, for development, and `?tts=gemini` Gemini).
@@ -576,5 +704,5 @@ src/stage     the dusk scene (scene/), the merchants, board, dealers, effects, b
 src/ui        header, transcript, start gate, React hooks
 shared/       the language packs (lines.es.ts, lines.en.ts), vocab and slot patterns, tags, endpoints: browser and server
 docs/         voices.md: the ElevenLabs settings per role
-server/       the Node server: static files, /health, /api/tts
+server/       the Node server: static files, /health, /api/tts, and the game screens' routes (server/approvals: the Approvals screen)
 ```

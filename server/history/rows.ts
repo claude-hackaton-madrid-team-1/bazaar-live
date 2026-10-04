@@ -3,7 +3,7 @@
  * every field is checked, a row in an odd shape loses that field or is skipped when it lacks what makes it
  * a row (a day, a tick, an amount), it never breaks the snapshot.
  */
-import type { CashPoint, Order, OrderOffer, ScoreMark, ScorePoint, TeamEvent, Trade } from '../../shared/history.ts'
+import type { CashPoint, Order, OrderOffer, ScoreMark, ScorePoint, TeamEvent, TeamScore, Trade } from '../../shared/history.ts'
 import { line, num } from '../learn/rows.ts'
 
 type Row = Record<string, unknown>
@@ -123,4 +123,30 @@ export function scoreMarkOf(raw: unknown): ScoreMark | null {
   const agent = line(r.agent, 24)
   if (r.kind === 'start' && !agent) return null
   return { kind: r.kind, id, day, tick, agent, action: line(r.action, 16), note: line(r.note, 120), at: isoOf(r.at) }
+}
+
+const TEAM = /^t\d{1,3}$/
+
+export function teamScoreOf(raw: unknown): TeamScore | null {
+  const r = asRow(raw)
+  const day = dayOf(r.day)
+  const tick = int(r.tick)
+  const team = typeof r.team === 'string' && TEAM.test(r.team) ? r.team : null
+  const rank = int(r.rank)
+  const score = num(r.score)
+  if (!day || tick === null || !team || rank === null || rank < 1 || score === null) return null
+  return {
+    day,
+    tick,
+    team,
+    rank,
+    score,
+    negotiating: num(r.negotiating),
+    market: num(r.market),
+    level: int(r.level),
+    pages: int(r.pages),
+    deals: int(r.deals),
+    at: isoOf(r.read_at),
+    venue: typeof r.venue === 'string' && /^[a-z0-9_-]{1,24}$/.test(r.venue) ? r.venue : null,
+  }
 }

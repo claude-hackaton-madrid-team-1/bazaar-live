@@ -58,7 +58,13 @@ export function teamOf(raw: unknown): RivalTeam | null {
     const n = num(v)
     if (/^[A-Z]{3}$/.test(k) && n !== null) interest[k] = n
   }
-  return { team, rank, score, level: int(r.level), pages: int(r.pages), deals: int(r.deals), tick: int(r.tick), interest }
+  const filled = int(r.album_filled)
+  const slots = int(r.album_slots)
+  return {
+    team, rank, score, level: int(r.level), pages: int(r.pages), deals: int(r.deals), tick: int(r.tick),
+    albumFilled: filled !== null && filled >= 0 ? filled : null, albumSlots: slots !== null && slots > 0 ? slots : null,
+    interest,
+  }
 }
 
 export function wantOf(raw: unknown): RivalWant | null {

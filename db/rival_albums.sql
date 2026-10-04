@@ -6,8 +6,9 @@
 -- Four views in schema `show`, like the other show files (no table grant, no new function):
 --   show.rival_holdings  per holder (a team, or a dealer) and card: the copies we last saw it hold, how we know
 --                        (bought, pack, gift, crafted, listed), since which tick and when we last saw it
---   show.rival_teams     per team: its latest leaderboard read (rank, score, level, complete pages, deals) and the set
---                        interest our monitor reads off its public moves (numbers only)
+--   show.rival_teams     per team: its latest leaderboard read (rank, score, level, complete pages, deals, and its filled
+--                        album slots once the writer stores them) and the set interest our monitor reads off its public
+--                        moves (numbers only)
 --   show.rival_wants     per team and card: how often it bid for the card on a board or asked a dealer for it, the last
 --                        tick and its best cash bid
 --   show.rival_head      one row: the newest feed tick, the clock the page says "X min ago" by
@@ -26,7 +27,7 @@
 --
 -- db/show.sql revokes everything in schema show from the reader, so apply this file after it and the other show
 -- files, every time:
---   psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/injections.sql
+--   psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/show.sql -f db/learn.sql -f db/agent_decisions.sql -f db/game.sql -f db/history.sql -f db/strategy.sql -f db/rival_albums.sql -f db/teams_score.sql -f db/injections.sql
 
 begin;
 set local lock_timeout = '15s';
@@ -110,13 +111,19 @@ select left(h.holder, 24) as holder,
 
 -- Each team's latest real-world leaderboard read (reads differ by team: one may be older), and the set interest our
 -- monitor counts off its public moves (+1 a buy, a bid or a dealer ask in a set, -1 a sale or a listing): numbers only.
+-- album_filled / album_slots (the board's filled album slots, of how many): the game's leaderboard has them for every
+-- team, but the agents' writer (bazaar repo, leaderboard_store.py) does not store them yet. They are read off the
+-- whole row (to_jsonb), so they stay null until the table gets those columns and fill in from then on, with no
+-- change here. New columns go last: `create or replace view` only appends.
 create or replace view show.rival_teams with (security_barrier = true) as
 select l.team, l.rank, round(l.score, 2) as score, l.level, l.pages, l.deals, l.tick, l.read_at,
        coalesce((select jsonb_object_agg(k, v)
                    from public.competitor_profiles p
                   cross join lateral jsonb_each(case when jsonb_typeof(p.set_interest) = 'object' then p.set_interest else '{}'::jsonb end) as e(k, v)
-                  where p.team = l.team and jsonb_typeof(v) = 'number' and k ~ '^[A-Z]{3}$'), '{}'::jsonb) as set_interest
-  from (select distinct on (s.team) s.* from public.leaderboard_snapshots s
+                  where p.team = l.team and jsonb_typeof(v) = 'number' and k ~ '^[A-Z]{3}$'), '{}'::jsonb) as set_interest,
+       show.as_int(l.raw -> 'album_filled') as album_filled,
+       show.as_int(l.raw -> 'album_slots') as album_slots
+  from (select distinct on (s.team) s.*, to_jsonb(s) as raw from public.leaderboard_snapshots s
          where s.world = 'real' and s.team ~ '^t[0-9]{1,3}$'
          order by s.team, s.read_at desc) l;
 

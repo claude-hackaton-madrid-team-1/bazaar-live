@@ -1,0 +1,364 @@
+/* ── Our venue and the Market Test (/venue, ./VenueScreen.tsx) ── */
+
+/* the hero: a session on now (red, pulsing, its progress), or the countdown to the next one */
+.vn-hero {
+  --vn-live: var(--live);
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-5);
+  border-radius: var(--r-lg);
+  border: 1px solid transparent;
+}
+
+.vn-hero[data-state='live'] {
+  border-color: color-mix(in srgb, var(--vn-live) 55%, transparent);
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--vn-live) 14%, transparent), transparent 70%);
+}
+
+/* the first ticks of a session: the arrival can not be missed */
+.vn-hero[data-fresh] {
+  animation: vn-arrive 1.2s var(--ease-out) 3;
+}
+
+@keyframes vn-arrive {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--vn-live) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 18px transparent;
+  }
+}
+
+.vn-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.vn-hero[data-state='live'] .vn-eyebrow {
+  color: var(--vn-live);
+}
+
+.vn-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vn-live);
+  animation: vn-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes vn-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.vn-hero-title {
+  margin: 0;
+  font-size: clamp(1.5rem, 4.5vw, 2.25rem);
+  line-height: 1.15;
+  letter-spacing: var(--track-display);
+}
+
+.vn-count {
+  white-space: nowrap;
+  color: var(--accent);
+}
+
+.vn-hero-sub {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.vn-hero-line {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.vn-progress {
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--gm-well);
+  overflow: hidden;
+}
+
+.vn-progress::before {
+  content: '';
+  display: block;
+  width: var(--p, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vn-live);
+  transition: width 0.6s var(--ease-out);
+}
+
+.vn-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+
+.vn-stat {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--gm-well);
+}
+
+.vn-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+.vn-stat-value {
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vn-stat-value[data-tone='good'] {
+  color: var(--gm-good);
+}
+
+.vn-stat-value[data-tone='bad'] {
+  color: var(--gm-bad);
+}
+
+.vn-stat-value[data-tone='warn'] {
+  color: var(--gm-warn);
+}
+
+/* our venue */
+.vn-venue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin: 0 0 var(--s-2);
+  font-size: 1rem;
+}
+
+.vn-venue-id {
+  font-size: 1.25rem;
+}
+
+.vn-venue-name {
+  font-weight: 600;
+}
+
+.vn-venue-other {
+  font-size: 0.875rem;
+}
+
+.vn-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.vn-counts {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.vn-line {
+  margin: var(--s-2) 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.vn-others-head {
+  margin-top: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* the sessions: a table on a desk, a card per session on a phone */
+.vn-table {
+  display: grid;
+  gap: 2px;
+  font-size: 0.875rem;
+}
+
+.vn-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1.3fr) minmax(0, 1.2fr) 5.5rem 4.5rem minmax(0, 1.4fr) 6rem;
+  gap: var(--s-2);
+  align-items: center;
+  padding: 6px var(--s-2);
+  border-radius: var(--r-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.vn-row > :not(:first-child) {
+  text-align: right;
+}
+
+.vn-row-head {
+  color: var(--text-2);
+  font-size: 0.6875rem;
+}
+
+.vn-row-wrap[data-live] > .vn-row {
+  background: color-mix(in srgb, var(--live) 10%, transparent);
+}
+
+details.vn-row-wrap > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+details.vn-row-wrap > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.vn-row-wrap > summary:hover {
+  background: var(--gm-row-hover);
+}
+
+details.vn-row-wrap > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.vn-cell-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+}
+
+.vn-cell-session > b::before {
+  content: '▸ ';
+  color: var(--text-3);
+}
+
+details[open] .vn-cell-session > b::before {
+  content: '▾ ';
+}
+
+div.vn-row-wrap .vn-cell-session > b::before {
+  content: '';
+}
+
+.vn-row-detail {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2) var(--s-3) var(--s-5);
+  font-size: 0.8125rem;
+}
+
+.vn-matches {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vn-matches li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.vn-trades {
+  display: grid;
+  gap: var(--s-1);
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.vn-trades li {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: center;
+}
+
+.vn-trades li[data-type='listed'] {
+  color: var(--text-2);
+}
+
+.vn-ago {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .vn-hero {
+    padding: var(--s-4);
+  }
+
+  .vn-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-2);
+  }
+
+  .vn-stat {
+    padding: var(--s-2);
+  }
+
+  .vn-stat-value {
+    font-size: 1rem;
+  }
+
+  .vn-row-head {
+    display: none;
+  }
+
+  .vn-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding: var(--s-2);
+    background: var(--gm-well);
+  }
+
+  .vn-row > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .vn-row > :not(:first-child) {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s-2);
+    text-align: right;
+  }
+
+  .vn-row > [data-label]::before {
+    content: attr(data-label);
+    color: var(--text-2);
+    text-align: left;
+  }
+
+  .vn-table {
+    gap: var(--s-2);
+  }
+
+  .vn-row-detail {
+    padding-left: var(--s-2);
+  }
+
+  .vn-trades li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .vn-trades li > :nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vn-hero[data-fresh],
+  .vn-pulse {
+    animation: none;
+  }
+}

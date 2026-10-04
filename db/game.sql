@@ -47,7 +47,10 @@ select s.tick,
                     'score', s.me -> 'score' -> 'score', 'rank', s.me -> 'score' -> 'rank', 'deals', s.me -> 'score' -> 'deals',
                     'duel_points', s.me -> 'score' -> 'duel_points', 'ladder_points', s.me -> 'score' -> 'ladder_points',
                     'neg_points', s.me -> 'score' -> 'neg_points', 'mm_points', s.me -> 'score' -> 'mm_points',
-                    'bench_points', s.me -> 'score' -> 'bench_points') end,
+                    'bench_points', s.me -> 'score' -> 'bench_points',
+                    -- the Market Test panel (/history): the board's market part, and our bench run's efficiency and venue
+                    'market', s.me -> 'score' -> 'market', 'bench_efficiency', s.me -> 'score' -> 'bench_efficiency',
+                    'bench_venue', s.me -> 'score' -> 'bench_venue') end,
          'album', jsonb_build_object('pages', coalesce((
                     select jsonb_agg(jsonb_build_object('set', p -> 'set', 'name', p -> 'name', 'have', p -> 'have', 'of', p -> 'of',
                                                         'complete', p -> 'complete', 'master', p -> 'master') order by n)

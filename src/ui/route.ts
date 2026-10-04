@@ -1,15 +1,17 @@
 /**
  * The page's screens, by path: the show at `/`, and the game screens (our agent, our strategy, negotiations, duels, album,
- * the rivals' albums, market, our cash's movements, what our agents learned, the injection attempts (the judges' view), the raw stream) beside it. The server answers every path with the
+ * the rivals' albums, market, our venue and the Market Test, the live price guide, our cash's movements, what our agents learned, the injection attempts (the judges' view), the raw stream, and
+ * the approvals of big trades, shown only when the server runs them) beside it. The server answers every path with the
  * same page (SPA fallback), so this only reads and writes `location`. Moving between screens keeps the
  * query (`?mock=1`, `?lang=`, `?theme=`, `?token=`) and drops what belongs to one screen (`?id=`, the
- * selected thread; `?dealer=`, the negotiations' dealer; `?team=`, the rival whose album is open).
+ * selected thread; `?dealer=`, the negotiations' dealer; `?team=`, the rival whose album is open; `?duel=`, the duel
+ * in the Duels screen's live chat).
  */
 import { useSyncExternalStore } from 'react'
 
-export type Route = 'show' | 'agent' | 'strategy' | 'negotiations' | 'duels' | 'album' | 'rivals' | 'market' | 'ourmarket' | 'history' | 'learn' | 'injections' | 'debug'
+export type Route = 'show' | 'agent' | 'strategy' | 'negotiations' | 'duels' | 'album' | 'rivals' | 'market' | 'venue' | 'ourmarket' | 'prices' | 'history' | 'learn' | 'injections' | 'debug' | 'approvals'
 
-export const ROUTES: readonly Route[] = ['show', 'agent', 'strategy', 'negotiations', 'duels', 'album', 'rivals', 'market', 'ourmarket', 'history', 'learn', 'injections', 'debug']
+export const ROUTES: readonly Route[] = ['show', 'agent', 'strategy', 'negotiations', 'duels', 'album', 'rivals', 'market', 'venue', 'ourmarket', 'prices', 'history', 'learn', 'injections', 'debug', 'approvals']
 
 export const PATHS: Readonly<Record<Route, string>> = {
   show: '/',
@@ -20,15 +22,18 @@ export const PATHS: Readonly<Record<Route, string>> = {
   album: '/album',
   rivals: '/rivals',
   market: '/market',
+  venue: '/venue',
   ourmarket: '/our-market',
+  prices: '/prices',
   history: '/history',
   learn: '/learn',
   injections: '/injections',
   debug: '/debug',
+  approvals: '/approvals',
 }
 
 /** Query parameters that belong to one screen and are dropped when moving to another. */
-const LOCAL_PARAMS = ['id', 'dealer', 'team']
+const LOCAL_PARAMS = ['id', 'dealer', 'team', 'duel']
 
 const CHANGE = 'bazaar:route'
 

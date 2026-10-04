@@ -3,7 +3,7 @@ import { EMPTY_RIVALS, type RivalCard, type RivalsSnapshot, type RivalTeam } fro
 import { mockRivals, rivalsStateOf } from '../rivals.ts'
 import { GAME_STRINGS } from '../strings.ts'
 import { apply, createState, type GameEvent, type Payload } from '../state.ts'
-import { CHASE_TICKS, chasedSet, compareAlbums, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows } from './rivals.ts'
+import { albumCounts, CHASE_TICKS, chasedSet, compareAlbums, markProbable, needRows, needsOf, nowOf, pickTeam, rivalAlbum, teamRows, type RivalPage } from './rivals.ts'
 
 let nextId = 1
 const ev = (type: string, payload: Payload = {}, tick = 500): GameEvent => ({ id: nextId++, tick, t: 0.1, type, scope: 'public', actor: '', payload })
@@ -91,10 +91,10 @@ describe('needRows', () => {
 
 describe('teamRows', () => {
   const teams: RivalTeam[] = [
-    { team: 't07', rank: 2, score: 29.5, level: 4, pages: 2, deals: 30, tick: 500, interest: { AAA: 12, CCC: -40 } },
-    { team: 't01', rank: 3, score: 28.9, level: 4, pages: 1, deals: 20, tick: 500, interest: {} },
-    { team: 't05', rank: 1, score: 30.4, level: 4, pages: 2, deals: 40, tick: 500, interest: { CCC: 3, BBB: 3 } },
-    { team: 't09', rank: 4, score: 20, level: 3, pages: 0, deals: 9, tick: 500, interest: { AAA: -2 } },
+    { team: 't07', rank: 2, score: 29.5, level: 4, pages: 2, deals: 30, tick: 500, albumFilled: null, albumSlots: null, interest: { AAA: 12, CCC: -40 } },
+    { team: 't01', rank: 3, score: 28.9, level: 4, pages: 1, deals: 20, tick: 500, albumFilled: null, albumSlots: null, interest: {} },
+    { team: 't05', rank: 1, score: 30.4, level: 4, pages: 2, deals: 40, tick: 500, albumFilled: null, albumSlots: null, interest: { CCC: 3, BBB: 3 } },
+    { team: 't09', rank: 4, score: 20, level: 3, pages: 0, deals: 9, tick: 500, albumFilled: null, albumSlots: null, interest: { AAA: -2 } },
   ]
   const holdings = [card('t07', 'AAA-10'), card('t07', 'BBB-09'), card('t07', 'BBB-01'), card('t07', 'BBB-11'), card('t05', 'CCC-01'), card('t01', 'AAA-01')]
 
@@ -137,6 +137,47 @@ describe('rivalAlbum', () => {
     expect(lav?.slots[9]).toMatchObject({ ref: 'LAV-10', need: true, known: { copies: 2, how: 'bought', since: 300, seen: 450 } })
     expect(lav?.slots[10]?.known?.how).toBe('pack')
     expect(lav?.slots[0]).toMatchObject({ ref: 'LAV-01', known: null, need: false, name: 'La Corrala' })
+  })
+})
+
+describe('probably complete pages', () => {
+  const team = (pages: number | null, albumFilled: number | null = null): RivalTeam => ({
+    team: 't10', rank: 1, score: 34, level: 5, pages, deals: 40, tick: 500, albumFilled, albumSlots: albumFilled === null ? null : 50, interest: {},
+  })
+  /** t10's known page cards: LAV 10/10, MAL 9, LAT 7, SAL 7, RET 0. */
+  const holdings = [
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => card('t10', ref('LAV', n))),
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => card('t10', ref('MAL', n))),
+    ...[1, 2, 3, 4, 5, 6, 7].map((n) => card('t10', ref('LAT', n))),
+    ...[1, 2, 3, 4, 5, 6, 7].map((n) => card('t10', ref('SAL', n))),
+    card('t10', 'SAL-11'), // a special card: never counted as a page card
+    card('t05', 'RET-01'),
+  ]
+  const order = ['RET', 'SAL', 'LAT', 'MAL', 'LAV']
+
+  it('flags as many pages as the leaderboard counts beyond the ones we see, the most known first, our order on a tie', () => {
+    const album = rivalAlbum(snap({ holdings, teams: [team(3)] }), 't10', [], order)
+    // LAV is seen complete; two more: MAL (9 known), then SAL before LAT (7 each: SAL comes first in our order)
+    expect(album.filter((p) => p.probable).map((p) => p.set)).toEqual(['SAL', 'MAL'])
+    expect(album.find((p) => p.set === 'LAV')?.probable).toBe(false)
+  })
+
+  it('flags nothing when we see as many complete pages as the leaderboard, or it says none', () => {
+    expect(rivalAlbum(snap({ holdings, teams: [team(1)] }), 't10', [], order).some((p) => p.probable)).toBe(false)
+    expect(rivalAlbum(snap({ holdings, teams: [team(null)] }), 't10', [], order).some((p) => p.probable)).toBe(false)
+  })
+
+  it('never flags a page with no card known, even when more are missing', () => {
+    const album = rivalAlbum(snap({ holdings, teams: [team(6)] }), 't10', [], order)
+    expect(album.filter((p) => p.probable).map((p) => p.set)).toEqual(['SAL', 'LAT', 'MAL'])
+    expect(markProbable([] as RivalPage[], 4)).toEqual([])
+  })
+
+  it('counts held (once the leaderboard is stored) beside known page cards and the pages seen complete', () => {
+    const s = snap({ holdings, teams: [team(3, 36)] })
+    expect(albumCounts(s, 't10', rivalAlbum(s, 't10', [], order))).toEqual({ held: 36, known: 33, complete: 3, seen: 1, probable: 2 })
+    const unstored = snap({ holdings, teams: [team(3)] })
+    expect(albumCounts(unstored, 't10', rivalAlbum(unstored, 't10', [], order))).toMatchObject({ held: null, known: 33 })
   })
 })
 

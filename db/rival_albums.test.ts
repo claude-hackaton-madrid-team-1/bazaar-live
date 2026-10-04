@@ -177,10 +177,11 @@ describe.skipIf(!ADMIN_URL)('db/rival_albums.sql (local Postgres)', () => {
   })
 
   it("gives each team's latest real leaderboard read and only the numbers of its set interest", async () => {
-    const r = await reader.query('select team, rank, score::float8 as score, level, pages, deals, tick, set_interest from show.rival_teams order by rank')
+    const r = await reader.query('select team, rank, score::float8 as score, level, pages, deals, tick, set_interest, album_filled, album_slots from show.rival_teams order by rank')
     expect(r.rows).toEqual([
-      { team: 't05', rank: 1, score: 30.1, level: 4, pages: 3, deals: 50, tick: 830, set_interest: { RET: 25, LAV: -55 } },
-      { team: 't07', rank: 3, score: 25, level: 3, pages: 1, deals: 20, tick: 820, set_interest: {} },
+      // no album_filled column in the table yet: null, and the view still applies
+      { team: 't05', rank: 1, score: 30.1, level: 4, pages: 3, deals: 50, tick: 830, set_interest: { RET: 25, LAV: -55 }, album_filled: null, album_slots: null },
+      { team: 't07', rank: 3, score: 25, level: 3, pages: 1, deals: 20, tick: 820, set_interest: {}, album_filled: null, album_slots: null },
     ])
   })
 
@@ -211,4 +212,20 @@ describe.skipIf(!ADMIN_URL)('db/rival_albums.sql (local Postgres)', () => {
       await expect(reader.query(`select 1 from ${table} limit 1`)).rejects.toMatchObject({ code: '42501' })
     },
   )
+
+  // Last: it changes the table. The day the agents' writer stores album_filled / album_slots, the view reads them with
+  // no re-apply.
+  it('picks up album_filled and album_slots once the table has them', async () => {
+    await adminDb.query('alter table leaderboard_snapshots add column album_filled int, add column album_slots int')
+    await adminDb.query(
+      `insert into leaderboard_snapshots (world, tick, team, rank, score, level, pages, deals, venue, read_at, album_filled, album_slots) values
+        ('real', 840, 't05', 1, 31, 4, 3, 51, 'v10', '2026-10-03 15:20:00+00', 36, 50)`,
+    )
+    const r = await reader.query('select team, tick, pages, album_filled, album_slots from show.rival_teams order by rank')
+    expect(r.rows).toEqual([
+      { team: 't05', tick: 840, pages: 3, album_filled: 36, album_slots: 50 },
+      // an older row, written before the writer stored them: still null
+      { team: 't07', tick: 820, pages: 1, album_filled: null, album_slots: null },
+    ])
+  })
 })
