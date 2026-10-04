@@ -188,7 +188,7 @@ export class Broadcast {
     while (this.spokenAt.size > 128) this.spokenAt.delete(this.spokenAt.keys().next().value ?? '')
     const activity: Activity = { id, tick, category, text: line.text, reference, history: old }
     return { activity, speak, beat: {
-      id, tick, agent: 'taker', priority: urgent ? PRIORITY.dealer : category === 'clock' ? PRIORITY.other : PRIORITY.duel,
+      id, tick, agent: 'taker', priority: urgent || quoteGroup ? PRIORITY.dealer : category === 'clock' ? PRIORITY.other : PRIORITY.duel,
       lines: [line], mood: 'calm', cue: { kind: 'talk' }, denied: false,
       jev: category === 'jev' ? String(p.jev) : null, practice: false, note: reference || null,
     } }
