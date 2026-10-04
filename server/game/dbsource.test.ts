@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DB_SQL, dayOf, duelRowEvents, feedRowEvent, FIRST_OURS_ID, GameDbSource, meRow, ourOfferRows } from './dbsource.ts'
+import { DB_SQL, dayOf, duelRowEvents, feedRowEvent, FIRST_OURS_ID, GameDbSource, meRow, ourOfferRows, salesMessageEvent } from './dbsource.ts'
 import { duelEventId } from './duels.ts'
 import { GameHub, type GameEvent } from './relay.ts'
 import { startGame } from './start.ts'
+import { vouchSalesQuote } from '../../shared/sales.ts'
+import { apply, createState } from '../../src/game/state.ts'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -126,7 +128,7 @@ describe('GameDbSource', () => {
     // Nothing new: nothing published. Then a new feed row, a new /me and a new message in the same duel.
     await source.pollOnce()
     expect(batches).toHaveLength(1)
-    const after = db.calls.slice(-4, -1)
+    const after = db.calls.filter((c) => c.sql !== DB_SQL.sales).slice(-4, -1)
     expect(after.map((c) => c.sql)).toEqual([DB_SQL.meAfter, DB_SQL.duelsAfter, DB_SQL.feedAfter])
     expect(after[0]?.params).toEqual([ME.stamp])
     expect(after[1]?.params).toEqual([DUEL_DEAL.stamp, 274, 50])
@@ -403,5 +405,82 @@ describe('late acknowledged words', () => {
     expect(hub.replay().filter((e) => e.type === 'thread.message')).toHaveLength(1)
     expect(hub.replay().filter((e) => e.type === 'thread.message.quote')).toMatchObject([{ tick: 401, scope: 'team', payload: { feed_id: 30000, text: 'I can trade my Retiro card.' } }])
     expect(db.calls.filter((c) => c.sql === DB_SQL.quotes)).toHaveLength(2)
+  })
+})
+
+describe('private acknowledged Sales messages', () => {
+  const quote = { id: '16779', thread_id: '3334', tick: 399, sender: 't01', counterpart: 't03', venue: 'rastro', text: 'Oferta pública #25737 en v19.' }
+
+  it('bridges stored words without any public event, with stable IDs and no duplicate on later public arrival', async () => {
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.meFirst, [ME]], [DB_SQL.sales, [quote]]])
+    const db = fakeDb(answers), hub = new GameHub()
+    const source = new GameDbSource({ db, hub, log: () => {} })
+    await source.pollOnce()
+    const messages = () => hub.replay().filter((e) => e.type === 'thread.message')
+    expect(messages()).toHaveLength(1)
+    const event = messages()[0]
+    expect(event).toMatchObject({ tick: 399, scope: 'team', actor: 't01', payload: { sender: 't01', team: 't01', with: 't03', message: 16779, thread: 3334, text: quote.text, venue: 'rastro' } })
+    expect(event?.id).toBeLessThan(0)
+    await source.pollOnce()
+    expect(messages()).toHaveLength(1)
+    answers.set(DB_SQL.feedWindow, [{ id: 30001, tick: 399, type: 'thread.message', actor: 't01', payload: { ...event?.payload } }])
+    await source.pollOnce()
+    expect(messages()).toHaveLength(1)
+    const restarted = new GameHub()
+    await new GameDbSource({ db: fakeDb(new Map([[DB_SQL.meFirst, [ME]], [DB_SQL.sales, [quote]]])), hub: restarted, log: () => {} }).pollOnce()
+    expect(restarted.replay().find((e) => e.type === 'thread.message')?.id).toBe(event?.id)
+  })
+
+  it('proves exact TTS text and shows the recorded closed conversation status', async () => {
+    const hub = new GameHub()
+    const historical = { ...quote, tick: 200, thread_status: 'closed', closed_tick: 205 }
+    await new GameDbSource({ db: fakeDb(new Map([[DB_SQL.meFirst, [ME]], [DB_SQL.sales, [historical]]])), hub, log: () => {} }).pollOnce()
+    const decision: GameEvent = { id: -100, tick: 200, type: 'agent.decision', scope: 'team', actor: '', payload: { agent: 'sales', status: 'done', decision: 3, kind: 'sales_promotion', counterparty: 't03', trade: { threadId: 3334 } } }
+    const rows = [...hub.replay(), decision]
+    expect(vouchSalesQuote(rows, historical.text)).toBe(true)
+    expect(vouchSalesQuote(rows, 'invented text')).toBe(false)
+    const state = rows.reduce((s, e) => apply(s, e), createState())
+    expect(state.teamThreads.get(3334)).toMatchObject({ venue: 'rastro', status: 'closed' })
+  })
+
+  it('enriches an earlier public envelope exactly once when ACK persistence arrives late', async () => {
+    const original = { id: 30001, tick: 399, type: 'thread.message', actor: 't01', payload: { message: 16779, thread: 3334, sender: 't01', team: 't01', with: 't03', kind: 'team', text: null } }
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.meFirst, [ME]], [DB_SQL.feedWindow, [original]], [DB_SQL.sales, []]])
+    const hub = new GameHub()
+    const source = new GameDbSource({ db: fakeDb(answers), hub, log: () => {} })
+    await source.pollOnce()
+    answers.set(DB_SQL.sales, [quote])
+    answers.set(DB_SQL.quotes, [{ ...original, payload: { ...original.payload, text: quote.text } }])
+    await source.pollOnce()
+    await source.pollOnce()
+    expect(hub.replay().filter((e) => e.type === 'thread.message')).toHaveLength(1)
+    expect(hub.replay().filter((e) => e.type === 'thread.message.quote')).toEqual([expect.objectContaining({ scope: 'team', payload: expect.objectContaining({ feed_id: 30001, message: 16779, text: quote.text }) })])
+  })
+
+  it('loads bounded initial history, then finds late lower message IDs in the rolling window', async () => {
+    const old = { ...quote, id: 100, tick: 200 }
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.meFirst, [ME]], [DB_SQL.sales, [old]]])
+    const db = fakeDb(answers), hub = new GameHub()
+    const source = new GameDbSource({ db, hub, log: () => {} })
+    await source.pollOnce()
+    expect(hub.replay().find((e) => e.type === 'thread.message')?.tick).toBe(200)
+    answers.set(DB_SQL.sales, [{ ...quote, id: 99 }])
+    await source.pollOnce()
+    expect(hub.replay().filter((e) => e.type === 'thread.message')).toHaveLength(2)
+    expect(db.calls.filter((c) => c.sql === DB_SQL.sales).map((c) => c.params)).toEqual([[101], [393]])
+  })
+
+  it('isolates an unapplied optional view and validates sender, venue and message shape', async () => {
+    const answers = new Map<string, unknown[] | Error>([[DB_SQL.meFirst, [ME]], [DB_SQL.sales, missing()]])
+    const hub = new GameHub(), onMissing = vi.fn()
+    const source = new GameDbSource({ db: fakeDb(answers), hub, onMissing, log: () => {} })
+    await source.pollOnce()
+    expect(source.viewsMissing).toBe(false)
+    expect(onMissing).not.toHaveBeenCalled()
+    expect(hub.replay().some((e) => e.type === 'agent.me')).toBe(true)
+    for (const bad of [{ ...quote, sender: 't03' }, { ...quote, venue: 'bad venue' }, { ...quote, id: -1 }, { ...quote, text: null }]) {
+      expect(salesMessageEvent(bad, 't01')).toBeNull()
+    }
+    expect(salesMessageEvent(quote, 't02')).toBeNull()
   })
 })
