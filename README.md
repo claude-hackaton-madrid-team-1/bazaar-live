@@ -724,7 +724,7 @@ for n in $(seq $((BASE + 1)) $((BASE + 45))); do curl -s -o /dev/null -w '%{http
 
 ```
 src/model     the event model and the public allow-list (sanitize.ts)
-src/net       WebSocket feed (backoff, dedupe, replay) and /health, /state fetches
+src/net       WebSocket feed (backoff, dedupe, replay), /health, /state fetches, and the snapshot screens' read loop (poll.ts)
 src/mock      fixtures.json (written by scripts/make-fixtures.py) and the looping player
 src/show      event → dialogue, mood, memory, situations (from /health), the director, the engine
 src/tts       speech queue, Web Speech and its voice picker, the proxy client, provider choice
@@ -733,6 +733,7 @@ src/ui        header, transcript, start gate, React hooks
 shared/       the language packs (lines.es.ts, lines.en.ts), vocab and slot patterns, tags, endpoints: browser and server
 docs/         voices.md: the ElevenLabs settings per role
 server/       the Node server: static files, /health, /api/tts, and the game screens' routes (server/approvals: the Approvals screen)
+              view-poller.ts and snapshot-routes.ts: what the db-backed /api/{history,learn,rivals,strategy,venue} share
 ```
 
 ## Reviewed operator commands

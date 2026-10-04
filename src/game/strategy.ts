@@ -2,7 +2,8 @@
  * The Strategy screen's source: GET /api/strategy as soon as the server says its rows changed, and on a timer as
  * the fallback (with `?token=` when the page has one), or a made-up afternoon with `?mock=1`. Keeps the last good snapshot through an error, like ./history.ts.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { usePolled } from '../net/poll.ts'
 import { pollEvery, type PagePush } from './fresh.ts'
 import type { GuardrailLimits } from '../../shared/decisions.ts'
 import { GUARDRAILS_DOC } from '../../shared/guardrails.ts'
@@ -46,33 +47,8 @@ export function strategyStateOf(httpStatus: number, body: unknown, prev: Strateg
  */
 export function useStrategy(mock: boolean, token: string | null, tick: number, push: PagePush | null = null): StrategyState {
   const intervalMs = pollEvery('strategy', push)
-  const wake = push?.at ?? null
-  const [state, setState] = useState<StrategyState>({ status: 'loading', snapshot: EMPTY_STRATEGY })
+  const state = usePolled<StrategyState>(mock ? null : `/api/strategy${token ? `?token=${encodeURIComponent(token)}` : ''}`, { status: 'loading', snapshot: EMPTY_STRATEGY }, intervalMs, push?.at ?? null, strategyStateOf)
   const mocked = useMemo<StrategyState | null>(() => (mock ? { status: 'mock', snapshot: mockStrategy(tick) } : null), [mock, tick])
-  useEffect(() => {
-    if (mock) return
-    let stopped = false
-    let controller: AbortController | null = null
-    const read = async (): Promise<void> => {
-      controller?.abort()
-      controller = new AbortController()
-      try {
-        const res = await fetch(`/api/strategy${token ? `?token=${encodeURIComponent(token)}` : ''}`, { signal: controller.signal, cache: 'no-store' })
-        const body: unknown = await res.json().catch(() => null)
-        if (!stopped) setState((s) => strategyStateOf(res.status, body, s.snapshot))
-      } catch (error: unknown) {
-        if (!stopped && !(error instanceof DOMException && error.name === 'AbortError')) setState((s) => ({ status: 'error', snapshot: s.snapshot }))
-      }
-    }
-    void read()
-    const timer = setInterval(() => void read(), intervalMs)
-    return () => {
-      stopped = true
-      clearInterval(timer)
-      controller?.abort()
-    }
-    // a new `wake` reads now and starts the timer again from there
-  }, [mock, token, intervalMs, wake])
   return mocked ?? state
 }
 

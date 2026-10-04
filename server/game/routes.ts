@@ -18,6 +18,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { STATUS_CODES, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { json } from '../json.ts'
 import { RateLimiter } from '../limits.ts'
 import type { AgentSockets } from './agentsws.ts'
 import type { GameTarget } from './config.ts'
@@ -65,11 +66,6 @@ interface Admitted {
 }
 
 export const WS_PATH = '/api/game/ws'
-
-function json(res: ServerResponse, headers: Readonly<Record<string, string>>, status: number, body: unknown, extra: Readonly<Record<string, string>> = {}): void {
-  res.writeHead(status, { ...headers, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra })
-  res.end(JSON.stringify(body))
-}
 
 /** Same length and same bytes, compared in constant time. */
 export function tokenMatches(given: string | null, expected: string): boolean {

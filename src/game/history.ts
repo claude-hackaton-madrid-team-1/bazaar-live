@@ -3,7 +3,8 @@
  * as the fallback (with `?token=` when the page has one), or a made-up day with `?mock=1`. Keeps the last good
  * snapshot through an error, like ./learn.ts.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { usePolled } from '../net/poll.ts'
 import { pollEvery, type PagePush } from './fresh.ts'
 import { EMPTY_HISTORY, type CashPoint, type HistorySnapshot, type Order, type ScoreMark, type ScorePoint, type TeamEvent, type TeamScore, type Trade } from '../../shared/history.ts'
 
@@ -53,33 +54,8 @@ export function historyStateOf(httpStatus: number, body: unknown, prev: HistoryS
  */
 export function useHistory(mock: boolean, token: string | null, tick: number, push: PagePush | null = null): HistoryState {
   const intervalMs = pollEvery('history', push)
-  const wake = push?.at ?? null
-  const [state, setState] = useState<HistoryState>({ status: 'loading', snapshot: EMPTY_HISTORY })
+  const state = usePolled<HistoryState>(mock ? null : `/api/history${token ? `?token=${encodeURIComponent(token)}` : ''}`, { status: 'loading', snapshot: EMPTY_HISTORY }, intervalMs, push?.at ?? null, historyStateOf)
   const mocked = useMemo<HistoryState | null>(() => (mock ? { status: 'mock', snapshot: mockHistory(tick) } : null), [mock, tick])
-  useEffect(() => {
-    if (mock) return
-    let stopped = false
-    let controller: AbortController | null = null
-    const read = async (): Promise<void> => {
-      controller?.abort()
-      controller = new AbortController()
-      try {
-        const res = await fetch(`/api/history${token ? `?token=${encodeURIComponent(token)}` : ''}`, { signal: controller.signal, cache: 'no-store' })
-        const body: unknown = await res.json().catch(() => null)
-        if (!stopped) setState((s) => historyStateOf(res.status, body, s.snapshot))
-      } catch (error: unknown) {
-        if (!stopped && !(error instanceof DOMException && error.name === 'AbortError')) setState((s) => ({ status: 'error', snapshot: s.snapshot }))
-      }
-    }
-    void read()
-    const timer = setInterval(() => void read(), intervalMs)
-    return () => {
-      stopped = true
-      clearInterval(timer)
-      controller?.abort()
-    }
-    // a new `wake` reads now and starts the timer again from there
-  }, [mock, token, intervalMs, wake])
   return mocked ?? state
 }
 

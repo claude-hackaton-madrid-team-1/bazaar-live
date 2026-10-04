@@ -3,7 +3,8 @@
  * fallback (with `?token=` when the page has one), or a made-up market with `?mock=1`. Keeps the last good snapshot
  * through an error, like ./strategy.ts.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { usePolled } from '../net/poll.ts'
 import { pollEvery, type PagePush } from './fresh.ts'
 import { HOW_KNOWN, EMPTY_RIVALS, type RivalCard, type RivalsSnapshot, type RivalTeam, type RivalWant } from '../../shared/rivals.ts'
 import { SLOT_RARITY } from './game.ts'
@@ -40,35 +41,10 @@ export function rivalsStateOf(httpStatus: number, body: unknown, prev: RivalsSna
 /** `push`: the server's notices for this screen (./fresh.ts): a new `at` refetches now; the timer backs them up. */
 export function useRivals(mock: boolean, token: string | null, tick: number, push: PagePush | null = null): RivalsState {
   const intervalMs = pollEvery('rivals', push)
-  const wake = push?.at ?? null
-  const [state, setState] = useState<RivalsState>({ status: 'loading', snapshot: EMPTY_RIVALS })
+  const state = usePolled<RivalsState>(mock ? null : `/api/rivals${token ? `?token=${encodeURIComponent(token)}` : ''}`, { status: 'loading', snapshot: EMPTY_RIVALS }, intervalMs, push?.at ?? null, rivalsStateOf)
   // the mock moves on every 20 ticks of the mock game's clock, not every tick
   const step = Math.floor(tick / 20) * 20
   const mocked = useMemo<RivalsState | null>(() => (mock ? { status: 'mock', snapshot: mockRivals(step) } : null), [mock, step])
-  useEffect(() => {
-    if (mock) return
-    let stopped = false
-    let controller: AbortController | null = null
-    const read = async (): Promise<void> => {
-      controller?.abort()
-      controller = new AbortController()
-      try {
-        const res = await fetch(`/api/rivals${token ? `?token=${encodeURIComponent(token)}` : ''}`, { signal: controller.signal, cache: 'no-store' })
-        const body: unknown = await res.json().catch(() => null)
-        if (!stopped) setState((s) => rivalsStateOf(res.status, body, s.snapshot))
-      } catch (error: unknown) {
-        if (!stopped && !(error instanceof DOMException && error.name === 'AbortError')) setState((s) => ({ status: 'error', snapshot: s.snapshot }))
-      }
-    }
-    void read()
-    const timer = setInterval(() => void read(), intervalMs)
-    return () => {
-      stopped = true
-      clearInterval(timer)
-      controller?.abort()
-    }
-    // a new `wake` reads now and starts the timer again from there
-  }, [mock, token, intervalMs, wake])
   return mocked ?? state
 }
 

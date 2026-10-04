@@ -3,7 +3,8 @@
  * announces a Market Test (`wake`), and on a timer as the fallback (shorter while a session runs), with `?token=` when the
  * page has one; or a made-up day with `?mock=1`. Keeps the last good snapshot through an error, like ./strategy.ts.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { usePolled } from '../net/poll.ts'
 import { pollEvery, type PagePush } from './fresh.ts'
 import { EMPTY_VENUE, type BenchBook, type BenchSession, type BenchTrader, type BrokerMatch, type VenueScorePoint, type VenueSnapshot, type VenueTrade } from '../../shared/venue.ts'
 import { rng } from '../stage/rng.ts'
@@ -54,32 +55,9 @@ export function venueStateOf(httpStatus: number, body: unknown, prev: VenueSnaps
 export function useVenue(mock: boolean, token: string | null, tick: number, today: string, push: PagePush | null, wake: string, running: boolean): VenueState {
   const intervalMs = running ? LIVE_POLL_MS : pollEvery('venue', push)
   const pushed = push?.at ?? null
-  const [state, setState] = useState<VenueState>({ status: 'loading', snapshot: EMPTY_VENUE })
+  // a new notice or a new session reads now and starts the timer again from there
+  const state = usePolled<VenueState>(mock ? null : `/api/venue${token ? `?token=${encodeURIComponent(token)}` : ''}`, { status: 'loading', snapshot: EMPTY_VENUE }, intervalMs, `${pushed}|${wake}`, venueStateOf)
   const mocked = useMemo<VenueState | null>(() => (mock ? { status: 'mock', snapshot: mockVenue(tick, today) } : null), [mock, tick, today])
-  useEffect(() => {
-    if (mock) return
-    let stopped = false
-    let controller: AbortController | null = null
-    const read = async (): Promise<void> => {
-      controller?.abort()
-      controller = new AbortController()
-      try {
-        const res = await fetch(`/api/venue${token ? `?token=${encodeURIComponent(token)}` : ''}`, { signal: controller.signal, cache: 'no-store' })
-        const body: unknown = await res.json().catch(() => null)
-        if (!stopped) setState((s) => venueStateOf(res.status, body, s.snapshot))
-      } catch (error: unknown) {
-        if (!stopped && !(error instanceof DOMException && error.name === 'AbortError')) setState((s) => ({ status: 'error', snapshot: s.snapshot }))
-      }
-    }
-    void read()
-    const timer = setInterval(() => void read(), intervalMs)
-    return () => {
-      stopped = true
-      clearInterval(timer)
-      controller?.abort()
-    }
-    // a new notice or a new session reads now and starts the timer again from there
-  }, [mock, token, intervalMs, pushed, wake])
   return mocked ?? state
 }
 
