@@ -57,3 +57,8 @@ files newly merged to main. Merged `origin/main` (`f70d784`) into this branch an
 formatted those lines. Expanded local suites: 118 files / 1217 unit tests passed;
 11 files / 115 Postgres integration tests passed. This supersedes the earlier
 pre-merge test counts. Hosted verification is recorded on PR #58.
+
+Hosted Depot passed all four checks in 49 seconds on `e9114b8`: 1217 unit tests
+and 132 integration tests (12 files). The local SQL helper's old hand-maintained
+list omitted one suite; it now uses the same discovery command as CI. Local
+recheck: `sh scripts/test-sql.sh` → 12 files / 132 tests passed.
