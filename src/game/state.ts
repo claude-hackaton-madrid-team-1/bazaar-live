@@ -225,6 +225,8 @@ export type State = {
    * ISO (pages.changed); null until the server says it sends these, and then the screens refetch on each.
    */
   changes: Readonly<Record<string, string>> | null
+  /** A `venues.ours` that came before `agent.hello`: applied once we know our team. */
+  pendingVenues: Payload | null
 }
 
 export const KNOWN_TYPES = new Set([
@@ -232,7 +234,7 @@ export const KNOWN_TYPES = new Set([
   'thread.message', 'thread.closed', 'settlement', 'duel.started', 'duel.message', 'duel.result',
   'thread.opened', 'offer.listed', 'offer.cancelled', 'settlement.failed', 'pack.opened', 'gift.given',
   'venue.opened', 'venue.announcement', 'venue.fee_announced', 'venue.fee_changed', 'venue.closing', 'venue.closed',
-  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'offers.ours',
+  'agent.decision', 'agent.outcome', 'agent.ledger', 'agent.health', 'pages.changed', 'offers.ours', 'venues.ours',
   'bench.started', 'bench.finished',
 ])
 
@@ -247,7 +249,7 @@ export function createState(): State {
     cash: 0, score: {}, pages: [], owned: {}, values: {}, affinity: {}, packs: [],
     log: [], threads: {}, teamThreads: new Map(), duels: {}, tape: [], prices: {}, history: [], ours: { trades: 0, gain: 0 },
     book: new Map(), byHand: new Set(), venues: new Map(), bench: [], packsOpened: [], gifts: [], failed: [], opened: [],
-    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null,
+    events: [], mine: [], byId: new Map(), agents: createDecisionLog(), health: [], changes: null, pendingVenues: null,
   }
 }
 
@@ -650,6 +652,33 @@ function health(s: State, p: Payload): void {
   })
 }
 
+const VENUE_STATUS: Readonly<Record<string, Venue['status']>> = { open: 'open', closing: 'closing', closed: 'closed', suspended: 'closed' }
+
+/**
+ * Our venues as our database knows them (`venues.ours`, sent after the backlog): each one marked ours, with its name,
+ * fees and status, however long before the feed window it opened. Before `agent.hello` there is no team to mark them
+ * with; the server resends the list only when it changes, so it is kept until the hello comes.
+ */
+function ourVenuesSnapshot(s: State, p: Payload) {
+  if (!s.team) {
+    s.pendingVenues = p
+    return
+  }
+  s.pendingVenues = null
+  const list: Payload[] = Array.isArray(p.venues) ? p.venues : []
+  for (const x of list) {
+    const status = typeof x?.status === 'string' ? VENUE_STATUS[x.status] : undefined
+    if (typeof x?.venue !== 'string' || !status) continue
+    const v = touchVenue(s, x.venue, s.tick)
+    v.owner = s.team
+    v.status = status
+    if (typeof x.name === 'string' && x.name) v.name = x.name
+    if (typeof x.feeBps === 'number') v.feeBps = x.feeBps
+    if (typeof x.feePerCard === 'number') v.feePerCard = x.feePerCard
+    if (typeof x.openedTick === 'number') v.openedTick = x.openedTick
+  }
+}
+
 export function apply(s: State, e: GameEvent): State {
   const p = (e.payload ??= {})
   // A status every 10 s: only the latest counts, so it never fills the event lists (nor the Debug screen's).
@@ -660,6 +689,11 @@ export function apply(s: State, e: GameEvent): State {
   // A status too: the latest list of our open offers is the whole truth about them.
   if (e.type === 'offers.ours') {
     ourOffersSnapshot(s, p)
+    return s
+  }
+  // A status too: which venues are ours, from our database (the feed window starts long after we opened ours).
+  if (e.type === 'venues.ours') {
+    ourVenuesSnapshot(s, p)
     return s
   }
   // The same kind of status: only the latest says when each screen's rows last changed.
@@ -686,6 +720,7 @@ export function apply(s: State, e: GameEvent): State {
     case 'agent.hello':
       s.team = p.team ?? s.team
       s.name = p.name ?? s.name
+      if (s.team && s.pendingVenues) ourVenuesSnapshot(s, s.pendingVenues)
       break
     case 'clock':
       s.tick = tick

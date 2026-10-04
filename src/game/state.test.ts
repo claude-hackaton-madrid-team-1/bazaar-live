@@ -378,3 +378,21 @@ test('a Market Test session: announced once, its venues kept, closed by bench.fi
   assert.strictEqual(s.bench[0]?.finishedTick, 1417)
   assert.isTrue(KNOWN_TYPES.has('bench.started') && KNOWN_TYPES.has('bench.finished'))
 })
+
+test("venues.ours: our database's venues are ours however long before the feed window they opened; before hello they wait", () => {
+  const s = createState()
+  apply(s, { ...ev('venues.ours', { venues: [
+    { venue: 'v19', name: 'Team 1 market', mechanism: 'board', feeBps: 0, feePerCard: 0, status: 'open', openedTick: 262 },
+    { venue: 'v30', name: 'Old stall', status: 'suspended', openedTick: 40 },
+    { venue: 'v31', status: 'nonsense' },
+  ] }), scope: 'team' })
+  assert.equal(s.venues.size, 0, 'no team yet: nothing to mark them with')
+  assert.equal(s.events.length, 0, 'a status, never an event of the lists')
+  apply(s, ev('agent.hello', { team: 't01', name: 'Team 1' }))
+  const v19 = s.venues.get('v19')
+  assert.deepEqual([v19?.owner, v19?.name, v19?.status, v19?.feeBps, v19?.openedTick], ['t01', 'Team 1 market', 'open', 0, 262])
+  assert.deepEqual([s.venues.get('v30')?.owner, s.venues.get('v30')?.status], ['t01', 'closed'], 'suspended reads closed')
+  assert.equal(s.venues.has('v31'), false, 'an unknown status is left out')
+  assert.equal(s.pendingVenues, null)
+  assert.equal(isOurs(s, ev('venue.announcement', { venue: 'v19', text: '0 % fee' })), true, 'its later events are ours')
+})

@@ -36,6 +36,7 @@ import { startLearn } from './learn/start.ts'
 import { startRivals } from './rivals/start.ts'
 import { startStrategy } from './strategy/start.ts'
 import { startVenue } from './venue/start.ts'
+import { VenuesStream } from './venue/stream.ts'
 import { readLimits } from './limits.ts'
 import { availableProviders, readProviderConfig } from './providers.ts'
 import { startShowPool } from './transcript/pg.ts'
@@ -73,6 +74,11 @@ function ourVenue(): boolean | null {
 }
 // Our venue and the Market Test: the sessions, the books our broker saw and what it matched (db/venue.sql), on the same pool.
 const venue = startVenue(process.env, log, show)
+// Which venues are ours, on the game stream too (`venues.ours`): its feed replay starts long after we opened ours.
+if (game.hub && venue.poller) {
+  const ours = new VenuesStream(game.hub, log)
+  venue.poller.onChange(() => ours.update(venue.snapshot()))
+}
 // What each rival holds by the public feed, its rank and what it chases (db/rival_albums.sql), on the same pool.
 const rivals = startRivals(process.env, log, show)
 // The prompt-injection attempts our agents recorded (db/injections.sql), on the same pool: public, never voiced.

@@ -348,6 +348,12 @@ crossing quotes allowed after the fee) is our broker's own measure; the score is
 session every 40 ticks of the mock game (the first at tick 2) beside yesterday's six. Proof: `sh scripts/test-sql.sh`
 runs `db/venue.test.ts`. Screenshots: `docs/screenshots/venue/`.
 
+The stream's screens learn which venue is ours from its `venue.opened`, but the feed replay starts long after we opened
+v19. So whenever `show.venue_ours` changes, the server also sends the list on the game stream as the sticky `venues.ours`
+(`server/venue/stream.ts`, replayed after the backlog like `offers.ours`): each venue's id, name, mechanism, fees, status
+and opening tick, nothing of the Market Test or the broker. `/negotiations` then lists our venue first even while its
+board is empty, and `/market` marks it ours.
+
 ### Live refresh (`/history`, `/learn` and `/strategy`)
 
 These three screens (and `/venue` and `/rivals`) read their own API rather than the game stream, so the server keeps them close to real time itself
