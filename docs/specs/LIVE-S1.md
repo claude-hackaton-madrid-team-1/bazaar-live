@@ -62,3 +62,42 @@ Hosted Depot passed all four checks in 49 seconds on `e9114b8`: 1217 unit tests
 and 132 integration tests (12 files). The local SQL helper's old hand-maintained
 list omitted one suite; it now uses the same discovery command as CI. Local
 recheck: `sh scripts/test-sql.sh` → 12 files / 132 tests passed.
+
+
+## Broadcaster activity follow-up
+
+Requested scope: make the original voice page reflect duels, ticks, negotiations with other
+teams, Jev orchestration, trades and errors, while keeping it useful when muted.
+
+Implemented in `src/show/broadcast.ts` and `src/ui/ActivityPanel.tsx`: bounded, validated
+activity from the existing protected game stream. The stream is connected only with a token
+and an explicit server `tokenRequired: true`; public maker/taker and settled replay feeds
+remain usable without it. Only our team-scoped duel events are eligible. New speech uses
+finite bilingual templates, existing structured duel prices and recorded Jev verdict labels;
+raw messages and private valuation/reasoning fields are never narrated. Thread closure and
+accept submission are not settlement. Failures correlate by our parties, actor or observed
+own offer. Day labels do not claim a proven round transition.
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Validated event coverage and private/public boundary | Verified | `src/show/broadcast.test.ts`: real duel producer payloads, team scope, other-team exclusion, failure correlation, recorded Jev and template whitelist. `src/game/feed.test.ts`: supplied token does not unlock an unprotected server. |
+| Every tick visible; bounded speech/history | Verified | Broadcast tests check 10 clock events with two spoken summaries; replay silent; timeline keeps at most three entries per category. Existing director remains bounded to eight queued beats. |
+| Usable muted desktop/mobile interaction | Verified | Local production build at `http://127.0.0.1:8773/?mock=1&speed=2&tts=off&lang=en`: 1440×1000 and 390×844 screenshots, category selector switched to Duels and Jev, no browser errors or console messages. Demo label appears on the panel and every row. |
+| Existing real voices with new live events | Partial | TTS allow-list and structured role mapping tested; no live audio, microphone or authenticated production stream exercised in this follow-up. |
+
+Honest implementation metric for this follow-up: 3/4 criteria verified (75%).
+
+Actual validation output: `Test Files 119 passed (119); Tests 1226 passed (1226)`.
+`npm run typecheck`, `npm run lint`, `npm run format:check` exited 0.
+`npm run build`: `✓ 611 modules transformed`, build succeeded; existing >500 kB bundle warning remains.
+Independent reviewer ran 107 focused tests across eight files, all passed.
+Screenshots: `/tmp/bazaar-voice-desktop-final.png`, `/tmp/bazaar-voice-duels-final.png`,
+`/tmp/bazaar-voice-mobile-final.png` (local artifacts, not committed).
+
+Unverified: production stream coverage depends on the deployed producers; no live producer
+was found for phase events, so they appear only when actually supplied. Real audio and
+microphone were not tested. Could-not-do: no deployment or live game writes were authorized
+for this slice. The local demo combines separate seeded game/dealer tick counters and is
+explicitly synthetic. Parallel work: producer contract audit and independent security review
+ran separately from implementation. Browser QA caught dealer bursts erasing rare categories;
+retaining three rows per category fixed that without adding a new queue.

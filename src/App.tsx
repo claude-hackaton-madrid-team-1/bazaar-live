@@ -12,6 +12,7 @@ import { soundMemory } from './ui/soundChoice'
 import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
 import { useShow } from './ui/useShow'
+import { ActivityPanel } from './ui/ActivityPanel'
 
 /** The show keeps the newest few injection attempts under the stage; every row is on /injections. */
 const SHOW_ROWS = 5
@@ -79,6 +80,7 @@ function ShowApp() {
     <MotionConfig reducedMotion="user">
       <div className="app">
         {config.replay ? <header className="header material" style={{ padding: 24 }}><h1>Bazaar Live</h1><p>RECORDED REAL EVENTS · Historical negotiation replay · No game actions</p><a href="?lang=en">Return to live view</a></header> : <><Header state={state} speech={{ ...speech, setMuted }} mock={config.mock} /><Notice state={state} mock={config.mock} /></>}
+        <ActivityPanel state={state} replay={config.replay === true} />
         <main className="main">
           <ErrorBoundary fallback={<div className="fallback material">{t.fallback}</div>}>
             <Stage state={state} />

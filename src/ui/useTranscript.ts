@@ -22,7 +22,8 @@ export function useTranscript(engine: ShowEngine, config: ShowConfig): void {
       for (const item of items) {
         // The language is read when an item arrives, so the selector applies to the next line.
         const beat = realBeat(item, getLang(), { speakQuotes })
-        if (beat) engine.ingestBeat(beat, replay)
+        const alreadyCovered = engine.getSnapshot().broadcastStatus === 'live' && (item.kind === 'duel_replay' || item.kind === 'settlement')
+        if (beat) engine.ingestBeat(beat, replay || alreadyCovered)
       }
     }
     if (recorded) {

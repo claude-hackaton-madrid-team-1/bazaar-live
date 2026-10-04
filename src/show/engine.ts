@@ -15,6 +15,8 @@ import { holdsBeat, situationBeat, situationBeatIfFresh, toBeat, type DialogueCo
 import { Director } from './director'
 import { LineMemory } from './memory'
 import { situationOf } from './situation'
+import { Broadcast, type Activity } from './broadcast'
+import type { GameFeedStatus } from '../game/feed'
 
 export interface BoardCard {
   readonly key: string
@@ -52,6 +54,9 @@ export interface Flash {
 }
 
 export interface ShowState {
+  readonly activity: readonly Activity[]
+  readonly gameClock: { readonly tick: number | null; readonly seconds: number | null }
+  readonly broadcastStatus: GameFeedStatus | 'demo'
   readonly beat: Beat | null
   readonly line: Line | null
   readonly board: readonly BoardCard[]
@@ -84,6 +89,9 @@ const INSTANT_VOICE_MS = 250
 const STALE_TICKS = 2
 
 export const INITIAL_STATE: ShowState = {
+  activity: [],
+  gameClock: { tick: null, seconds: null },
+  broadcastStatus: 'locked',
   beat: null,
   line: null,
   board: [],
@@ -182,6 +190,7 @@ export function syncBoard(
 }
 
 export class ShowEngine {
+  private readonly broadcast = new Broadcast()
   private state: ShowState = INITIAL_STATE
   private readonly listeners = new Set<() => void>()
   private readonly speech: SpeechQueue
@@ -258,6 +267,27 @@ export class ShowEngine {
     this.set({ health: { ...this.state.health, [agent]: health } })
   }
 
+  setBroadcastStatus(status: ShowState['broadcastStatus']): void {
+    this.set({ broadcastStatus: status })
+  }
+
+  private activityWith(item: Activity): readonly Activity[] {
+    const rows = [...this.state.activity.filter((row) => row.id !== item.id), item]
+    // Keep three per category: a busy dealer cannot erase the latest duel or incident.
+    return rows.filter((row, i) => rows.slice(i + 1).filter((next) => next.category === row.category).length < 3)
+  }
+
+  /** Structured events from the existing authorized game stream, never game commands. */
+  ingestGame(events: readonly unknown[], replay: boolean): void {
+    for (const event of events) {
+      const item = this.broadcast.receive(event, replay, this.lang)
+      if (!item) continue
+      this.set({ activity: this.activityWith(item.activity), gameClock: { tick: this.broadcast.tick, seconds: this.broadcast.seconds } })
+      if (item.speak) this.ingestBeat(item.beat, false)
+      else if (replay) this.set({ transcript: this.appendLines(item.beat, 'history') })
+    }
+  }
+
   /**
    * Changes the language of everything said from now on: the beat being played stops, the queued beats
    * and the queued voices of the old language are dropped, and the next lines come from the new pack.
@@ -327,7 +357,12 @@ export class ShowEngine {
 
   /** A beat from any source (an agent's event, a real conversation): history to the captions, or a scene. */
   ingestBeat(beat: Beat, replay: boolean): void {
-    if (replay || this.isStale(beat.agent, beat.tick)) {
+    if (!beat.id.startsWith('broadcast:')) {
+      const category: Activity['category'] = beat.cue.kind === 'fail' ? 'incident' : beat.cue.kind === 'post' || beat.cue.kind === 'reprice' ? 'market' : 'dealer'
+      const text = beat.lines.find((line) => !line.silent)?.text ?? ''
+      if (text) this.set({ activity: this.activityWith({ id: beat.id, tick: beat.tick, category, text, reference: beat.note ?? '', history: replay }) })
+    }
+    if (replay || (!beat.id.startsWith('broadcast:') && this.isStale(beat.agent, beat.tick))) {
       this.set({ board: this.boardAfter(beat), transcript: this.appendLines(beat, 'history') })
       return
     }
