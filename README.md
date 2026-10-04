@@ -375,7 +375,7 @@ start at the cadence the starts keep (the most common gap, each day on its own);
 whole steps without guessing the session's number. Quotes are not limits: the quoted surplus captured (of the most the
 crossing quotes allowed after the fee) is our broker's own measure; the score is /me's efficiency. `?mock=1` plays a
 session every 40 ticks of the mock game (the first at tick 2) beside yesterday's six. Proof: `sh scripts/test-sql.sh`
-runs `db/venue.test.ts`. Screenshots: `docs/screenshots/venue/`.
+runs `db/venue.test.ts`.
 
 The stream's screens learn which venue is ours from its `venue.opened`, but the feed replay starts long after we opened
 v19. So whenever `show.venue_ours` changes, the server also sends the list on the game stream as the sticky `venues.ours`
