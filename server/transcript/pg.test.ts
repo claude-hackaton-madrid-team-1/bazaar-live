@@ -48,7 +48,7 @@ describe('poolOptions', () => {
   })
 
   it('turns JIT off for its sessions: every query is a small read, and JIT compiling costs ~240 ms each', () => {
-    expect(poolOptions(URL_OK).options).toBe('-c jit=off')
+    expect(poolOptions(URL_OK).options).toBe('-c jit=off -c work_mem=64MB')
   })
 })
 
