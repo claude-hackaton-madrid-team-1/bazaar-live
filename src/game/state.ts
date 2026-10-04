@@ -124,6 +124,8 @@ export type BookOffer = {
   ref: string
   kind: string
   assetIds: number[]
+  /** The copies (asset ids) a bid or a swap wants, when it names them: a bid for another team's copy asks nobody else. */
+  wantAssetIds: number[]
   serial: number | null
   price: number | null
   createdTick: number | undefined
@@ -444,6 +446,7 @@ function offerListed(s: State, e: GameEvent) {
     ref: side === 'bid' ? topicOf({ want: offer.want }) : topicOf({ give: offer.give }),
     kind: first?.kind ?? goods?.types?.[0]?.split(':')[0] ?? 'card',
     assetIds: assets.map((a) => a.id).filter((id) => typeof id === 'number'),
+    wantAssetIds: ((offer.want?.assets ?? []) as Payload[]).map((a) => a?.id).filter((id): id is number => typeof id === 'number'),
     serial: first?.serial ?? null, price: priceOf(offer), createdTick: offer.created_tick ?? e.tick, expiresTick,
   })
   if (venue !== 'direct') touchVenue(s, venue, e.tick)

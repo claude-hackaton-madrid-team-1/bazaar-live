@@ -120,6 +120,21 @@ test('sell: bids for our spares at or over our value; never a single copy we kee
   assert.equal(sell[0]?.untaken, false, "under the agents' minimum sell surplus (5 P) it is not an obvious miss, however long it stays")
 })
 
+test("sell: a bid for another team's named copy asks them, not us; one naming our copy does", () => {
+  const s = real()
+  const named = (maker: string, ref: string, price: number, asset: number) => ev('offer.listed', {
+    venue: 'rastro',
+    offer: {
+      id: nextOffer++, maker, to: null, venue: 'rastro', thread: null, status: 'open', give: { cash: price, assets: [], types: [] },
+      want: { cash: 0, assets: [{ id: asset, kind: 'card', ref, serial: 3 }], types: [] }, expires_tick: 40, created_tick: 20, final: false,
+    },
+  }, 20, maker)
+  apply(s, named('t03', 'SAL-01', 9, 9001))
+  assert.deepEqual(opportunities(s).sell, [], "SAL-01 #3 of another team: not ours to sell")
+  apply(s, named('t04', 'SAL-01', 8, 17))
+  assert.deepEqual(opportunities(s).sell.map((o) => [o.ref, o.maker, o.price]), [['SAL-01', 't04', 8]], 'our copy (asset 17) named: ours to sell')
+})
+
 test('an opportunity left on the board for two ticks is flagged, with what our agents last did about the card', () => {
   const s = real()
   apply(s, list('t05', 'LAV-08', 30, { tick: 17 }))
