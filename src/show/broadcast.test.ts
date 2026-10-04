@@ -25,6 +25,17 @@ describe('authorized game narration', () => {
     expect(items[2]?.activity.text).toBe(activityLine('duel_deal', 'en'))
   })
 
+  it('voices only recorded outgoing Sales words after acknowledged thread ownership', () => {
+    const feed = source()
+    feed.receive(event(1, 'thread.opened', { thread: 44, kind: 'team', team: 't01', with: 't18' }), true, 'en')
+    feed.receive(event(2, 'agent.decision', { decision: 9, agent: 'sales', kind: 'team_open', status: 'done', counterparty: 't18', trade: { threadId: 44 } }), true, 'en')
+    const own = feed.receive(event(3, 'thread.message', { thread: 44, sender: 't01', text: 'I can offer fifteen primas for your card.' }, 103), false, 'en')
+    expect(own?.beat.lines[0]).toMatchObject({ speaker: 'seller', dealer: 'sales', text: 'I can offer fifteen primas for your card.' })
+    const rival = feed.receive(event(4, 'thread.message', { thread: 44, sender: 't18', text: 'The rival private words.' }, 105), false, 'en')
+    expect(JSON.stringify(rival)).not.toContain('rival private words')
+    expect(feed.receive(event(5, 'thread.message', { thread: 44, sender: 't01', text: 'I can offer fifteen primas for your card.' }, 107), true, 'en')?.speak).toBe(false)
+  })
+
   it('records every tick but speaks only every eight, with immediate real round changes', () => {
     const feed = source()
     const items = Array.from({ length: 10 }, (_, i) => feed.receive(event(i + 1, 'clock', { day: 'Round 2', tick_seconds: 15 }, 100 + i), false, 'en'))
@@ -97,4 +108,29 @@ describe('authorized game narration', () => {
     expect(engine.getSnapshot().gameClock).toEqual({ tick: 150, seconds: 15 })
     engine.stop()
   })
+})
+
+describe('Sales quote delivery ordering', () => {
+  it('lets acknowledged real words speak after a same-tick summary, just once', () => {
+    const feed = source()
+    feed.receive(event(1, 'agent.decision', { decision: 1, agent: 'sales', kind: 'team_offer', status: 'done', counterparty: 't18', trade: { threadId: 44 } }), false, 'en')
+    const message = event(2, 'thread.message', { thread: 44, sender: 't01', text: 'I can offer fifteen primas for your card.' })
+    expect(feed.receive(message, false, 'en')?.speak).toBe(true)
+    expect(feed.receive({ ...message, id: -99, type: 'thread.message.quote', payload: { ...message.payload, feed_id: 2 } }, false, 'en')).toBeNull()
+  })
+  it('waits for acknowledged Sales identity when the real message arrives first', () => {
+    const feed = source()
+    feed.receive(event(1, 'thread.opened', { thread: 44, team: 't01', with: 't18' }), true, 'en')
+    const message = event(2, 'thread.message', { thread: 44, sender: 't01', text: 'I can offer fifteen primas for your card.' })
+    expect(feed.receive(message, false, 'en')?.beat.lines[0]?.speaker).toBe('narrator')
+    const acknowledged = feed.receive(event(3, 'agent.decision', { decision: 1, agent: 'sales', kind: 'team_offer', status: 'done', counterparty: 't18', trade: { threadId: 44 } }), false, 'en')
+    expect(acknowledged?.speak).toBe(true)
+    expect(acknowledged?.beat.lines[0]).toMatchObject({ dealer: 'sales', text: message.payload.text })
+  })
+})
+
+it('never voices a replayed pending Sales message when its live acknowledgement arrives', () => {
+  const feed = source()
+  feed.receive(event(1, 'thread.message', { thread: 44, sender: 't01', text: 'I can offer fifteen primas for your card.' }), true, 'en')
+  expect(feed.receive(event(2, 'agent.decision', { decision: 1, agent: 'sales', kind: 'team_offer', status: 'done', trade: { threadId: 44 } }), false, 'en')?.speak).toBe(false)
 })

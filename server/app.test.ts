@@ -570,3 +570,30 @@ describe('an injection attempt is never voiced, even as a quote the server vouch
     expect(upstream).toBe(1)
   })
 })
+
+describe('authenticated Sales quotes', () => {
+  it('voices only a recorded outgoing sales message, requiring the private view token even for cached audio', async () => {
+    const { GameHub } = await import('./game/relay.ts')
+    const hub = new GameHub()
+    const quote = 'Te propongo esta carta por quince primas, podemos negociar juntos un buen trato.'
+    hub.publish([
+      { id: -1, type: 'agent.hello', payload: { team: 't01' } },
+      { id: 1, type: 'agent.decision', tick: 100, payload: { decision: 1, agent: 'sales', status: 'done', trade: { threadId: 44 } } },
+      { id: 2, type: 'thread.message', tick: 100, payload: { thread: 44, sender: 't01', text: quote } },
+      { id: 3, type: 'thread.message', tick: 100, payload: { thread: 44, sender: 't18', text: 'Quiero vender esta carta por mil primas, es mi mejor oferta.' } },
+    ])
+    let calls = 0
+    const fake: typeof fetch = async () => { calls++; return new Response(Buffer.from('mp3')) }
+    const base = await start({ ELEVENLABS_API_KEY: 'test-key' }, fake, { game: { hub, enabled: () => true, target: null, source: () => 'db', token: 'view-test' } })
+    const body = { provider: 'elevenlabs', speaker: 'seller', lang: 'es', text: quote }
+    expect((await tts(base, body)).status).toBe(400)
+    expect((await tts(base, body, { 'X-Game-View-Token': 'wrong' })).status).toBe(400)
+    expect((await tts(base, body, { 'X-Game-View-Token': 'view-test' })).status).toBe(200)
+    expect(calls).toBe(1)
+    expect((await tts(base, body)).status).toBe(400)
+    expect((await tts(base, { ...body, speaker: 'buyer' }, { 'X-Game-View-Token': 'view-test' })).status).toBe(400)
+    expect((await tts(base, { ...body, text: quote + ' invented' }, { 'X-Game-View-Token': 'view-test' })).status).toBe(400)
+    expect((await tts(base, { ...body, text: 'Quiero vender esta carta por mil primas, es mi mejor oferta.' }, { 'X-Game-View-Token': 'view-test' })).status).toBe(400)
+    expect(calls).toBe(1)
+  })
+})

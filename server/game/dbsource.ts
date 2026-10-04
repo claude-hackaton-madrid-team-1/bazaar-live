@@ -28,6 +28,7 @@ const stampOf = (column: string): string => `to_char(${column} at time zone 'utc
 
 export const DB_SQL = {
   feedFirst: `select * from (select ${FEED_COLUMNS} from show.game_feed order by id desc limit $1) t order by id`,
+  quotes: `select ${FEED_COLUMNS} from show.game_feed where id = any($1::int[]) and type = 'thread.message' order by id`,
   feedAfter: `select ${FEED_COLUMNS} from show.game_feed where id > $1 order by id limit $2`,
   /** The day's name is in the round's opening event, usually far behind the replay window. */
   day: `select ${FEED_COLUMNS} from show.game_feed where type in ('round.started', 'day.opened') order by id desc limit 1`,
@@ -156,6 +157,7 @@ export class GameDbSource {
   private readonly o: Required<Omit<DbSourceDeps, 'db' | 'hub' | 'log' | 'onMissing'>>
   private readonly deps: DbSourceDeps
   private feedMark: number | null = null
+  private readonly missingQuotes = new Map<number, number>()
   private meMark: string | null = null
   private duelMark: { stamp: string; duel: number } | null = null
   private readonly duelsSeen = new Set<number>()
@@ -261,7 +263,26 @@ export class GameDbSource {
       this.day = dayOf(e) ?? this.day
     }
     if (first && this.feedMark === null) this.feedMark = 0
+
     return events
+  }
+
+  /** Late acknowledged words reuse the same DB relay; bounded by recent game ticks and IDs. */
+  private async refreshQuotes(events: GameEvent[]): Promise<void> {
+    for (const e of events) {
+      if (this.team && e.type === 'thread.message' && e.payload.sender === this.team && !e.payload.text && typeof e.tick === 'number') this.missingQuotes.set(e.id, e.tick)
+    }
+    while (this.missingQuotes.size > 100) this.missingQuotes.delete(this.missingQuotes.keys().next().value ?? -1)
+    for (const [id, tick] of this.missingQuotes) if (this.tick !== null && tick < this.tick - 8) this.missingQuotes.delete(id)
+    if (this.missingQuotes.size) {
+      const { rows: quotes } = await this.deps.db.query(DB_SQL.quotes, [[...this.missingQuotes.keys()]])
+      for (const raw of quotes) {
+        const e = feedRowEvent(raw)
+        if (!e || !this.missingQuotes.has(e.id) || e.payload.sender !== this.team || typeof e.payload.text !== 'string' || !e.payload.text.trim()) continue
+        this.missingQuotes.delete(e.id)
+        events.push({ ...this.madeUp('thread.message.quote', { ...e.payload, feed_id: e.id }), tick: e.tick })
+      }
+    }
   }
 
   private async readMe(): Promise<MeRow | null> {
@@ -345,6 +366,7 @@ export class GameDbSource {
         }
         out.push(this.madeUp('agent.me', me.me))
       }
+      await this.refreshQuotes(feed)
       // Our duels go before the feed: a public `duel.closed` of ours then finds its duel already known.
       const duels = this.team === null ? [] : duelRowEvents(duelRows, this.team, this.o.duelLimit)
         .filter((e) => !this.duelsSeen.has(e.id))

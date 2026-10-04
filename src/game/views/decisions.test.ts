@@ -50,7 +50,7 @@ test('a late decision lands in id order, and the log is bounded per agent', () =
 
 test('an unknown agent or a decision without an id is dropped', () => {
   const s = feed(fresh(), [ev('agent.decision', { decision: 1, agent: 'broker' }), ev('agent.decision', { agent: 'taker' })])
-  assert.deepEqual(s.agents.decisions, { taker: [], maker: [], duels: [] })
+  assert.deepEqual(s.agents.decisions, { taker: [], maker: [], duels: [], sales: [] })
 })
 
 const statusOf = (s: State) => agentStatuses(s).map((a) => [a.agent, a.state, a.silentFor])
@@ -58,11 +58,11 @@ const statusOf = (s: State) => agentStatuses(s).map((a) => [a.agent, a.state, a.
 test('silence: an agent with no decision for more than its SILENCE ticks, or never, is silent', () => {
   assert.equal(SILENCE.taker.silent, 3)
   const s = feed(fresh(20), [decision(1, 'taker', 19), decision(2, 'maker', 16), decision(3, 'maker', 17)])
-  assert.deepEqual(statusOf(s), [['taker', 'ok', 1], ['maker', 'ok', 3], ['duels', 'silent', null]])
+  assert.deepEqual(statusOf(s), [['taker', 'ok', 1], ['maker', 'ok', 3], ['duels', 'silent', null], ['sales', 'silent', null]])
   apply(s, ev('clock', {}, 21, 0.35))
-  assert.deepEqual(statusOf(s), [['taker', 'ok', 2], ['maker', 'quiet', 4], ['duels', 'silent', null]])
+  assert.deepEqual(statusOf(s), [['taker', 'ok', 2], ['maker', 'quiet', 4], ['duels', 'silent', null], ['sales', 'silent', null]])
   apply(s, ev('clock', {}, 23, 0.36))
-  assert.deepEqual(statusOf(s), [['taker', 'silent', 4], ['maker', 'quiet', 6], ['duels', 'silent', null]])
+  assert.deepEqual(statusOf(s), [['taker', 'silent', 4], ['maker', 'quiet', 6], ['duels', 'silent', null], ['sales', 'silent', null]])
 })
 
 test('the maker decides in bursts: quiet (amber) first, silent (red) only past SILENCE.maker.silent', () => {
@@ -74,7 +74,7 @@ test('the maker decides in bursts: quiet (amber) first, silent (red) only past S
 })
 
 test('before any decision log arrives (the game API alone) no agent is called silent', () => {
-  assert.deepEqual(statusOf(fresh(20)), [['taker', 'none', null], ['maker', 'none', null], ['duels', 'none', null]])
+  assert.deepEqual(statusOf(fresh(20)), [['taker', 'none', null], ['maker', 'none', null], ['duels', 'none', null], ['sales', 'none', null]])
 })
 
 test('a restart is not a sign of life: the silence counts from the last real decision, the restarts are counted apart', () => {

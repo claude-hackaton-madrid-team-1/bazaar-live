@@ -959,6 +959,14 @@ export class MockGame {
     const burn = (this.tick % 4 === 1 ? 10 : 0) + (this.tick % 3 === 1 ? 3 : 0)
     for (let i = 0; i < burn; i++) this.random()
     const c = this.tick % 12
+    // Synthetic Sales fixture: same protected-feed contract, no game writes or settlement claim.
+    if (c === 2) {
+      const thread = 90000 + this.tick
+      out.push(this.ev('thread.opened', { thread, kind: 'team', team: this.team, with: 't18', venue: 'v28' }, this.team))
+      say('sales', 'team_offer', { status: 'done', counterparty: 't18', trade: { threadId: thread, venue: 'v28', side: null, offerId: null, recipient: 't18' } })
+      out.push(this.ev('thread.message', { thread, sender: this.team, text: 'I can exchange my Retiro card for your Latina card and three primas.', offer: { maker: this.team, give: { assets: [{ ref: 'RET-01' }] }, want: { types: ['card:LAT-02'], cash: 3 }, expires_tick: this.tick + 4 } }, this.team))
+      out.push(this.ev('thread.message', { thread, sender: 't18', text: 'Let me consider the exchange.' }, 't18'))
+    }
     if (c === 1) say('taker', 'process_started', { status: 'done', verdict: null })
     if (c >= 1 && c <= 6) {
       const price = c < 4 ? 31 : 32

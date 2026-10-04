@@ -1,3 +1,5 @@
+import { salesLine, salesThread, sentSalesQuote } from '../../shared/sales.ts'
+import { detectLang } from '../../shared/detect-lang.ts'
 import { activityLine, type ActivityLine } from '../../shared/activity-lines.ts'
 import { jevLine } from '../../shared/jev-lines.ts'
 import type { Lang } from '../../shared/lang.ts'
@@ -28,6 +30,10 @@ export class Broadcast {
   private day = ''
   private team = ''
   private readonly threads = new Set<number>()
+  private readonly salesThreads = new Set<number>()
+  private readonly pendingQuotes = new Map<number, { event: Record<string, unknown>; history: boolean }>()
+  private readonly voicedQuotes = new Set<number>()
+  private readonly counterparts = new Map<number, string>()
   private readonly offers = new Set<number>()
   private readonly seen = new Set<string>()
   private readonly spokenAt = new Map<string, number>()
@@ -41,6 +47,27 @@ export class Broadcast {
       this.offers.add(p.offer.id)
       while (this.offers.size > 500) this.offers.delete(this.offers.values().next().value ?? -1)
     }
+    if ((raw.type === 'thread.message' || raw.type === 'thread.message.quote') && integer(p.thread)) {
+      const quote = sentSalesQuote(raw, this.team, new Set([p.thread]))
+      if (quote && !this.salesThreads.has(p.thread)) {
+        this.pendingQuotes.set(p.thread, { event: { ...raw, payload: { ...p, text: quote } }, history })
+        while (this.pendingQuotes.size > 100) this.pendingQuotes.delete(this.pendingQuotes.keys().next().value ?? -1)
+        if (raw.type === 'thread.message.quote') return null
+      }
+    }
+    const sales = salesThread(raw)
+    if (sales !== null) {
+      this.salesThreads.add(sales)
+      while (this.salesThreads.size > 100) this.salesThreads.delete(this.salesThreads.values().next().value ?? -1)
+      if (teamId(p.counterparty)) this.counterparts.set(sales, p.counterparty)
+      while (this.counterparts.size > 100) this.counterparts.delete(this.counterparts.keys().next().value ?? -1)
+      const pending = this.pendingQuotes.get(sales)
+      if (pending) {
+        this.pendingQuotes.delete(sales)
+        const quote = this.receive({ ...pending.event, type: 'thread.message.quote' }, history || pending.history, lang)
+        if (quote) return quote
+      }
+    }
     // Decision rows may be re-emitted with a new status; never hash or retain their private fields.
     const id = `broadcast:${raw.type}:${raw.id}:${label(p.status)}:${label(p.jev)}`
     if (this.seen.has(id)) return null
@@ -51,6 +78,7 @@ export class Broadcast {
     let reference = ''
     let line: Line | null = null
     let urgent = false
+    let quoteGroup: string | null = null
     switch (raw.type) {
       case 'clock': {
         if (tick === null || (this.tick !== null && tick < this.tick)) return null
@@ -89,13 +117,28 @@ export class Broadcast {
       case 'thread.opened':
         if (!integer(p.thread) || !teamId(p.team) || !teamId(p.with) || (p.team !== this.team && p.with !== this.team)) return null
         this.threads.add(p.thread)
+        this.counterparts.set(p.thread, p.team === this.team ? p.with : p.team)
+        while (this.counterparts.size > 100) this.counterparts.delete(this.counterparts.keys().next().value ?? -1)
         while (this.threads.size > 100) this.threads.delete(this.threads.values().next().value ?? -1)
-        category = 'team'; kind = 'team_open'; reference = `Thread ${p.thread} · ${p.with}`
+        category = 'team'; kind = 'team_open'; reference = `Thread ${p.thread} · ${this.counterparts.get(p.thread)}`
         break
       case 'thread.message':
+      case 'thread.message.quote':
       case 'thread.closed':
-        if (!integer(p.thread) || !this.threads.has(p.thread)) return null
-        category = 'team'; kind = raw.type === 'thread.closed' ? 'team_close' : 'team_message'; reference = `Thread ${p.thread}`
+        if (!integer(p.thread) || (!this.threads.has(p.thread) && !this.salesThreads.has(p.thread))) return null
+        category = 'team'; kind = raw.type === 'thread.closed' ? 'team_close' : 'team_message'; reference = `Thread ${p.thread} · ${this.counterparts.get(p.thread) ?? ''}`
+        {
+          const quote = sentSalesQuote(raw, this.team, this.salesThreads)
+          if (quote) {
+            const messageId = integer(p.feed_id) ? p.feed_id : raw.id
+            if (this.voicedQuotes.has(messageId)) return null
+            this.voicedQuotes.add(messageId)
+            while (this.voicedQuotes.size > 500) this.voicedQuotes.delete(this.voicedQuotes.values().next().value ?? -1)
+            quoteGroup = `sales-quote:${p.thread}`
+            const language = detectLang(quote)
+            line = { speaker: 'seller', dealer: 'sales', text: quote, lang: language === 'unknown' ? lang : language, silent: language === 'unknown' || language !== lang }
+          }
+        }
         if (raw.type === 'thread.closed') this.threads.delete(p.thread)
         break
       case 'settlement':
@@ -121,22 +164,28 @@ export class Broadcast {
         // DB decisions fill gaps when the public thread feed did not include a team conversation.
         if (p.status !== 'done') return null
         if (p.kind === 'team_cash_accept' || p.kind === 'team_accept') { category = 'team'; kind = 'team_accept' }
-        else if (p.kind === 'team_open') { category = 'team'; kind = 'team_open' }
-        else if (p.kind === 'team_offer') { category = 'team'; kind = 'team_offer' }
+        else if (p.kind === 'team_open' || p.kind === 'sales_open') { category = 'team'; kind = 'team_open' }
+        else if (p.kind === 'team_offer' || p.kind === 'team_cash_offer' || p.kind === 'sales_offer') { category = 'team'; kind = 'team_offer' }
         else if (p.kind === 'team_walk') { category = 'team'; kind = 'team_close' }
         else return null
+        if (p.agent === 'sales' && teamId(p.counterparty) && (kind === 'team_open' || kind === 'team_offer')) {
+          const text = salesLine(p.counterparty, kind === 'team_offer', lang)
+          if (text) line = { speaker: 'seller', dealer: 'sales', text, lang }
+          reference += ` · ${p.counterparty}`
+        }
         break
       }
       default: return null
     }
     line ??= { speaker: 'narrator', text: activityLine(kind, lang), lang }
     const cadence = category === 'clock' ? 8 : category === 'jev' ? 4 : 2
-    const group = urgent ? `${category}:${kind}` : category
+    const group = quoteGroup ?? (urgent ? `${category}:${kind}` : category)
     const last = this.spokenAt.get(group)
     // No unclocked or historical voice, no repeated per-tick crowd chatter.
     const old = history || (tick !== null && this.tick !== null && tick < this.tick - 2)
-    const speak = !old && tick !== null && (last === undefined || tick - last >= (urgent ? 1 : cadence))
+    const speak = !old && tick !== null && (last === undefined || tick - last >= (urgent || quoteGroup ? 1 : cadence))
     if (speak && tick !== null) this.spokenAt.set(group, tick)
+    while (this.spokenAt.size > 128) this.spokenAt.delete(this.spokenAt.keys().next().value ?? '')
     const activity: Activity = { id, tick, category, text: line.text, reference, history: old }
     return { activity, speak, beat: {
       id, tick, agent: 'taker', priority: urgent ? PRIORITY.dealer : category === 'clock' ? PRIORITY.other : PRIORITY.duel,

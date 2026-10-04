@@ -87,7 +87,7 @@ export function createRemote(name: RemoteName, options: RemoteOptions = {}): Spe
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
     const request = fetchImpl(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(endpoint === TTS_ENDPOINT && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('token') ? { 'X-Game-View-Token': new URLSearchParams(window.location.search).get('token') ?? '' } : {}) },
       body: JSON.stringify({ provider: name, speaker: u.speaker, lang: u.lang, text: u.text }),
       signal: controller.signal,
     })

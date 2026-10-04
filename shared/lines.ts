@@ -1,3 +1,4 @@
+import { isSalesLine } from './sales.ts'
 import { isJevLine } from './jev-lines.ts'
 import { isActivityLine } from './activity-lines.ts'
 /**
@@ -106,7 +107,7 @@ function matchersFor(lang: Lang): ReadonlyMap<Role, readonly RegExp[]> {
  */
 export function isShowLine(speaker: Speaker, text: string, lang?: Lang): boolean {
   const langs: readonly Lang[] = lang ? [lang] : LANGS
-  return langs.some((l) => (speaker === 'jev' && isJevLine(text, l)) || (speaker === 'narrator' && isActivityLine(text, l)) || ROLES_FOR[speaker].some((role) => (matchersFor(l).get(role) ?? []).some((re) => re.test(text))))
+  return langs.some((l) => (speaker === 'seller' && isSalesLine(text, l)) || (speaker === 'jev' && isJevLine(text, l)) || (speaker === 'narrator' && isActivityLine(text, l)) || ROLES_FOR[speaker].some((role) => (matchersFor(l).get(role) ?? []).some((re) => re.test(text))))
 }
 
 /** Every template line of a pack as raw text (with `{slots}`), for the language and tag checks. */

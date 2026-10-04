@@ -25,7 +25,7 @@ export type DecisionLog = {
 export const DECISION_LIMITS = { perAgent: 400, outcomes: 200, broker: 200 }
 
 export function createDecisionLog(): DecisionLog {
-  return { decisions: { taker: [], maker: [], duels: [] }, outcomes: [], ledger: null, broker: [] }
+  return { decisions: { taker: [], maker: [], duels: [], sales: [] }, outcomes: [], ledger: null, broker: [] }
 }
 
 export function applyBroker(s: DecisionLog, e: GameEvent): void {

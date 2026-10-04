@@ -24,6 +24,7 @@ export const hasDecisions = (s: State): boolean => AGENTS.some((a) => s.agents.d
  * duels decide while a duel runs, so they get a little longer.
  */
 export const SILENCE: Readonly<Record<AgentName, { readonly quiet: number; readonly silent: number }>> = {
+  sales: { quiet: 3, silent: 12 },
   taker: { quiet: 3, silent: 3 },
   maker: { quiet: 3, silent: 24 },
   duels: { quiet: 3, silent: 12 },

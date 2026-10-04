@@ -8,7 +8,7 @@
  * - `agent.ledger`    the guardrail ledger per tick for the last two game hours, with the caps it is held to
  */
 
-export const AGENTS = ['taker', 'maker', 'duels'] as const
+export const AGENTS = ['taker', 'maker', 'duels', 'sales'] as const
 export type AgentName = (typeof AGENTS)[number]
 
 export const DECISION_STATUSES = ['proposed', 'approved', 'rejected', 'claimed', 'done', 'failed', 'expired'] as const

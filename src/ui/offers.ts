@@ -1,3 +1,4 @@
+import { salesConversations, type SalesConversation } from './sales'
 import { apply, createState, type BookOffer, type GameEvent, type Trade } from '../game/state'
 
 export type OfferState = 'open' | 'expired' | 'cancelled' | 'unknown'
@@ -8,8 +9,9 @@ export type OffersView = {
   receivedAt: number | null
   groups: readonly OfferGroup[]
   trades: readonly Trade[]
+  conversations: readonly SalesConversation[]
 }
-export const EMPTY_OFFERS: OffersView = { tick: null, receivedAt: null, groups: [], trades: [] }
+export const EMPTY_OFFERS: OffersView = { tick: null, receivedAt: null, groups: [], trades: [], conversations: [] }
 
 /** Read-only projection of the show's existing authenticated feed; never another subscription. */
 export class OffersTracker {
@@ -56,6 +58,7 @@ export class OffersTracker {
       tick: this.receivedAt === null ? null : this.state.tick,
       receivedAt: this.receivedAt,
       groups: [...groups.values()].sort((a, b) => a.id.localeCompare(b.id)),
+      conversations: salesConversations(this.state),
       trades: this.state.tape.filter((trade) => trade.ours).slice(0, 4),
     }
   }

@@ -13,6 +13,7 @@ import { StartGate } from './ui/StartGate'
 import { Transcript } from './ui/Transcript'
 import { useShow } from './ui/useShow'
 import { ActivityPanel } from './ui/ActivityPanel'
+import { SalesPanel } from './ui/SalesPanel'
 import { OffersPanel } from './ui/OffersPanel'
 
 /** The show keeps the newest few injection attempts under the stage; every row is on /injections. */
@@ -88,6 +89,7 @@ function ShowApp() {
           </ErrorBoundary>
           <Transcript entries={state.transcript} />
         </main>
+        <SalesPanel threads={offers.conversations} status={state.broadcastStatus} replay={config.replay === true} />
         <OffersPanel view={offers} status={state.broadcastStatus} replay={config.replay === true} />
         {/* their words as plain text only; this panel never reaches the director or a voice */}
         <InjectionsPanel mock={config.mock} className="inj-show" max={SHOW_ROWS} />

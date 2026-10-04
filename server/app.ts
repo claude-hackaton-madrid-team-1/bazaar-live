@@ -25,6 +25,8 @@
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
+import { vouchSalesQuote } from '../shared/sales.ts'
+import { tokenMatches } from './game/routes.ts'
 import { cleanQuote, MAX_QUOTE } from '../shared/clean.ts'
 import { CONNECT_SOURCES } from '../shared/endpoints.ts'
 import { isLang, LANGS, type Lang } from '../shared/lang.ts'
@@ -360,7 +362,11 @@ export function createApp(deps: AppDeps): AppHandler {
     const parsed = parseTtsRequest(
       raw,
       available,
-      (text, speaker) => deps.transcript?.vouchQuotes === true && transcriptStore.quote(text)?.speaker === speaker,
+      (text, speaker) => (deps.transcript?.vouchQuotes === true && transcriptStore.quote(text)?.speaker === speaker) || (
+        speaker === 'seller' && deps.game?.source?.() === 'db' && Boolean(deps.game.token)
+        && typeof req.headers['x-game-view-token'] === 'string' && tokenMatches(req.headers['x-game-view-token'], deps.game.token ?? '')
+        && vouchSalesQuote(deps.game.hub?.replay() ?? [], text)
+      ),
       (text) => isRecordedInjection(deps.injections?.snapshot().rows ?? [], text),
     )
     if (typeof parsed === 'string') return json(res, 400, { error: 'bad_request', message: parsed })
