@@ -1,4 +1,4 @@
-# Bazaar Live · the buyer and the seller, talking out loud
+# Bazaar Live · duels, trades and decisions, live
 
 Team 1's real-time show for The Bazaar (Causa Prima hackathon, Madrid 2026). Our two trading agents,
 the **BUYER** (taker) and the **SELLER** (maker), appear as two animated characters at a Rastro

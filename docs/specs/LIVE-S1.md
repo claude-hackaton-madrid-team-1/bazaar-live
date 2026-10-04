@@ -83,7 +83,7 @@ own offer. Day labels do not claim a proven round transition.
 | Validated event coverage and private/public boundary | Verified | `src/show/broadcast.test.ts`: real duel producer payloads, team scope, other-team exclusion, failure correlation, recorded Jev and template whitelist. `src/game/feed.test.ts`: supplied token does not unlock an unprotected server. |
 | Every tick visible; bounded speech/history | Verified | Broadcast tests check 10 clock events with two spoken summaries; replay silent; timeline keeps at most three entries per category. Existing director remains bounded to eight queued beats. |
 | Usable muted desktop/mobile interaction | Verified | Local production build at `http://127.0.0.1:8773/?mock=1&speed=2&tts=off&lang=en`: 1440×1000 and 390×844 screenshots, category selector switched to Duels and Jev, no browser errors or console messages. Demo label appears on the panel and every row. |
-| Existing real voices with new live events | Partial | TTS allow-list and structured role mapping tested; no live audio, microphone or authenticated production stream exercised in this follow-up. |
+| Hear the existing production voices narrate the new live event categories end to end | Partial | TTS allow-list and structured role mapping are implemented and tested. Actual production audio was not exercised; this is an unperformed deployment/audio validation, not missing narration implementation. No microphone or authenticated production stream exercised in this follow-up. |
 
 Honest implementation metric for this follow-up: 3/4 criteria verified (75%).
 
