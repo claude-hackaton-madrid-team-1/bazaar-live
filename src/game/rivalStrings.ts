@@ -68,6 +68,18 @@ export interface RivalStrings {
   readonly legendUnknown: string
   readonly legendNeed: string
   readonly noTeam: string
+  // invite rivals to our market
+  readonly invite: string
+  readonly inviteSub: string
+  readonly inviteEmpty: string
+  readonly inviteChasing: string
+  readonly inviteCount: (cards: number) => string
+  readonly inviteVenue: (name: string, id: string) => string
+  /** The ready-to-send pitch for a team: the cards it lacks that we list, on our 0 % venue. */
+  readonly inviteMsg: (team: string, cards: string, venue: string) => string
+  readonly inviteCardAt: (card: string, price: number | null) => string
+  readonly inviteCopy: string
+  readonly inviteCopied: string
 }
 
 const RARITY_EN: Readonly<Record<string, string>> = { common: 'common', uncommon: 'uncommon', rare: 'rare', epic: 'epic', legendary: 'legendary' }
@@ -134,6 +146,16 @@ const EN: RivalStrings = {
   legendUnknown: '? = held or not, never seen in public moves',
   legendNeed: 'a card we need',
   noTeam: 'No leaderboard read yet.',
+  invite: 'Invite them to our market',
+  inviteSub: 'cards we list that each rival is missing — pitch them our 0 % venue (public moves only: "may need")',
+  inviteEmpty: 'Nothing to pitch yet: no card we list matches a rival\'s missing page, or our venue has no asks up.',
+  inviteChasing: 'already after one',
+  inviteCount: (cards) => `${plural(cards, 'card', 'cards')} it may need`,
+  inviteVenue: (name, id) => `on ${name} (${id})`,
+  inviteMsg: (team, cards, venue) => `${team}: we have ${cards} listed on our market — ${venue}, 0 % fee (vs El Rastro's 5 % + 1 P). Come and complete your pages.`,
+  inviteCardAt: (card, price) => (price == null ? card : `${card} (${price} P)`),
+  inviteCopy: 'Copy pitch',
+  inviteCopied: 'Copied',
 }
 
 const ES: RivalStrings = {
@@ -197,6 +219,16 @@ const ES: RivalStrings = {
   legendUnknown: '? = la tenga o no, nunca vista en movimientos públicos',
   legendNeed: 'una carta que nos falta',
   noTeam: 'Todavía no hay lectura de la clasificación.',
+  invite: 'Invítalos a nuestro market',
+  inviteSub: 'cartas que tenemos listadas y le faltan a cada rival — véndeles nuestro puesto de 0 % (solo movimientos públicos: "quizá le falte")',
+  inviteEmpty: 'Nada que ofrecer aún: ninguna carta que listamos encaja con una página incompleta de un rival, o no tenemos asks en nuestro puesto.',
+  inviteChasing: 'ya va a por una',
+  inviteCount: (cards) => `${plural(cards, 'carta', 'cartas')} que quizá le falten`,
+  inviteVenue: (name, id) => `en ${name} (${id})`,
+  inviteMsg: (team, cards, venue) => `${team}: tenemos ${cards} listadas en nuestro market — ${venue}, 0 % de comisión (frente al 5 % + 1 P de El Rastro). Venid a completar vuestras páginas.`,
+  inviteCardAt: (card, price) => (price == null ? card : `${card} (${price} P)`),
+  inviteCopy: 'Copiar mensaje',
+  inviteCopied: 'Copiado',
 }
 
 export const RIVAL_STRINGS: Readonly<Record<Lang, RivalStrings>> = { es: ES, en: EN }

@@ -3,9 +3,9 @@
  * (GET /api/rivals). The answer first (the cards we need and who has them), then the standings, then the album of the
  * team picked there. A card we never saw a team hold is drawn as unknown, never as missing.
  */
-import { useMemo, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { setParam, useParam } from '../../ui/route'
-import { pagePush } from '../fresh.ts'
+import { pagePush, type PagePush } from '../fresh.ts'
 import { agoText, whoName } from '../humanize.ts'
 import { useRivals } from '../rivals.ts'
 import { useRivalStrings } from '../rivalStrings.ts'
@@ -13,7 +13,7 @@ import { SETS } from '../game.ts'
 import { useGameStrings } from '../strings.ts'
 import { useGame } from '../store.ts'
 import { nowTick } from '../views/decisions.ts'
-import { albumCounts, compareAlbums, needRows, needsOf, pickTeam, teamRows, type AlbumCounts, type ComparedPage, type NeedRow, type OurSlot, type RivalSlot, type TeamRow } from '../views/rivals.ts'
+import { albumCounts, compareAlbums, inviteRows, needRows, needsOf, pickTeam, teamRows, type AlbumCounts, type ComparedPage, type InviteRow, type NeedRow, type OurSlot, type RivalSlot, type TeamRow } from '../views/rivals.ts'
 import { Badge, CardRef, Empty, Fresh, Panel } from './bits.tsx'
 import { NoticeBar } from './GameHeader.tsx'
 import { Ago } from './words.tsx'
@@ -258,6 +258,75 @@ function CompareAlbum({ team, row, us, pages, counts }: { team: string; row: Tea
   )
 }
 
+/** One rival we can pitch our market to: the cards it is missing that we list, and a ready-to-send message. */
+function InviteTeam({ row }: { row: InviteRow }) {
+  const t = useRivalStrings()
+  const g = useGameStrings()
+  const [copied, setCopied] = useState(false)
+  const name = whoName(g, row.team)
+  const venues = [...new Set(row.cards.map((c) => c.venueName))]
+  const venueLabel = t.inviteVenue(venues[0] ?? '', [...new Set(row.cards.map((c) => c.venue))][0] ?? '')
+  const cardList = row.cards.map((c) => t.inviteCardAt(c.name ?? c.ref, c.price)).join(', ')
+  const msg = t.inviteMsg(name, cardList, venueLabel)
+  const copy = () => {
+    void navigator.clipboard?.writeText(msg).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      },
+      () => undefined,
+    )
+  }
+  return (
+    <li className="rv-invite">
+      <div className="rv-invite-head">
+        <b className="rv-invite-team">{name}</b>
+        <span className="gm-muted">
+          #{row.rank} · {t.inviteCount(row.cards.length)}
+        </span>
+        {row.chasing && <Badge tone="good" title={t.inviteChasing}>{t.inviteChasing}</Badge>}
+      </div>
+      <ul className="rv-invite-cards">
+        {row.cards.map((c) => (
+          <li key={c.ref}>
+            <CardRef code={c.ref} name={c.name ?? undefined} />
+            {c.price != null && <span className="rv-invite-price">{c.price} P</span>}
+          </li>
+        ))}
+      </ul>
+      <p className="rv-invite-msg">{msg}</p>
+      <button type="button" className="rv-invite-copy" onClick={copy}>
+        {copied ? t.inviteCopied : t.inviteCopy}
+      </button>
+    </li>
+  )
+}
+
+function InvitePanel({ rows, status, at, push }: { rows: InviteRow[]; status: string; at: string | null; push: PagePush | null }) {
+  const t = useRivalStrings()
+  return (
+    <Panel
+      title={t.invite}
+      sub={
+        <>
+          {t.inviteSub}
+          <Fresh page="rivals" status={status} at={at} push={push} />
+        </>
+      }
+    >
+      {rows.length ? (
+        <ul className="rv-invites">
+          {rows.map((r) => (
+            <InviteTeam key={r.team} row={r} />
+          ))}
+        </ul>
+      ) : (
+        <Empty>{t.inviteEmpty}</Empty>
+      )}
+    </Panel>
+  )
+}
+
 export function RivalsScreen() {
   const store = useGame()
   const t = useRivalStrings()
@@ -269,7 +338,7 @@ export function RivalsScreen() {
   const v = useMemo(() => {
     const needs = needsOf(state)
     const teams = teamRows(snapshot, state, needs)
-    return { needs: needRows(snapshot, state), teams, needList: needs }
+    return { needs: needRows(snapshot, state), teams, needList: needs, invites: inviteRows(snapshot, state) }
   }, [snapshot, state])
   const team = pickTeam(v.teams, asked)
   const pages = useMemo(() => (team ? compareAlbums(snapshot, state, team, v.needList) : []), [snapshot, state, team, v.needList])
@@ -302,6 +371,7 @@ export function RivalsScreen() {
           <Empty>{t.noNeeds}</Empty>
         )}
       </Panel>
+      <InvitePanel rows={v.invites} status={status} at={snapshot.at} push={push} />
       <div className="rv-grid">
         <Panel title={t.standings} sub={t.standingsSub} className="rv-standings">
           <Standings rows={v.teams} selected={team} onPick={pick} />

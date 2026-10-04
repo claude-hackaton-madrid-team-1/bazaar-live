@@ -354,3 +354,84 @@ button.rv-row:hover {
     forced-color-adjust: none;
   }
 }
+
+/* ── Invite rivals to our market: cards we list that each rival is missing, with a ready pitch ── */
+.rv-invites {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-invite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r);
+  background: var(--gm-well);
+}
+
+.rv-invite-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.rv-invite-team {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.rv-invite-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-invite-cards > li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.rv-invite-price {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+}
+
+.rv-invite-msg {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.rv-invite-copy {
+  align-self: flex-start;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--gm-well);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.rv-invite-copy:hover {
+  background: var(--gm-well-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
