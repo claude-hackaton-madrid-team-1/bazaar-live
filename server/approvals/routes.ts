@@ -1,4 +1,4 @@
-import { actionOf, proposalIdOf, proposalOf, record, resultOf, snapshotOf } from '../../shared/operator.ts'
+import { actionOf, proposalIdOf, proposalOf, record, resultOf, snapshotOf, termsOf } from '../../shared/operator.ts'
 /**
  * The Approvals screen's API (HA2): a human approves or denies the big trades our own agents refused, through
  * bazaar-mcp's human tools, called from here. The browser never sees a token: it holds a session cookie (HttpOnly,
@@ -284,7 +284,8 @@ export function createApprovalsRoutes(deps: ApprovalsRouteDeps): (req: IncomingM
     if (route === 'review' || reviewed.status !== 200) return reply(reviewed.status, reviewed.body)
     const proposal = proposalOf(reviewed.body)
     const expected = actionOf(input.action)
-    if (!proposal || proposal.proposal_id !== input.proposal_id || !expected || !proposal.allowed || JSON.stringify(proposal.action) !== JSON.stringify(expected)) return reply(409, { error: 'proposal_changed' })
+    const expectedTerms = termsOf(input.terms)
+    if (!proposal || proposal.proposal_id !== input.proposal_id || !expected || !expectedTerms || JSON.stringify(expectedTerms) !== JSON.stringify(proposal.terms) || !proposal.allowed || JSON.stringify(proposal.action) !== JSON.stringify(expected)) return reply(409, { error: 'proposal_changed' })
     const approved = await tool('operator_approve', args, (v) => record(v) && v.status === 'approved' ? { status: 'approved' } : null)
     if (approved.status !== 200) return reply(approved.status, approved.body)
     const answer = await tool('operator_execute', args, resultOf)

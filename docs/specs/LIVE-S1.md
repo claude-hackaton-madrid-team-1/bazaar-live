@@ -25,7 +25,7 @@ Honest implementation metric: 5 / 6 criteria verified (83%).
 
 Checks: `npm run lint` (zero errors, one pre-existing Fast Refresh warning),
 `npm run typecheck`, `npm run build`, and `npm test` pass. Full suite: 110 files passed,
-10 skipped; 1165 tests passed, 101 skipped. The skipped tests require database integration setup.
+10 skipped; 1166 tests passed, 101 skipped. The skipped tests require database integration setup.
 Build retains the existing bundle-size warning.
 
 Unverified: live MCP deployment with these new operator tools, a real approved game write,
@@ -36,3 +36,9 @@ Implementation notes: raw quote TTS was rejected by the existing proxy, so the p
 uses only its accepted structured buyer/dealer lines. Replay network failure leaves an empty
 labelled stage; use the included video fallback for the presentation. Work was parallel with
 backend operator and deck work, with file ownership split by repository.
+
+Security review follow-up: agent/read tools now omit the human-only MCP header;
+review and execution retain it. Full bounded canonical monetary terms are rendered and
+bound to confirmation, including card, counterpart, asset, gross price, fee and debit/net.
+Successful submission responses may omit a reason without becoming a proxy error.
+Focused regression result: 45 tests passed across operator boundary and proxy routes.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { proposalOf, resultOf, type OperatorProposal, type OperatorResult, type OperatorSnapshot, record } from '../../../shared/operator.ts'
+import { proposalOf, resultOf, type OperatorProposal, type OperatorResult, type OperatorSnapshot, record, termFacts } from '../../../shared/operator.ts'
 import { actionFacts, commandAction, finalTranscript, operatorRequest, recognitionConstructor, type Recognition } from '../operator.ts'
 import { confirmClickCounts } from '../approvals.ts'
 import { Panel } from './bits.tsx'
@@ -79,7 +79,7 @@ export function OperatorDesk({ csrf }: { csrf: string }) {
     <Panel title="Operator desk" sub="Propose → review exact terms → approve and send">
       <p className="ap-lead gm-muted">Nothing is sent to the game until you approve the displayed action. Existing trading limits still apply.</p>
       <button type="button" className="gm-btn" disabled={busy} onClick={() => void run('status', {})}>Refresh private operator status</button>
-      {snapshot && <div className="op-proposal"><dl className="ap-facts">{snapshot.facts.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl><p className="gm-muted">Snapshot at the tick shown. {snapshot.evidence}</p>{snapshot.incidents.map((incident, i) => <p key={i}>{incident}</p>)}</div>}
+      {snapshot && <div className="op-proposal"><dl className="ap-facts">{snapshot.facts.map(([name, value], i) => <div key={`${name}-${i}`}><dt>{name}</dt><dd>{value}</dd></div>)}</dl><p className="gm-muted">Snapshot at the tick shown. {snapshot.evidence}</p>{snapshot.incidents.map((incident, i) => <p key={i}>{incident}</p>)}</div>}
       <form className="op-command" onSubmit={propose}>
         <label className="ap-field" htmlFor="operator-command">Command
           <input id="operator-command" className="ap-input" value={command} maxLength={1200} placeholder="bid RET-02 8" onChange={(e) => edit(e.target.value)} disabled={busy || listening} autoComplete="off" />
@@ -90,10 +90,10 @@ export function OperatorDesk({ csrf }: { csrf: string }) {
       <details className="op-help"><summary>Commands and microphone</summary><p><code>bid RET-02 8</code> · <code>sell asset-id 20</code> · <code>accept 123</code> · <code>cancel 123</code> · <code>open t09</code> · <code>say 123 Your message</code> · <code>offer-buy 123 RET-02 8</code> · <code>offer-sell 123 asset-id 20</code> · <code>close 123</code></p><p>Listings use El Rastro and expire after 40 ticks. Dictation only edits the input. Your browser may send audio to its recognition service; typing works without microphone access.</p></details>
       {view.kind === 'proposal' && <div className="op-proposal">
         <div className="op-heading"><b>{view.value.summary}</b><span>{view.value.world} · {view.value.status}</span></div>
-        <dl className="ap-facts">{actionFacts(view.value.action).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}<div><dt>Review window</dt><dd>Tick {view.value.created_tick}–{view.value.expires_tick}; checked again before sending</dd></div></dl>
+        <dl className="ap-facts">{[...actionFacts(view.value.action), ...termFacts(view.value.terms)].map(([name, value], i) => <div key={`${name}-${i}`}><dt>{name}</dt><dd>{value}</dd></div>)}<div><dt>Review window</dt><dd>Tick {view.value.created_tick}–{view.value.expires_tick}; checked again before sending</dd></div></dl>
         <p>{view.value.reason}</p>
         <button type="button" className="gm-btn ap-primary" disabled={busy || !view.value.allowed || !['proposed', 'approved'].includes(view.value.status)} onClick={(e) => {
-          if (confirmClickCounts(e.detail, performance.now() - shownAt.current)) void run('confirm', { proposal_id: view.value.proposal_id, action: view.value.action })
+          if (confirmClickCounts(e.detail, performance.now() - shownAt.current)) void run('confirm', { proposal_id: view.value.proposal_id, action: view.value.action, terms: view.value.terms })
         }}>Approve exact terms and send</button>
         <button type="button" className="gm-btn" disabled={busy} onClick={() => { setView({ kind: 'empty' }); setPending(null) }}>Discard</button>
       </div>}

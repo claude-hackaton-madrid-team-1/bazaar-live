@@ -103,7 +103,7 @@ export function createMcpClient(deps: McpClientDeps): (tool: HumanTool, args: Re
           'content-type': 'application/json',
           'mcp-protocol-version': PROTOCOL_VERSION,
           authorization: `Bearer ${deps.config.mcpToken}`,
-          'x-approver-token': deps.config.approverToken,
+          ...(tool === 'operator_propose' || tool === 'operator_snapshot' ? {} : { 'x-approver-token': deps.config.approverToken }),
         },
         body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: tool, arguments: args } }),
         signal: AbortSignal.timeout(deps.timeoutMs ?? MCP_TIMEOUT_MS),

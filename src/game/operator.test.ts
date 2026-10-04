@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { actionFacts, commandAction, finalTranscript } from './operator.ts'
-import { actionOf, proposalOf, resultOf, snapshotOf } from '../../shared/operator.ts'
+import { actionOf, proposalOf, resultOf, snapshotOf, termFacts, termsOf } from '../../shared/operator.ts'
 
 describe('operator boundary', () => {
   it('parses exact commands without treating arbitrary speech as a trade', () => {
@@ -17,6 +17,15 @@ describe('operator boundary', () => {
   it('keeps ambiguous outcomes unknown and strips private nested snapshot inputs', () => {
     expect(resultOf({ proposal_id: '12345678', status: 'unknown', sent: null, reason: 'timeout' })?.sent).toBeNull()
     expect(snapshotOf({ world: 'real', clock: { tick: 12 }, budget: { accepts_used: 1 }, candidates: [{ private: 'not forwarded' }], incidents: [], evidence: 'current tick' })).toEqual({ facts: [['World', 'real'], ['tick', '12'], ['accepts used', '1']], incidents: [], evidence: 'current tick' })
+  })
+  it('preserves review terms and shows fees without inferring settlement', () => {
+    const terms = { offer: { id: 3, side: 'ask', ref: 'RET-02', maker: 't09', venue: 'rastro', price: 8 }, fee: 2, assets: [] }
+    expect(termFacts(terms)).toContainEqual(['Total cash debit (price + fee)', '10'])
+    expect(termsOf({ fee: NaN })).toBeNull()
+    expect(resultOf({ proposal_id: '12345678', status: 'submitted', sent: true })?.reason).toContain('not yet confirmed')
+    const proposal = { proposal_id: '12345678', action: commandAction('accept 3'), terms, created_tick: 1, expires_tick: 5, status: 'proposed', allowed: true, reason: 'valid', summary: 'Accept', world: 'real' }
+    expect(proposalOf(proposal)?.terms).toEqual(terms)
+    expect(proposalOf({ ...proposal, terms: {} })).toBeNull()
   })
   it('requires exact proposal fields and accepts only final dictation text', () => {
     expect(proposalOf({ proposal_id: '12345678', action: commandAction('accept 3') })).toBeNull()
