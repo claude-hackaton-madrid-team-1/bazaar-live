@@ -1,0 +1,6 @@
+.trade-facts { display: flex; flex-wrap: wrap; gap: .4rem .75rem; flex-basis: 100%; margin-top: .2rem; font-size: .78rem; line-height: 1.6; }
+.trade-parties { display: inline-flex; flex-wrap: wrap; gap: .4rem; }
+.trade-venue { flex-basis: 100%; color: var(--text-secondary, #9398a8); overflow-wrap: anywhere; }
+.trade-facts .gm-badge { align-self: center; }
+.mkt-mine .trade-facts { width: 100%; }
+@media (max-width: 600px) { .trade-parties { flex-basis: 100%; } }

@@ -2,6 +2,7 @@
  * Our money against its limits, said the same way on the Agent screen, the Strategy screen and the header: what we can
  * spend right now, and which limit stops us first (highlighted). The numbers come from ../limits.ts.
  */
+import { useLang } from '../../ui/lang.ts'
 import { fmtP } from '../game.ts'
 import type { Limit, Money, Release } from '../limits.ts'
 import { useGameStrings, type GameStrings } from '../strings.ts'
@@ -14,9 +15,10 @@ const sourceOf = (t: GameStrings, l: Limit): string => t.money.source(l.source, 
 export function MoneyLevers({ money, release }: { money: Money; release: Release | null }) {
   const t = useGameStrings()
   const m = t.money
+  const noCap = useLang() === 'es' ? 'sin límite horario' : 'no hourly cap'
   const cashBinds = money.binds === 'cash_floor'
   const spendBinds = money.binds === 'max_spend_per_game_hour'
-  const used = money.spent === null ? 0 : share(money.spent, money.maxSpend.value)
+  const used = money.spent === null || money.maxSpend.value === 0 ? 0 : share(money.spent, money.maxSpend.value)
   return (
     <dl className="gm-money">
       <div className="gm-money-row" data-binds={cashBinds || undefined} data-zero={(cashBinds && money.available === 0) || undefined}>
@@ -38,12 +40,12 @@ export function MoneyLevers({ money, release }: { money: Money; release: Release
         </dt>
         <dd>
           <span className="gm-meter-num" title={sourceOf(t, money.maxSpend)}>
-            {money.spent === null ? '—' : money.spent} / {fmtP(money.maxSpend.value)}
+            {money.spent === null ? '—' : money.spent} / {money.maxSpend.value === 0 ? noCap : fmtP(money.maxSpend.value)}
           </span>
-          <span className="gm-track" aria-hidden="true">
+          {money.maxSpend.value > 0 && <span className="gm-track" aria-hidden="true">
             <span className="gm-fill" style={{ width: `${Math.round(used * 100)}%` }} />
-          </span>
-          {release && (
+          </span>}
+          {money.maxSpend.value > 0 && release && (
             <span className="gm-money-note" title={m.rolling}>
               {m.release(fmtP(release.amount), release.ticks === null ? '' : t.hum.within(release.ticks, release.seconds))}
             </span>
@@ -58,9 +60,10 @@ export function MoneyLevers({ money, release }: { money: Money; release: Release
 export function MoneyChip({ money }: { money: Money }) {
   const t = useGameStrings()
   const m = t.money
+  const noCap = useLang() === 'es' ? 'sin límite horario' : 'no hourly cap'
   if (money.available === null) return null
   const tone = money.available === 0 ? 'bad' : 'ok'
-  const spend = money.spent === null ? '' : ` · ${m.spentLabel} ${money.spent} / ${money.maxSpend.value}`
+  const spend = money.spent === null ? '' : ` · ${m.spentLabel} ${money.spent} / ${money.maxSpend.value === 0 ? noCap : money.maxSpend.value}`
   return (
     <span className="hdr-chip gm-kpi gm-room" data-tone={tone} title={`${m.cashLine(money.cash === null ? '—' : String(money.cash), String(money.floor), String(money.available))}${spend}`}>
       <span className="gm-kpi-label">{m.chip(String(money.floor))}</span>

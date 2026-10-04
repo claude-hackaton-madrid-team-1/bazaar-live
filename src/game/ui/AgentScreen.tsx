@@ -14,6 +14,8 @@ import { Badge, Empty, EventLink, Panel, Seg, type Tone } from './bits.tsx'
 import { MoneyLevers } from './Money.tsx'
 import { toneOf } from './tone.ts'
 import { Ago, ItemName } from './words.tsx'
+import { decisionFacts, outcomeFacts } from '../views/trade-context.ts'
+import { TradeFacts } from './TradeFacts.tsx'
 
 const STATE_TONE: Readonly<Record<AgentState, Tone>> = { none: 'neutral', silent: 'bad', quiet: 'warn', stuck: 'warn', ok: 'good' }
 
@@ -36,6 +38,8 @@ const LimitsNow = createContext<{ readonly floor: number; readonly maxSpend: num
 function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
   const t = useGameStrings()
   const now = useContext(LimitsNow)
+  const { state } = useGame()
+  const facts = decisionFacts(state, run.last)
   const price = priceText(run)
   return (
     <>
@@ -48,13 +52,14 @@ function RunWhat({ run, agent = false }: { run: Run; agent?: boolean }) {
         <span className="agt-rule" title={ruleName(t, run.rule)}>
           <span className="gm-bad">✖</span> <b>{denialText(t, run.rule, run.last.text, now)}</b>
         </span>
-      ) : isWrite(run.kind) ? (
+      ) : isWrite(run.kind) && !facts ? (
         <Badge tone={STATUS_TONE[run.status]}>{t.decide.status[run.status]}</Badge>
       ) : null}
       {/* no guardrail said no: when Jev did not back it, that is why it was turned down */}
       {run.status === 'rejected' && run.verdict !== 'denied' && run.last.jev && run.last.jev !== 'yes' && (
         <span className="gm-muted">{t.hum.jev(run.last.jev, percent(run.last.jevValue))}</span>
       )}
+      {facts && <TradeFacts facts={facts} />}
       {run.rows.length > 1 && <Badge tone={run.verdict === 'denied' ? 'bad' : 'neutral'}>×{run.rows.length}</Badge>}
     </>
   )
@@ -206,6 +211,8 @@ function DealWhat({ deal, details }: { deal: Deal; details: boolean }) {
   const t = useGameStrings()
   const d = t.decide
   const { row, edge, verdict } = deal
+  const { state } = useGame()
+  const facts = outcomeFacts(state, row)
   return (
     <>
       <ItemName item={row.item ?? row.subject} />
@@ -232,6 +239,7 @@ function DealWhat({ deal, details }: { deal: Deal; details: boolean }) {
         <span className="gm-muted">{d.unscored}</span>
       )}
       {row.jevRight != null && <span className={row.jevRight ? 'gm-good' : 'gm-bad'}>{row.jevRight ? d.jevRight : d.jevWrong}</span>}
+      {facts && <TradeFacts facts={facts} />}
       {details && <EventLink id={row.eventId} />}
     </>
   )

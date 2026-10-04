@@ -597,7 +597,7 @@ const RARITY_PL_ES: Readonly<Record<string, string>> = { common: 'comunes', unco
 const JEV_EN: Readonly<Record<string, string>> = { yes: 'yes', no: 'no', undecided: 'unsure', aggressive: 'aggressive', counter: 'counter', accept: 'accept', fair: 'fair' }
 
 const HUM_EN: GameStrings['hum'] = {
-  agents: { taker: 'Buyer', maker: 'Seller', duels: 'Duels' },
+  agents: { taker: 'Taker', maker: 'Maker', duels: 'Duels' },
   rules: {
     max_price: 'price cap', max_price_common: 'price cap for commons', max_price_uncommon: 'price cap for uncommons', max_price_rare: 'price cap for rares',
     max_price_epic: 'price cap for epics', max_price_legendary: 'price cap for legendaries', cash_floor: 'cash floor',
@@ -639,7 +639,7 @@ const HUM_EN: GameStrings['hum'] = {
 const JEV_ES: Readonly<Record<string, string>> = { yes: 'sí', no: 'no', undecided: 'no lo ve claro', aggressive: 'agresivo', counter: 'contraoferta', accept: 'aceptar', fair: 'justo' }
 
 const HUM_ES: GameStrings['hum'] = {
-  agents: { taker: 'Comprador', maker: 'Vendedor', duels: 'Duelos' },
+  agents: { taker: 'Taker', maker: 'Maker', duels: 'Duelos' },
   rules: {
     max_price: 'tope de precio', max_price_common: 'tope para comunes', max_price_uncommon: 'tope para poco comunes', max_price_rare: 'tope para raras',
     max_price_epic: 'tope para épicas', max_price_legendary: 'tope para legendarias', cash_floor: 'suelo de caja',

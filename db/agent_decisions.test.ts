@@ -198,6 +198,14 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
     expect(rows.map((r) => r.agent)).not.toContain('broker')
   })
 
+  it('adds only trade identifiers, with recipient distinct from venue owner and no duel context', async () => {
+    await adminDb.query('update decisions set candidates = candidates || $1::jsonb where id = 4', [JSON.stringify({ venue: 'rastro', to: 't02', side: 'ask' })])
+    const { rows } = await reader.query('select id, trade_context from show.agent_decisions where id in (1, 4, 7) order by id')
+    expect(rows[0].trade_context).toMatchObject({ side: 'buy', offerId: 9 })
+    expect(rows[1].trade_context).toEqual({ side: 'sell', venue: 'rastro', recipient: 't02', offerId: null, threadId: null })
+    expect(rows[2].trade_context).toBeNull()
+  })
+
   it('names the rule that blocked each one, and keeps a short reason', async () => {
     const { rows } = await reader.query('select id, verdict, rule, rule_text from show.agent_decisions order by id')
     const by = new Map(rows.map((r) => [Number(r.id), r]))
@@ -312,6 +320,24 @@ describe.skipIf(!ADMIN_URL)('db/agent_decisions.sql privacy (local Postgres)', (
     const columns = all.flatMap((r) => r.fields.map((f) => f.name))
     for (const banned of ['your_limit', 'our_limit', 'limit', 'reason', 'candidates', 'chosen', 'jev', 'payload', 'request', 'response', 'explanation', 'details', 'source', 'rag_context', 'state_digest', 'owner']) {
       expect(columns).not.toContain(banned)
+    }
+  })
+
+  it('upgrades the previous view shape while the new reader also works before migration', async () => {
+    await adminDb.query('begin')
+    try {
+      const { rows } = await adminDb.query("select column_name from information_schema.columns where table_schema = 'show' and table_name = 'agent_decisions' and column_name <> 'trade_context' order by ordinal_position")
+      const columns = rows.map((r) => `"${String(r.column_name).replaceAll('"', '""')}"`).join(', ')
+      await adminDb.query(`create table old_decisions as select ${columns} from show.agent_decisions`)
+      await adminDb.query('drop view show.agent_decisions')
+      await adminDb.query(`create view show.agent_decisions with (security_barrier = true) as select ${columns} from old_decisions`)
+      const query = "select to_jsonb(agent_decisions)->'trade_context' as trade_context from show.agent_decisions where id = 1"
+      expect((await adminDb.query(query)).rows[0]?.trade_context).toBeNull()
+      await adminDb.query(DECISIONS_SQL)
+      expect((await adminDb.query(query)).rows[0]?.trade_context).toMatchObject({ side: 'buy', offerId: 9 })
+    } finally {
+      await adminDb.query('rollback')
+      await adminDb.query('drop table if exists old_decisions')
     }
   })
 

@@ -43,7 +43,7 @@ end $$;
 
 create or replace view show.agent_decisions with (security_barrier = true) as
 with live as (
-  select d.id, d.tick, d.agent, d.kind, d.status, d.candidates, d.chosen, d.jev,
+  select d.id, d.thread_id, d.tick, d.agent, d.kind, d.status, d.candidates, d.chosen, d.jev,
          coalesce(d.policy_checks ->> 'guardrail', '') as g,
          coalesce(d.kind, '') like 'duel%' or d.agent = 'duels' as duel
     from public.decisions d
@@ -51,7 +51,7 @@ with live as (
 ),
 -- The last request per decision (most have one). Plain joins: no index on decision_id, and these tables are small.
 last_exec as (
-  select distinct on (x.decision_id) x.decision_id, x.sdk_method, x.error_code
+  select distinct on (x.decision_id) x.decision_id, x.sdk_method, x.error_code, x.request, x.response
     from public.executions x
    where x.decision_id is not null
    order by x.decision_id, x.id desc
@@ -90,7 +90,19 @@ select l.id,
        left(x.error_code, 48) as error_code,
        left(o.label, 8) as outcome_label,
        round(o.realized_surplus, 1) as realized_surplus,
-       o.jev_right
+       o.jev_right,
+       -- Additive, narrow trade identifiers. Never whole request/response/strategy payloads.
+       case when not l.duel then jsonb_build_object(
+         'side', case
+           when l.candidates ->> 'side' in ('buy', 'bid') or l.kind in ('post_bid', 'accept_ask', 'dealer_bid', 'dealer_accept') then 'buy'
+           when l.candidates ->> 'side' in ('sell', 'ask') or l.kind in ('post_ask', 'accept_bid', 'dealer_sell_offer', 'dealer_sell_accept') then 'sell' end,
+         'venue', coalesce(show.as_text(l.candidates -> 'venue', 64), show.as_text(l.chosen -> 'venue', 64), show.as_text(x.request -> 'venue', 64)),
+         'offerId', coalesce(show.as_int(l.chosen -> 'accept'), show.as_int(l.candidates -> 'offer_id'),
+                            show.as_int(x.request -> 'offer'), show.as_int(x.response -> 'offer'),
+                            case when l.kind in ('post_ask', 'post_bid') then show.as_int(x.response -> 'id') end),
+         'threadId', coalesce(l.thread_id, show.as_int(l.candidates -> 'thread'), show.as_int(x.request -> 'thread_id')),
+         'recipient', coalesce(show.as_text(l.candidates -> 'to', 24), show.as_text(x.request -> 'to', 24))
+       ) end as trade_context
   from live l
   left join last_exec x on x.decision_id = l.id
   left join outcome o on o.decision_id = l.id;

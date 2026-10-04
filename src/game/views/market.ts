@@ -1,3 +1,4 @@
+import { offerFacts, type TradeFacts } from './trade-context.ts'
 import { bookOf } from '../game.ts'
 import type { BookOffer, State, Trade, Venue } from '../state.ts'
 import { MIN_SELL_SURPLUS, MIN_SURPLUS, affinityOf, albumRows, marginal, masterBonus, pageBonus } from './album.ts'
@@ -226,6 +227,7 @@ export type Opportunities = {
 }
 
 export type OurOffer = {
+  facts: TradeFacts
   offerId: number
   side: 'ask' | 'bid'
   ref: string
@@ -407,7 +409,7 @@ export function ourOffers(s: State): OurOffer[] {
       const best = others.length ? (side === 'ask' ? Math.min(...others) : Math.max(...others)) : null
       const gap = best == null ? 0 : side === 'ask' ? price - best : best - price
       return {
-        offerId: o.id, side, ref: o.ref, name: names.get(o.ref) ?? o.ref, price,
+        facts: offerFacts(o), offerId: o.id, side, ref: o.ref, name: names.get(o.ref) ?? o.ref, price,
         worth: o.kind === 'card' ? worthOf(s, o.ref, cards) : null, venueName: s.venues.get(o.venue)?.name ?? o.venue,
         expiresIn: o.expiresTick == null ? null : o.expiresTick - s.tick, best, beatenBy: gap > 0 ? round1(gap) : null,
         hand: s.byHand.has(o.id),

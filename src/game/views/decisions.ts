@@ -76,7 +76,7 @@ export type Run = {
 
 const itemKey = (r: DecisionRow): string => `${r.kind}|${r.item ?? ''}`
 
-const runKey = (r: DecisionRow): string => `${itemKey(r)}|${r.verdict ?? ''}|${r.rule ?? ''}|${r.status}`
+const runKey = (r: DecisionRow): string => `${itemKey(r)}|${r.verdict ?? ''}|${r.rule ?? ''}|${r.status}|${r.counterparty ?? ''}|${r.trade?.venue ?? ''}|${r.trade?.recipient ?? ''}|${r.trade?.side ?? ''}`
 
 function runOf(rows: DecisionRow[]): Run {
   const first = rows[0] as DecisionRow

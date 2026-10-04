@@ -70,19 +70,20 @@ test('a run breaks on another verdict for the same item or a tick it skipped; a 
     blocked('taker', 13, 'cash_floor', { item: 'SAL-01' }),
     blocked('taker', 15, 'cash_floor', { item: 'SAL-01' }), // the agent skipped tick 14 on it
     decision('maker', 15, { counterparty: 't07' }),
-    decision('maker', 16, { counterparty: 't08' }), // a mixed counterparty still folds, without naming one
+    decision('maker', 16, { counterparty: 't08' }), // distinct counterparties remain separate so identities are not lost
   ])
   const all = timeline(s)
   assert.deepEqual(all.filter((e) => e.kind === 'run' || e.kind === 'restart').map(read), [
-    '15-16 maker accept_ask LAV-08 done x2',
+    '16-16 maker accept_ask LAV-08 done x1',
     '15-15 taker accept_ask SAL-01 cash_floor x1',
+    '15-15 maker accept_ask LAV-08 done x1',
     '12-13 taker accept_ask SAL-01 cash_floor x2',
     '13 taker restarted',
     '11-11 taker accept_ask LAV-08 cash_floor x1',
     '10-11 taker accept_ask LAV-08 max_price_uncommon x2',
   ])
   const maker = all.find((e) => e.kind === 'run' && e.run.agent === 'maker')
-  assert.equal(maker?.kind === 'run' ? maker.run.counterparty : 'x', null)
+  assert.equal(maker?.kind === 'run' ? maker.run.counterparty : 'x', 't08')
 })
 
 test('ticks where nothing happened fold into one idle line each, up to the current tick', () => {

@@ -118,3 +118,10 @@ describe('releaseOf', () => {
     expect(releaseOf(one, 0.1, null, 30)).toEqual({ amount: 9, ticks: null, seconds: null })
   })
 })
+
+
+it('AT1 zero cap leaves cash available and ignores pre-rollout cap denials', () => {
+  const rules = moneyRulesOf([denial(1665, 'spend 240 + 20 > max_spend_per_game_hour 250')], 1700)
+  expect(rules.maxSpend.value).toBe(0)
+  expect(moneyOf(491, 900, rules, true)).toMatchObject({ cashRoom: 486, spendRoom: null, available: 486, binds: 'cash_floor' })
+})

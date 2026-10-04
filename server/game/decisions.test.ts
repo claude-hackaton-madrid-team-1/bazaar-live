@@ -380,3 +380,11 @@ describe('our venues (show.our_venues)', () => {
     expect((STICKY as readonly string[]).includes('agent.venues')).toBe(true)
   })
 })
+
+
+it('validates optional trade metadata and suppresses it for duels', () => {
+  const trade_context = { side: 'buy', venue: 'rastro', recipient: 't02', offerId: 22565, threadId: 42, broker_key: 'secret' }
+  expect(decisionOf(decisionRow(2, { trade_context }))?.payload.trade).toEqual({ side: 'buy', venue: 'rastro', recipient: 't02', offerId: 22565, threadId: 42 })
+  expect(decisionOf(decisionRow(2, { trade_context: { ...trade_context, venue: 'https://secret', offerId: -1, threadId: 'NaN' } }))?.payload.trade).toMatchObject({ venue: null, offerId: null, threadId: null })
+  expect(decisionOf(decisionRow(2, { trade_context, agent: 'duels', kind: 'duel_offer' }))?.payload.trade).toBeUndefined()
+})
