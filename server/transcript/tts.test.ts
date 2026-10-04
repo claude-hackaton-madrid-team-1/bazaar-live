@@ -58,7 +58,7 @@ describe('what the TTS proxy will voice from a real conversation', () => {
     expect(upstream).toHaveLength(1)
   })
 
-  it("binds a quote to the dealer who said it: not voiced as our buyer, nor as the other dealer", async () => {
+  it('binds a quote to the dealer who said it: not voiced as our buyer, nor as the other dealer', async () => {
     const store = new TranscriptStore()
     store.add([{ ...EMPTY_ITEM, id: 'f1', kind: 'thread_line', who: 'them', counterpart: 'chato', text: QUOTE }])
     const { say, upstream } = await start(store, true)

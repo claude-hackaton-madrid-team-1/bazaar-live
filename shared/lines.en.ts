@@ -82,7 +82,7 @@ export const EN: Pack = {
   PASS: [
     v('calm', B('{card}… no. Not today.'), S('[whispers] Picky, picky.')),
     v('calm', B("[sighs] I'll let {card} go."), S("There's always another card.")),
-    v('sarcastic', B("{card}? Pass. Somebody else will buy it."), S("[chuckles] With that attitude you'll go far.")),
+    v('sarcastic', B('{card}? Pass. Somebody else will buy it.'), S("[chuckles] With that attitude you'll go far.")),
   ],
   LATE: [
     v('calm', B('[sighs] Too slow for {card}. The window closed.'), S("Tomorrow's another day.")),
@@ -163,7 +163,7 @@ export const EN: Pack = {
 
   // ---------------------------------------------------------------- duels
   DUEL_OFFER: [
-    v('eager', B("It's duel day. My offer is on the table."), S("[whispers] Let the dance begin.")),
+    v('eager', B("It's duel day. My offer is on the table."), S('[whispers] Let the dance begin.')),
     v('sarcastic', B("Here's my little duel offer. Let's see who dares."), S('[chuckles] At that price, not even the cat dares.')),
   ],
   DUEL_ACCEPT: [
@@ -180,14 +180,14 @@ export const EN: Pack = {
     v('calm', S('The doors are still shut. We open {opens}.'), B('[sighs] And me itching to haggle.')),
     v('calm', B('{eta} until we open. What do we do meanwhile?'), S('Sharpen the prices. You can always sharpen a price.')),
     v('eager', S('{eta} to opening. I can already smell the churros.'), B('My purse is packed and ready.')),
-    v('sarcastic', B('{eta} to go? Plenty of time for a stroll in the Retiro.'), S("Go ahead, and come back empty-handed.")),
+    v('sarcastic', B('{eta} to go? Plenty of time for a stroll in the Retiro.'), S('Go ahead, and come back empty-handed.')),
     v('eager', B("When we open {opens}, I'm heading straight for the rare cards."), S("[mischievously] Go ahead. I've hidden them all.")),
     v('calm', S('With the doors shut, even the lanterns are bored.'), B("[chuckles] And they're lit.")),
   ],
   DOORS_CLOSED_BARE: [
     v('calm', S('The doors are still shut.'), B('[sighs] We wait, then.')),
     v('sarcastic', B('Closed. What a surprise.'), S('[chuckles] Even the Rastro needs a rest.')),
-    v('eager', S('The moment the doors open, we get to work.'), B("My fingers are warmed up already.")),
+    v('eager', S('The moment the doors open, we get to work.'), B('My fingers are warmed up already.')),
   ],
   PAUSED: [
     v('calm', S('The game is paused. Not a move.'), B("[whispers] Breathe in. It'll be back.")),
@@ -196,7 +196,7 @@ export const EN: Pack = {
   ],
   QUIET: [
     v('calm', S('Quiet market. Nobody buying, nobody selling.'), B('[sighs] Feels like a Monday at the Rastro.')),
-    v('sarcastic', B("Not much going on, is there?"), S('[sarcastic] The calm before the storm. Or before the nap.')),
+    v('sarcastic', B('Not much going on, is there?'), S('[sarcastic] The calm before the storm. Or before the nap.')),
     v('eager', S('The prices are up. Now we wait for the first brave soul.'), B('Somebody step up, please.')),
     v('calm', B('[whispers] Has the market fallen asleep?'), S('[chuckles] Siesta. Even the cards need one.')),
     v('sarcastic', S("It's nicer here than on a terrace in La Latina."), B('I would already be ordering a drink.')),
@@ -223,7 +223,7 @@ export const EN: Pack = {
   ],
   SIMULATOR: [
     v('calm', S('We are on the simulator today. Mistakes are free here.'), B("Then let's make magnificent ones.")),
-    v('sarcastic', B("This is the simulator, right? You can tell by how well everything goes."), S('[laughs] Enjoy it while it lasts.')),
+    v('sarcastic', B('This is the simulator, right? You can tell by how well everything goes.'), S('[laughs] Enjoy it while it lasts.')),
   ],
   DRY: [
     v('sarcastic', B("We're in practice mode. Nothing we do today counts."), S('[chuckles] My favourite kind of day.')),

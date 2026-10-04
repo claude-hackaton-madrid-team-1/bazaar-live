@@ -90,7 +90,7 @@ describe('score over the day', () => {
     expect(minutesBetween(points, 120, 140)).toBe(10)
   })
 
-  it("times a tick between the readings around it, not at the next change", () => {
+  it('times a tick between the readings around it, not at the next change', () => {
     const two = [P(411, 1), P(425, 2)]
     expect(atTick(two, 420)).toBe(P(420, 0).at)
     expect(atTick(two, 400)).toBe(P(411, 0).at)

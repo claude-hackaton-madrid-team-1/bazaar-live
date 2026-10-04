@@ -27,14 +27,19 @@ To try the paid voices locally, build, then start the server with a key in the e
 in a file in this repo): `ELEVENLABS_API_KEY=... npm start`. In dev, `npm start` on 8080 next to
 `npm run dev` also works: Vite proxies `/api` to it (`BAZAAR_LIVE_API` overrides the target).
 
-Checks (the same ones CI runs, `.github/workflows/ci.yml`):
+CI runs only on Depot (`.depot/workflows/ci.yml`), with four checks:
 
 ```sh
-npm run lint           # oxlint + eslint (typescript-eslint strict, react-hooks)
-npm run typecheck      # tsc -b, strict
-npm test               # vitest
-npm run test:coverage  # with v8 coverage
+npm run lint              # oxlint + eslint
+npm run format:check      # existing ESLint formatting rules; fix with npm run format
+npm run test:unit         # Vitest, excluding database integration tests
+sh scripts/test-sql.sh     # integration tests against disposable local Postgres (Docker)
 ```
+
+Depot supplies Postgres 17 and runs `npm run test:integration` with
+`SHOW_TEST_ADMIN_URL`. Database tests run serially because their role fixtures are shared.
+For local validation, `npm run typecheck`, `npm run build` and `npm run test:coverage`
+remain available.
 
 ## URL parameters
 

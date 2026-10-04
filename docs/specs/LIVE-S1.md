@@ -42,3 +42,12 @@ review and execution retain it. Full bounded canonical monetary terms are render
 bound to confirmation, including card, counterpart, asset, gross price, fee and debit/net.
 Successful submission responses may omit a reason without becoming a proxy error.
 Focused regression result: 45 tests passed across operator boundary and proxy routes.
+
+CI repair: Depot's stale shell smoke assertion expected the old `/api/game` shape
+and failed after lint, types, tests and build succeeded. Removed the duplicate GitHub
+workflow that still queued Blacksmith runners. Depot now runs exactly lint, formatting,
+unit tests and Postgres integration tests. Formatting reuses installed ESLint fixers;
+no dependency was added. Local evidence: `npm run test:unit` reports 110 files /
+1166 tests passed; `sh scripts/test-sql.sh` reports 10 files / 101 tests passed against
+Postgres 17. `npm run format:check` passes; lint has zero errors and its existing
+Fast Refresh warning. Hosted CI verification follows the feature-branch push.

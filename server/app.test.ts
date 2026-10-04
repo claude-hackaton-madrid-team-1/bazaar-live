@@ -451,8 +451,8 @@ describe('a quote the server vouches for is voiced only in its own language (rev
   })
 
   it('speaks an English quote in English only, and refuses one whose language it cannot tell', () => {
-    expect(ask('en', 'chato', "That is not enough for a card like that, you are wasting my time.")).toMatchObject({ lang: 'en' })
-    expect(ask('es', 'chato', "That is not enough for a card like that, you are wasting my time.")).toMatch(/own lines/)
+    expect(ask('en', 'chato', 'That is not enough for a card like that, you are wasting my time.')).toMatchObject({ lang: 'en' })
+    expect(ask('es', 'chato', 'That is not enough for a card like that, you are wasting my time.')).toMatch(/own lines/)
     expect(ask('es', 'chato', 'Xyzzy plugh.')).toMatch(/own lines/)
     expect(ask(undefined, 'chato', 'Xyzzy plugh.')).toMatch(/own lines/)
   })
